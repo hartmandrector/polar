@@ -1,0 +1,710 @@
+/**
+ * Legacy polar data and conversion to ContinuousPolar.
+ * 
+ * Contains the three reference polars from CloudBASE:
+ * - Aura 5 (wingsuit)
+ * - Ibex UL (canopy)
+ * - Slick Sin (skydiver)
+ * 
+ * Plus conversion utilities and pre-converted continuous polars.
+ * This module is UI-independent.
+ */
+
+import { ContinuousPolar, Coefficients } from './continuous-polar.ts'
+
+// ─── Legacy Types ────────────────────────────────────────────────────────────
+
+export interface WSEQPolar {
+  type?: string
+  name: string
+  public?: boolean
+  polarslope: number
+  polarclo: number
+  polarmindrag: number
+  rangemincl: number
+  rangemaxcl: number
+  s: number
+  m: number
+  clstallsep?: number
+  cdstallsep?: number
+  clstall?: number
+  cdstall?: number
+  stallmaxdrag?: number
+  aoaindexes?: number[]
+  aoas?: number[]
+  cp?: number[]
+  stallpoint?: Coefficients[]
+  polar_id?: string | number
+  user_id?: string
+}
+
+// ─── Legacy Interpolation Functions ──────────────────────────────────────────
+
+export function aoatoaoaindex(inputaoa: number, aoas: number[]) {
+  if (inputaoa <= aoas[aoas.length - 1]) return { bottomi: aoas.length - 1, topi: aoas.length - 1, alpha: 1 }
+  if (inputaoa >= aoas[0]) return { bottomi: 0, topi: 0, alpha: 0 }
+  const bottomaoai = aoas.findIndex((a) => inputaoa > a)
+  const topaoai = bottomaoai - 1
+  const alpha = (inputaoa - aoas[bottomaoai]) / (aoas[topaoai] - aoas[bottomaoai])
+  return { bottomi: bottomaoai, topi: topaoai, alpha: alpha }
+}
+
+export function interpolatecoefficients(i: { bottomi: number, topi: number, alpha: number }, stallpoint: Coefficients[]): Coefficients {
+  const cl = stallpoint[i.bottomi].cl * (1 - i.alpha) + stallpoint[i.topi].cl * i.alpha
+  const cd = stallpoint[i.bottomi].cd * (1 - i.alpha) + stallpoint[i.topi].cd * i.alpha
+  return { cl, cd }
+}
+
+export function interpolatecp(i: { bottomi: number, topi: number, alpha: number }, cp: number[]): number {
+  return cp[i.bottomi] * (1 - i.alpha) + cp[i.topi] * i.alpha
+}
+
+/**
+ * Get legacy CL, CD, CP at a given AOA from a WSEQPolar.
+ */
+export function getLegacyCoefficients(aoa_deg: number, polar: WSEQPolar): { cl: number, cd: number, cp: number } {
+  if (!polar.aoas || !polar.stallpoint) {
+    return { cl: 0, cd: 0, cp: 0.4 }
+  }
+  const i = aoatoaoaindex(aoa_deg, polar.aoas)
+  const c = interpolatecoefficients(i, polar.stallpoint)
+  const cp = polar.cp ? interpolatecp(i, polar.cp) : 0.4
+  return { cl: c.cl, cd: c.cd, cp }
+}
+
+// ─── Aura 5 Wingsuit ────────────────────────────────────────────────────────
+
+const aurafivestallpoint: Coefficients[] = [
+  {cl: 0.108983764628346 , cd: 1.08733},
+  {cl: 0.185891612981445 , cd: 1.07550125},
+  {cl: 0.210159022016888 , cd: 1.04624},
+  {cl: 0.236338092608918 , cd: 1.00421875},
+  {cl: 0.276174302741996 , cd: 0.95411},
+  {cl: 0.321902830713497 , cd: 0.90058625},
+  {cl: 0.363958657340666 , cd: 0.848320000000001},
+  {cl: 0.400686482484531 , cd: 0.80198375},
+  {cl: 0.443431551630603 , cd: 0.77},
+  {cl: 0.501784571242392 , cd: 0.741},
+  {cl: 0.516614859906805 , cd: 0.735},
+  {cl: 0.533624176122725 , cd: 0.73},
+  {cl: 0.548480181747974 , cd: 0.72},
+  {cl: 0.564801482459875 , cd: 0.71},
+  {cl: 0.582677701039275 , cd: 0.7},
+  {cl: 0.602181355660182 , cd: 0.69},
+  {cl: 0.623365404678184 , cd: 0.68},
+  {cl: 0.646260864379027 , cd: 0.67},
+  {cl: 0.670874519347125 , cd: 0.66},
+  {cl: 0.70576750505298 , cd: 0.658},
+  {cl: 0.759140843806183 , cd: 0.67},
+  {cl: 0.810986085509315 , cd: 0.677},
+  {cl: 0.88072260117917 , cd: 0.695},
+  {cl: 0.965501597206807 , cd: 0.72},
+  {cl: 1.05011755421627 , cd: 0.74},
+  {cl: 1.1371 , cd: 0.747538425047438},
+  {cl: 1.15574082635108 , cd: 0.715249918087947},
+  {cl: 1.15539526148586 , cd: 0.674507873388006},
+  {cl: 1.14683928171753 , cd: 0.630877095494163},
+  {cl: 1.11365205723984 , cd: 0.578580118018614},
+  {cl: 1.08461323582186 , cd: 0.532820262727508},
+  {cl: 1.03921292555216 , cd: 0.485724926151704},
+  {cl: 0.973302723371025 , cd: 0.430756986106757},
+  {cl: 0.907945945116896 , cd: 0.377696088274903},
+  {cl: 0.855618188821683 , cd: 0.343913198706244},
+  {cl: 0.805163095460971 , cd: 0.313424543901754},
+  {cl: 0.761810592507725 , cd: 0.288863037567478},
+  {cl: 0.719519027870984 , cd: 0.266359012152287},
+  {cl: 0.677227463234242 , cd: 0.245293347914775},
+  {cl: 0.642590319337377 , cd: 0.229111816346851},
+  {cl: 0.601309850277438 , cd: 0.211086840529111},
+  {cl: 0.568285475029486 , cd: 0.197653553200295},
+  {cl: 0.510492818345571 , cd: 0.176255727765257},
+  {cl: 0.483132714445128 , cd: 0.167062404747948},
+  {cl: 0.461436881892194 , cd: 0.160200300064325},
+  {cl: 0.418045216786326 , cd: 0.147611714122478},
+  {cl: 0.385501467956925 , cd: 0.139163945163318},
+  {cl: 0.342109802851057 , cd: 0.129225147214071},
+  {cl: 0.298718137745189 , cd: 0.120800513832024},
+  {cl: 0.249388066223454 , cd: 0.11306209742444},
+  {cl: 0.207936707770252 , cd: 0.108072711176012},
+  {cl: 0.15266822983265 , cd: 0.103569627182967},
+  {cl: 0.0835826324106472 , cd: 0.101395214878043},
+  {cl: 0.0144970349886442 , cd: 0.103059072224655}
+]
+
+const aurafiveaoas: number[] = [
+  90, 85, 80, 75, 70, 65, 60, 55, 50, 45,
+  44, 43, 42, 41, 40, 39, 38, 37, 36, 35,
+  34, 33, 32, 31, 30, 28, 27, 26, 25, 24,
+  23, 22, 21, 20, 19, 18, 17, 16, 15, 14,
+  13, 12, 11, 10, 9, 8, 7, 6, 5, 4,
+  3, 2, 1, 0
+]
+
+const aurafiveaoaindexes: number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0.0973293002538006, 0.111603420554605, 0.126644343855929,
+  0.142952948209109, 0.157392756917588, 0.176072473739675,
+  0.192339895747025, 0.224200774751407, 0.241070606343121,
+  0.255406594180041, 0.28703753161202, 0.313823164024654,
+  0.354610522808676, 0.40272129228758, 0.469227952116029,
+  0.538110242647231, 0.654985426264267, 0.846649581714156, 1
+]
+
+const aurafivecp: number[] = [
+  0.901367256532332, 0.819922671799767, 0.81865591174113,
+  0.817549210804472, 0.807584803437846, 0.7877449240893,
+  0.759011807206887, 0.722367687238658, 0.678794798632662,
+  0.629275375836952, 0.618744343806472, 0.608022597661911,
+  0.597117995278852, 0.586038394532879, 0.574791653299577,
+  0.563385629454531, 0.551828180873325, 0.540127165431543,
+  0.52829044100477, 0.51632586546859, 0.504241296698587,
+  0.492044592570347, 0.481452630223225, 0.475420516158898,
+  0.469421112816359, 0.457459576274893, 0.451502244326367,
+  0.445584032972467, 0.439735391686759, 0.433995116116988,
+  0.428408751771098, 0.423026997703251, 0.417904110199851,
+  0.413096306465556, 0.408660168309301, 0.40465104583032,
+  0.40112146110416, 0.398119511868704, 0.395687275210186,
+  0.393859211249218, 0.392660566826802, 0.39210577919035,
+  0.392196879679709, 0.392921897413175, 0.394253262973511,
+  0.396146212093973, 0.398537189344323, 0.401342251816851,
+  0.404455472812395, 0.407747345526357, 0.411063186734725,
+  0.414221540480093, 0.417012581757679, 0.419196520201342
+]
+
+export const aurafivepolar: WSEQPolar = {
+  type: "Wingsuit",
+  name: "Aura 5",
+  public: true,
+  polarslope: 0.402096647,
+  polarclo: 0.078987854,
+  polarmindrag: 0.101386726,
+  rangemincl: 0.000679916,
+  rangemaxcl: 0.950065434,
+  aoaindexes: aurafiveaoaindexes,
+  aoas: aurafiveaoas,
+  cp: aurafivecp,
+  stallpoint: aurafivestallpoint,
+  s: 2,
+  m: 77.5
+}
+
+// ─── Ibex UL Canopy ──────────────────────────────────────────────────────────
+
+const ibexaoas: number[] = [
+  90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35,
+  30, 25, 20, 15, 10, 5, 0
+]
+
+const ibexaoaindexes: number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0.0328, 0.090625, 0.1792, 0.306475, 0.4804, 0.708925, 1
+]
+
+const ibexcp: number[] = [
+  0.05, 0.068, 0.068, 0.10400122, 0.140400122, 0.18,
+  0.208196156, 0.239263709, 0.269097808, 0.298321118,
+  0.327483484, 0.35314334, 0.37330676, 0.384385535,
+  0.396690654, 0.400570261, 0.401, 0.401, 0.401
+]
+
+const ibex361coeffs: Coefficients[] = [
+  { cl: 0, cd: 1 },
+  { cl: 0.03, cd: 0.99 },
+  { cl: 0.07, cd: 0.98 },
+  { cl: 0.15, cd: 0.953 },
+  { cl: 0.2, cd: 0.925 },
+  { cl: 0.4, cd: 0.9 },
+  { cl: 0.6, cd: 0.84 },
+  { cl: 0.75, cd: 0.78 },
+  { cl: 0.87, cd: 0.7 },
+  { cl: 0.95, cd: 0.6 },
+  { cl: 1, cd: 0.49 },
+  { cl: 1.12006886897915, cd: 0.479960463043889 },
+  { cl: 0.904260055464565, cd: 0.270848614164216 },
+  { cl: 0.737065417620883, cd: 0.17123242286816 },
+  { cl: 0.607025143742464, cd: 0.131412108918551 },
+  { cl: 0.524831448174596, cd: 0.123239034936943 },
+  { cl: 0.459344707642397, cd: 0.126149760622165 },
+  { cl: 0.395071314200648, cd: 0.137132297109999 },
+  { cl: 0.356507278135599, cd: 0.147585703712626 }
+]
+
+export const ibexulpolar: WSEQPolar = {
+  type: "Canopy",
+  name: "Ibex UL",
+  public: true,
+  polarslope: 1.6934221058100165,
+  polarclo: 0.35823772469396875,
+  polarmindrag: 0.19703077949220782,
+  rangemincl: 0.27644921307405346,
+  rangemaxcl: 0.975070024796286,
+  aoaindexes: ibexaoaindexes,
+  aoas: ibexaoas,
+  cp: ibexcp,
+  stallpoint: ibex361coeffs,
+  s: 20.439,
+  m: 77.5
+}
+
+// ─── Slick Sin (Full 360° skydiver) ─────────────────────────────────────────
+
+const slicksinaoas: number[] = [
+  180, 175, 170, 165, 160, 155, 150, 145, 140, 135,
+  130, 125, 120, 115, 110, 105, 100, 95, 90, 85,
+  80, 75, 70, 65, 60, 55, 50, 45, 40, 35,
+  30, 25, 20, 15, 10, 5, 0,
+  -5, -10, -15, -20, -25, -30, -35, -40, -45,
+  -50, -55, -60, -65, -70, -75, -80, -85, -90,
+  -95, -100, -105, -110, -115, -120, -125, -130, -135,
+  -140, -145, -150, -155, -160, -165, -170, -175, -180
+]
+
+const slicksincp: number[] = [
+  0.403, 0.393, 0.393, 0.395, 0.395, 0.395, 0.397, 0.397,
+  0.3975, 0.4, 0.404, 0.405, 0.405, 0.4, 0.4, 0.4,
+  0.396, 0.3951, 0.395, 0.3951, 0.396, 0.4, 0.405, 0.405,
+  0.405, 0.404, 0.404, 0.4, 0.3975, 0.397, 0.395, 0.395,
+  0.393, 0.393, 0.393, 0.403, 0.403,
+  0.393, 0.393, 0.395, 0.395, 0.395, 0.397, 0.397,
+  0.3975, 0.4, 0.404, 0.405, 0.405, 0.4, 0.4, 0.4,
+  0.396, 0.3951, 0.395, 0.3951, 0.396, 0.4, 0.405, 0.405,
+  0.405, 0.404, 0.404, 0.4, 0.3975, 0.397, 0.395, 0.395,
+  0.393, 0.393, 0.393, 0.403, 0.403
+]
+
+const slicksinstallpoint: Coefficients[] = [
+  { cl: 0, cd: 0.466661416322842 },
+  { cl: -0.125342322477473, cd: 0.474546662056603 },
+  { cl: -0.246876181912743, cd: 0.497962810056395 },
+  { cl: -0.36090883348597, cd: 0.536198372514386 },
+  { cl: -0.463975452782408, cd: 0.588091581213417 },
+  { cl: -0.55294441272896, cd: 0.6520656872664 },
+  { cl: -0.625112436498116, cd: 0.726176869833375 },
+  { cl: -0.678286735206433, cd: 0.808173298134111 },
+  { cl: -0.710851634695151, cd: 0.895563552186886 },
+  { cl: -0.72181766697194, cd: 0.985692323343908 },
+  { cl: -0.710851634695151, cd: 1.07582109450093 },
+  { cl: -0.678286735206433, cd: 1.1632113485537 },
+  { cl: -0.625112436498116, cd: 1.24520777685444 },
+  { cl: -0.55294441272896, cd: 1.31931895942141 },
+  { cl: -0.463975452782408, cd: 1.3832930654744 },
+  { cl: -0.36090883348597, cd: 1.43518627417343 },
+  { cl: -0.246876181912743, cd: 1.47342183663142 },
+  { cl: -0.125342322477473, cd: 1.49683798463121 },
+  { cl: 0, cd: 1.50472323036497 },
+  { cl: 0.125342322477473, cd: 1.49683798463121 },
+  { cl: 0.246876181912743, cd: 1.47342183663142 },
+  { cl: 0.36090883348597, cd: 1.43518627417343 },
+  { cl: 0.463975452782408, cd: 1.3832930654744 },
+  { cl: 0.55294441272896, cd: 1.31931895942141 },
+  { cl: 0.625112436498116, cd: 1.24520777685444 },
+  { cl: 0.678286735206433, cd: 1.1632113485537 },
+  { cl: 0.710851634695151, cd: 1.07582109450093 },
+  { cl: 0.72181766697194, cd: 0.985692323343908 },
+  { cl: 0.710851634695151, cd: 0.895563552186885 },
+  { cl: 0.678286735206433, cd: 0.808173298134111 },
+  { cl: 0.625112436498116, cd: 0.726176869833375 },
+  { cl: 0.55294441272896, cd: 0.6520656872664 },
+  { cl: 0.463975452782408, cd: 0.588091581213417 },
+  { cl: 0.36090883348597, cd: 0.536198372514386 },
+  { cl: 0.246876181912743, cd: 0.497962810056395 },
+  { cl: 0.125342322477473, cd: 0.474546662056603 },
+  { cl: 0, cd: 0.466661416322842 },
+  { cl: -0.125342322477473, cd: 0.474546662056603 },
+  { cl: -0.246876181912743, cd: 0.497962810056395 },
+  { cl: -0.36090883348597, cd: 0.536198372514386 },
+  { cl: -0.463975452782408, cd: 0.588091581213417 },
+  { cl: -0.55294441272896, cd: 0.6520656872664 },
+  { cl: -0.625112436498116, cd: 0.726176869833375 },
+  { cl: -0.678286735206433, cd: 0.808173298134111 },
+  { cl: -0.710851634695151, cd: 0.895563552186885 },
+  { cl: -0.72181766697194, cd: 0.985692323343908 },
+  { cl: -0.710851634695151, cd: 1.07582109450093 },
+  { cl: -0.678286735206433, cd: 1.1632113485537 },
+  { cl: -0.625112436498116, cd: 1.24520777685444 },
+  { cl: -0.55294441272896, cd: 1.31931895942141 },
+  { cl: -0.463975452782408, cd: 1.3832930654744 },
+  { cl: -0.36090883348597, cd: 1.43518627417343 },
+  { cl: -0.246876181912743, cd: 1.47342183663142 },
+  { cl: -0.125342322477473, cd: 1.49683798463121 },
+  { cl: 0, cd: 1.50472323036497 },
+  { cl: 0.125342322477473, cd: 1.49683798463121 },
+  { cl: 0.246876181912743, cd: 1.47342183663142 },
+  { cl: 0.36090883348597, cd: 1.43518627417343 },
+  { cl: 0.463975452782408, cd: 1.3832930654744 },
+  { cl: 0.55294441272896, cd: 1.31931895942141 },
+  { cl: 0.625112436498116, cd: 1.24520777685444 },
+  { cl: 0.678286735206433, cd: 1.1632113485537 },
+  { cl: 0.710851634695151, cd: 1.07582109450093 },
+  { cl: 0.72181766697194, cd: 0.985692323343908 },
+  { cl: 0.710851634695151, cd: 0.895563552186886 },
+  { cl: 0.678286735206433, cd: 0.808173298134111 },
+  { cl: 0.625112436498116, cd: 0.726176869833375 },
+  { cl: 0.55294441272896, cd: 0.6520656872664 },
+  { cl: 0.463975452782408, cd: 0.588091581213417 },
+  { cl: 0.36090883348597, cd: 0.536198372514386 },
+  { cl: 0.246876181912743, cd: 0.497962810056395 },
+  { cl: 0.125342322477473, cd: 0.474546662056603 },
+  { cl: 0, cd: 0.466661416322842 }
+]
+
+const slicksinaoaindexes: number[] = [
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, 0,
+  0.00110666390772831, 0.00451870714716121, 0.0105095641391427,
+  0.0195275224287945, 0.0321897909314248, 0.0492831790191334,
+  0.0717777672819191, 0.10085949963318, 0.137986666884966,
+  0.184972941986842, 0.244091712181965, 0.318168836871283,
+  0.410540168081197, 0.52446808023432, 0.66081492664257,
+  0.8111231335412, 0.943756264947077, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1
+]
+
+export const slicksinpolar: WSEQPolar = {
+  type: "Slick",
+  name: "slicksinangles",
+  public: true,
+  polarslope: 0.7,
+  polarclo: 0,
+  polarmindrag: 0.08,
+  rangemincl: 0.0597,
+  rangemaxcl: 0.128,
+  s: 0.5,
+  m: 77.5,
+  clstallsep: 0.0597,
+  cdstallsep: 0.0823,
+  clstall: 0.128,
+  cdstall: 0.16,
+  stallmaxdrag: 0.266,
+  aoaindexes: slicksinaoaindexes,
+  aoas: slicksinaoas,
+  cp: slicksincp,
+  stallpoint: slicksinstallpoint
+}
+
+// ─── Caravan (Airplane) ──────────────────────────────────────────────────────
+
+const caravanstallpoint: Coefficients[] = [
+  { cl: 0.5165430339613966, cd: 0.07239915450672128 },
+  { cl: 0.5029615742827824, cd: 0.06856977008347245 },
+  { cl: 0.48909280298470004, cd: 0.06484394502252835 },
+  { cl: 0.4750908507796766, cd: 0.061271536767406556 },
+  { cl: 0.4610754308424907, cd: 0.057886066498164815 },
+  { cl: 0.4471333352248565, cd: 0.05470728148458934 },
+  { cl: 0.4333274133435328, cd: 0.0517452695322978 },
+  { cl: 0.41969806839500734, cd: 0.049002425136722746 },
+  { cl: 0.4062692430142357, cd: 0.04647609581822054 },
+  { cl: 0.3930484192746416, cd: 0.04415971164565156 },
+  { cl: 0.38003709359090987, cd: 0.04204550705082559 },
+  { cl: 0.36722179823087775, cd: 0.04012361672672921 },
+  { cl: 0.3545845762183286, cd: 0.03838437149203297 },
+  { cl: 0.3421014849183067, cd: 0.03681836636083074 },
+  { cl: 0.32973511396369376, cd: 0.035415985741904646 },
+  { cl: 0.3264993358665586, cd: 0.03507351540292367 },
+  { cl: 0.320631060334466, cd: 0.0344783263126852 },
+  { cl: 0.3131757453331217, cd: 0.03377032919142504 },
+  { cl: 0.3045275799315623, cd: 0.033016570298433676 },
+  { cl: 0.29490936664706946, cd: 0.032263440513521396 },
+  { cl: 0.2844667840486348, cd: 0.03154732238772506 },
+  { cl: 0.2732820976811008, cd: 0.0308975866998465 },
+  { cl: 0.26138787098930094, cd: 0.030339716736794725 },
+  { cl: 0.2487755346456475, cd: 0.029898014037618752 },
+  { cl: 0.2353911018863376, cd: 0.02959796306706299 },
+  { cl: 0.2211283130492831, cd: 0.029469395833047238 }
+]
+
+const caravanaoas: number[] = [
+  22.36810391019099, 21.567190131214463, 20.729470861641637, 19.860973542790497,
+  18.967725615979003, 18.05575452252515, 17.1310877037469, 16.19975260096224,
+  15.26777665548914, 14.341187308645575, 13.426012001749525, 12.528278176118965,
+  11.654013273071874, 10.80924473392623, 10.0, 9.785974631870534,
+  9.467852456626332, 9.057880157457355, 8.56830441755358, 8.01137192010497,
+  7.399329348301502, 6.744423385333139, 6.0589007143898534, 5.3550080186616125,
+  4.6449919813383875, 3.9410992856101466
+]
+
+const caravanaoaindexes: number[] = [
+  0.0, 0.02584602497910915, 0.053301270010354784, 0.08218863382357977,
+  0.11236860646815716, 0.1437442946215568, 0.1762504260046479, 0.20985801470475363,
+  0.24456823497549784, 0.2804204781487116, 0.317471640678638, 0.3558278038437417,
+  0.39562264208757336, 0.4370284024706963, 0.4802914063472369, 0.4920061469263761,
+  0.5136918185308401, 0.5420960052078937, 0.5763116866183347, 0.6160756702196375,
+  0.6614521303382338, 0.7128304814119495, 0.7709396415189791, 0.8369059462954722,
+  0.912418437241464, 1.0
+]
+
+const caravancp: number[] = [
+  0.4335454619403396, 0.4284531235418372, 0.4236779013904263, 0.4188763601209258,
+  0.4143865383474914, 0.4102030860729039, 0.40628949904819345, 0.4028445250043731,
+  0.3998956488561748, 0.3973856426552619, 0.3953531619560726, 0.3938154127962302,
+  0.3927671705523868, 0.39217975945246836, 0.392, 0.39207465760524074,
+  0.3922971560793683, 0.39265308013347633, 0.3931222361454322, 0.3936827701332322,
+  0.39431233556641687, 0.39498855347245937, 0.3956891653622101, 0.39639032113568795,
+  0.39707193465821666, 0.39771407549294413
+]
+
+export const caravanpolar: WSEQPolar = {
+  type: 'Airplane',
+  name: 'Caravan',
+  public: true,
+  polarslope: 0.484813091400691,
+  polarclo: 0.21896316379267053,
+  polarmindrag: 0.029467123091668542,
+  rangemincl: 0.21741522340551012,
+  rangemaxcl: 0.5258731795206912,
+  aoaindexes: caravanaoaindexes,
+  aoas: caravanaoas,
+  cp: caravancp,
+  stallpoint: caravanstallpoint,
+  s: 2,
+  m: 77.5
+}
+
+// ─── Continuous Polar Definitions ────────────────────────────────────────────
+
+/**
+ * Aura 5 wingsuit continuous polar.
+ * 
+ * Parameters derived from the legacy Aura 5 polar data:
+ * - CL_α estimated from the near-linear region (~5°–18°): CL goes from ~0.15 to ~0.81
+ *   over ~13° ≈ 0.227 rad → CL_α ≈ 2.9 /rad
+ * - α_0 ≈ 0° (CL ≈ 0.015 at α=0°, nearly zero)
+ * - CD_0 ≈ 0.101 (minimum drag near α=0°)
+ * - K ≈ 0.40 (from polarslope)
+ * - Forward stall ~25° (CL peaks around 25-28°)
+ * - Back stall ~-5° (limited back-flying data)
+ * - CD_n ≈ 1.1 (broadside drag at 90° is ~1.09)
+ */
+export const aurafiveContinuous: ContinuousPolar = {
+  name: 'Aura 5',
+  type: 'Wingsuit',
+
+  cl_alpha: 2.9,
+  alpha_0: 0,
+
+  cd_0: 0.101,
+  k: 0.40,
+
+  cd_n: 1.1,
+  cd_n_lateral: 1.0,
+
+  alpha_stall_fwd: 25,
+  s1_fwd: 4,
+
+  alpha_stall_back: -5,
+  s1_back: 3,
+
+  cy_beta: -0.3,
+  cn_beta: 0.08,
+  cl_beta: -0.08,
+
+  cm_0: -0.02,
+  cm_alpha: -0.08,
+
+  cp_0: 0.40,
+  cp_alpha: -0.05,
+
+  cg: 0.45,
+  cp_lateral: 0.50,
+
+  s: 2,
+  m: 77.5,
+  chord: 1.8,
+
+  controls: {
+    brake: {
+      d_cp_0:             0.03,   // CP shifts aft 3% chord at full arch (δ=+1)
+      d_alpha_0:         -0.5,    // 0.5° camber increase at full arch
+      d_cd_0:             0.005,  // Very small drag increase at full arch
+      d_alpha_stall_fwd: -1.0,    // Stall angle decreases 1° at full arch
+    },
+    dirty: {
+      d_cd_0:             0.025,  // Significant parasitic drag increase (loose suit)
+      d_cl_alpha:        -0.3,    // Less efficient lift generation
+      d_k:                0.08,   // More induced drag (worse span efficiency)
+      d_alpha_stall_fwd: -3.0,    // Stalls 3° earlier (less tension = earlier separation)
+      d_cp_0:             0.03,   // CP moves toward CG (0.40 → 0.43, CG=0.45)
+      d_cp_alpha:         0.02,   // CP travel reduced (stays closer to CG)
+    }
+  }
+}
+
+/**
+ * Ibex UL canopy continuous polar.
+ * 
+ * Parameters derived from the legacy Ibex UL polar data:
+ * - CL_α ≈ 3.5 /rad (canopies have higher lift slopes)
+ * - α_0 ≈ -3° (RAM-air generates CL>0 at α=0)
+ * - CD_0 ≈ 0.12 (canopy parasitic drag)
+ * - K ≈ 0.15 (canopies are more efficient, lower induced drag factor)
+ * - Forward stall ~35° (high CL peak of ~1.12)
+ * - Back stall ~-3°
+ * - CD_n ≈ 1.0 (collapsed canopy broadside)
+ */
+export const ibexulContinuous: ContinuousPolar = {
+  name: 'Ibex UL',
+  type: 'Canopy',
+
+  cl_alpha: 3.5,
+  alpha_0: -3,
+
+  cd_0: 0.12,
+  k: 0.15,
+
+  cd_n: 1.0,
+  cd_n_lateral: 0.8,
+
+  alpha_stall_fwd: 35,
+  s1_fwd: 5,
+
+  alpha_stall_back: -3,
+  s1_back: 3,
+
+  cy_beta: -0.4,
+  cn_beta: 0.12,
+  cl_beta: -0.12,
+
+  cm_0: -0.03,
+  cm_alpha: -0.10,
+
+  cp_0: 0.38,
+  cp_alpha: -0.03,
+
+  cg: 0.35,
+  cp_lateral: 0.50,
+
+  s: 20.439,
+  m: 77.5,
+  chord: 8.0,
+
+  controls: {
+    brake: {
+      d_alpha_0: -5,            // Full brakes shift α_0 down 5° (more camber)
+      d_cd_0: 0.08,             // Full brakes add ~0.08 parasitic drag
+      d_cl_alpha: 0.3,          // Slight increase in lift slope from camber
+      d_k: 0.05,                // Small increase in induced drag factor
+      d_alpha_stall_fwd: -5,    // Full brakes lower stall angle by 5°
+      cm_delta: -0.04,          // Brakes add nose-down pitching moment
+    }
+  }
+}
+
+/**
+ * Slick skydiver continuous polar.
+ * 
+ * The slick sin data already covers the full 360° using sin/cos functions.
+ * Parameters:
+ * - CL_α ≈ 1.45 /rad (body is not an efficient lifting surface)
+ * - α_0 ≈ 0° (symmetric body)
+ * - CD_0 ≈ 0.467 (high parasitic — human body)
+ * - K ≈ 0.70 (high induced drag)
+ * - CD_n ≈ 1.5 (broadside body drag at 90°)
+ * - Nearly symmetric stall behavior
+ */
+export const slicksinContinuous: ContinuousPolar = {
+  name: 'Slick Sin',
+  type: 'Slick',
+
+  cl_alpha: 1.45,
+  alpha_0: 0,
+
+  cd_0: 0.467,
+  k: 0.70,
+
+  cd_n: 1.505,
+  cd_n_lateral: 1.3,
+
+  alpha_stall_fwd: 45,
+  s1_fwd: 8,
+
+  alpha_stall_back: -45,
+  s1_back: 8,
+
+  cy_beta: -0.2,
+  cn_beta: 0.04,
+  cl_beta: -0.04,
+
+  cm_0: 0,
+  cm_alpha: -0.05,
+
+  cp_0: 0.40,
+  cp_alpha: -0.01,
+
+  cg: 0.50,
+  cp_lateral: 0.50,
+
+  s: 0.5,
+  m: 77.5,
+  chord: 1.7
+}
+
+/**
+ * Caravan airplane continuous polar.
+ * 
+ * Parameters derived from the legacy Caravan polar data:
+ * - CL_α ≈ 4.8 /rad (efficient wing, CL range ~0.22–0.52 over ~18° ≈ 0.31 rad)
+ * - α_0 ≈ -2° (positive CL at α=0°, typical cambered airfoil)
+ * - CD_0 ≈ 0.029 (very low parasitic drag — clean airplane)
+ * - K ≈ 0.485 (from polarslope)
+ * - Forward stall ~22° (CL peaks around 22°)
+ * - Back stall ~-4°
+ * - CD_n ≈ 1.2 (broadside fuselage + wing drag)
+ */
+export const caravanContinuous: ContinuousPolar = {
+  name: 'Caravan',
+  type: 'Airplane',
+
+  cl_alpha: 4.8,
+  alpha_0: -2,
+
+  cd_0: 0.029,
+  k: 0.485,
+
+  cd_n: 1.2,
+  cd_n_lateral: 1.0,
+
+  alpha_stall_fwd: 22,
+  s1_fwd: 4,
+
+  alpha_stall_back: -4,
+  s1_back: 3,
+
+  cy_beta: -0.4,
+  cn_beta: 0.10,
+  cl_beta: -0.10,
+
+  cm_0: -0.02,
+  cm_alpha: -0.10,
+
+  cp_0: 0.39,
+  cp_alpha: -0.04,
+
+  cg: 0.30,
+  cp_lateral: 0.30,
+
+  s: 2,
+  m: 77.5,
+  chord: 11.0
+}
+
+// ─── Registry ────────────────────────────────────────────────────────────────
+
+export const continuousPolars: Record<string, ContinuousPolar> = {
+  aurafive: aurafiveContinuous,
+  ibexul: ibexulContinuous,
+  slicksin: slicksinContinuous,
+  caravan: caravanContinuous
+}
+
+export const legacyPolars: Record<string, WSEQPolar> = {
+  aurafive: aurafivepolar,
+  ibexul: ibexulpolar,
+  slicksin: slicksinpolar,
+  caravan: caravanpolar
+}

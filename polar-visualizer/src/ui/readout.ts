@@ -1,0 +1,57 @@
+/**
+ * Coefficient readout panel — updates the numeric display.
+ */
+
+import type { FullCoefficients } from '../polar/continuous-polar.ts'
+import { coeffToForces, coeffToSS } from '../polar/coefficients.ts'
+import type { ContinuousPolar } from '../polar/continuous-polar.ts'
+
+function setTextContent(id: string, text: string): void {
+  const el = document.getElementById(id)
+  if (el) el.textContent = text
+}
+
+function fmt(n: number, digits = 3): string {
+  return n.toFixed(digits)
+}
+
+export function updateReadout(
+  coeffs: FullCoefficients,
+  polar: ContinuousPolar,
+  airspeed: number,
+  rho: number,
+  legacyCoeffs?: { cl: number, cd: number, cp: number }
+): void {
+  // Coefficients
+  setTextContent('r-cl', fmt(coeffs.cl))
+  setTextContent('r-cd', fmt(coeffs.cd))
+  setTextContent('r-cy', fmt(coeffs.cy))
+  setTextContent('r-cm', fmt(coeffs.cm))
+  setTextContent('r-cn', fmt(coeffs.cn))
+  setTextContent('r-cl-roll', fmt(coeffs.cl_roll))
+  setTextContent('r-cp', fmt(coeffs.cp))
+  setTextContent('r-f', `${fmt(coeffs.f)} (${(coeffs.f * 100).toFixed(0)}%)`)
+
+  // Forces
+  const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
+  setTextContent('r-lift', `${fmt(forces.lift, 1)} N`)
+  setTextContent('r-drag', `${fmt(forces.drag, 1)} N`)
+  setTextContent('r-side', `${fmt(forces.side, 1)} N`)
+  setTextContent('r-weight', `${fmt(forces.weight, 1)} N`)
+
+  const ld = coeffs.cd > 0.001 ? coeffs.cl / coeffs.cd : 0
+  setTextContent('r-ld', fmt(ld, 2))
+  const glideAngle = Math.atan2(coeffs.cd, coeffs.cl) * (180 / Math.PI)
+  setTextContent('r-glide', `${fmt(glideAngle, 1)}°`)
+
+  // Legacy coefficients
+  if (legacyCoeffs) {
+    setTextContent('r-cl-leg', fmt(legacyCoeffs.cl))
+    setTextContent('r-cd-leg', fmt(legacyCoeffs.cd))
+    setTextContent('r-cp-leg', fmt(legacyCoeffs.cp))
+  } else {
+    setTextContent('r-cl-leg', '—')
+    setTextContent('r-cd-leg', '—')
+    setTextContent('r-cp-leg', '—')
+  }
+}
