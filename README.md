@@ -437,4 +437,6 @@ All charts use AOA-colored points (rainbow mapping from -180° to +180°) with a
 
 ## License
 
-Private — not for redistribution.
+MIT License — see [LICENSE](LICENSE) for details.
+
+**Exception:** The 3D model files in `polar-visualizer/public/models/` are All Rights Reserved and not covered by the MIT License.
