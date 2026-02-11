@@ -49,7 +49,7 @@ export function createForceVectors(): ForceVectors {
   const group = new THREE.Group()
   group.name = 'force-vectors'
 
-  const windArrow = new ShadedArrow(0x888888, 'wind')
+  const windArrow = new ShadedArrow(0x2244aa, 'wind')
   const liftArrow = new ShadedArrow(0x00ff00, 'lift')
   const dragArrow = new ShadedArrow(0xff0000, 'drag')
   const sideArrow = new ShadedArrow(0x4488ff, 'side')

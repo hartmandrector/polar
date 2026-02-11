@@ -7,6 +7,8 @@ A standalone web application for visualizing full-range aerodynamic polars using
 ![Chart.js](https://img.shields.io/badge/Chart.js-4.5-orange)
 ![Vite](https://img.shields.io/badge/Vite-6-purple)
 
+![Full-range α sweep — Aura 5 wingsuit with CL chart and 3D force vectors](polar-visualizer/docs/gifs/hero-alpha-sweep.gif)
+
 ---
 
 ## Quick Start
@@ -145,6 +147,9 @@ Using `sin()` rather than a linear function gives better behavior in the transit
 
 Increasing `cl_alpha` steepens the lift curve in attached flow. For the Aura 5 wingsuit:
 
+![Effect of cl_alpha on lift curve](polar-visualizer/docs/gifs/effect-cl-alphalift.gif)
+![Effect of cl_alpha on polar curve](polar-visualizer/docs/gifs/effect-cl-alpha.gif)
+
 | `cl_alpha` | Peak CL (approx) | Character |
 |------------|-------------------|-----------|
 | 2.0 | ~0.85 | Low-efficiency body |
@@ -177,6 +182,8 @@ $$C_{D_{att}} = C_{D_0} + K \cdot C_L^2$$
 #### Effect of `cd_0`
 
 `cd_0` shifts the entire drag curve up or down. It's the "floor" — the minimum drag the body can ever achieve in attached flow:
+
+![Effect of cd_0 on drag curve](polar-visualizer/docs/gifs/effect-cd-0.gif)
 
 | Body | `cd_0` | Character |
 |------|--------|-----------|
@@ -244,6 +251,8 @@ $$f_{back}(\alpha) = \frac{1}{1 + \exp\!\left(\frac{\alpha_{stall,back} - \alpha
 
 Controls where CL peaks and starts dropping:
 
+![Effect of alpha_stall_fwd on stall point](polar-visualizer/docs/gifs/effect-alpha-stall-fwd.gif)
+
 | `alpha_stall_fwd` | Stall onset | Character |
 |--------------------|-------------|-----------|
 | 22° | Early stall | Airplane (Caravan) |
@@ -288,6 +297,8 @@ CL vs α — Effect of s1_fwd (stall sharpness)
 | `cl_beta` | 1/rad | **Roll moment derivative.** Roll moment per radian of sideslip. Negative = dihedral effect (rolls away from sideslip). |
 
 Sideslip affects all coefficients through crossflow scaling:
+
+![Effect of sideslip (β) on coefficients](polar-visualizer/docs/gifs/effect-beta-sideslip.gif)
 
 $$C_L(\alpha, \beta) = C_L(\alpha) \cdot \cos^2(\beta)$$
 

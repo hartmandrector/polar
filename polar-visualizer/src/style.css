@@ -226,3 +226,100 @@ html, body {
   color: #8888aa;
   margin-top: 2px;
 }
+
+/* ─── Debug Override Panel ─────────────────────────────────────────────────── */
+
+.debug-toggle-btn {
+  margin-top: 16px;
+  padding: 6px 10px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #a0a0c0;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+}
+
+.debug-toggle-btn:hover {
+  color: #e0e0e0;
+  border-color: #e94560;
+}
+
+.debug-toggle-btn.debug-active {
+  color: #e94560;
+  border-color: #e94560;
+}
+
+#debug-panel {
+  margin-top: 8px;
+  padding-bottom: 20px;
+}
+
+.debug-group-header {
+  font-size: 11px;
+  color: #e94560;
+  margin: 10px 0 4px 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #0f3460;
+  font-weight: 600;
+}
+
+.debug-row {
+  margin-bottom: 6px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.debug-row.debug-modified {
+  background: rgba(233, 69, 96, 0.10);
+  border-left: 2px solid #e94560;
+  padding-left: 6px;
+}
+
+.debug-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.debug-label {
+  color: #a0a0c0;
+  font-size: 11px;
+}
+
+.debug-value {
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+.debug-row.debug-modified .debug-value {
+  color: #e94560;
+}
+
+.debug-slider {
+  width: 100%;
+  accent-color: #e94560;
+  height: 16px;
+}
+
+#debug-reset {
+  width: 100%;
+  padding: 5px 10px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #a0a0c0;
+  font-size: 11px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+#debug-reset:hover {
+  color: #e94560;
+  border-color: #e94560;
+}

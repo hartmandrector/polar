@@ -18,6 +18,7 @@ import { updateReadout } from './ui/readout.ts'
 import { initCharts, updateChartSweep, updateChartCursor } from './ui/polar-charts.ts'
 import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients } from './polar/index.ts'
 import type { ContinuousPolar } from './polar/index.ts'
+import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, debugSweepKey } from './ui/debug-panel.ts'
 
 // ─── App State ───────────────────────────────────────────────────────────────
 
@@ -57,14 +58,15 @@ async function switchModel(modelType: ModelType): Promise<void> {
 let prevSweepKey = ''
 
 function sweepKey(s: FlightState): string {
-  return `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}`
+  return `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}|${debugSweepKey()}`
 }
 
 function updateVisualization(state: FlightState): void {
   flightState = state
 
-  // Get the continuous polar
-  const polar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+  // Get the continuous polar (with debug overrides if panel is open)
+  const basePolar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+  const polar: ContinuousPolar = getOverriddenPolar(basePolar)
 
   // Evaluate coefficients
   const coeffs = getAllCoefficients(state.alpha_deg, state.beta_deg, state.delta, polar, state.dirty)
@@ -135,11 +137,32 @@ async function init(): Promise<void> {
   // Initialize chart panels
   initCharts()
 
+  // Setup debug override panel
+  setupDebugPanel(() => {
+    // When any debug slider changes, re-run visualization with current flight state
+    if (flightState) updateVisualization(flightState)
+  })
+
+  // Track polar selection to only sync debug panel when it actually changes
+  let prevPolarKey = ''
+
   // Setup UI controls — this returns the initial state
   flightState = setupControls((state) => {
+    // When polar selection changes, sync debug panel to new baseline
+    if (state.polarKey !== prevPolarKey) {
+      prevPolarKey = state.polarKey
+      const basePolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+      syncDebugPanel(basePolar)
+    }
+
     // When controls change, switch model if needed, then update
     switchModel(state.modelType).then(() => updateVisualization(state))
   })
+
+  // Sync debug panel to initial polar
+  prevPolarKey = flightState.polarKey
+  const initialPolar = continuousPolars[flightState.polarKey] || continuousPolars.aurafive
+  syncDebugPanel(initialPolar)
 
   // Load initial model
   await switchModel(flightState.modelType)

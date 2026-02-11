@@ -486,16 +486,16 @@ export const aurafiveContinuous: ContinuousPolar = {
   type: 'Wingsuit',
 
   cl_alpha: 2.9,
-  alpha_0: -1,
+  alpha_0: -2,
 
-  cd_0: 0.101,
-  k: 0.320,
+  cd_0: 0.097,
+  k: 0.360,
 
   cd_n: 1.1,
   cd_n_lateral: 1.0,
 
-  alpha_stall_fwd: 34.5,
-  s1_fwd: 4,
+  alpha_stall_fwd: 31.5,
+  s1_fwd: 3.7,
 
   alpha_stall_back: -34.5,
   s1_back: 7,
@@ -538,32 +538,35 @@ export const aurafiveContinuous: ContinuousPolar = {
 /**
  * Ibex UL canopy continuous polar.
  * 
- * Parameters derived from the legacy Ibex UL polar data:
- * - CL_α ≈ 3.5 /rad (canopies have higher lift slopes)
- * - α_0 ≈ -3° (RAM-air generates CL>0 at α=0)
- * - CD_0 ≈ 0.12 (canopy parasitic drag)
- * - K ≈ 0.15 (canopies are more efficient, lower induced drag factor)
- * - Forward stall ~35° (high CL peak of ~1.12)
- * - Back stall ~-3°
- * - CD_n ≈ 1.0 (collapsed canopy broadside)
+ * Parameters fitted to the legacy Ibex UL polar data:
+ * - CL_α ≈ 1.75 /rad (lower than classic wing — parafoil lift curve is gentle,
+ *   rising gradually from CL≈0.36 at 0° to peak CL≈1.12 at 35°)
+ * - α_0 ≈ -12° (RAM-air parafoil has substantial camber; produces
+ *   significant lift even at 0° AOA: CL(0°)=1.75·sin(12°)≈0.36)
+ * - CD_0 ≈ 0.11 (canopy parasitic drag)
+ * - K ≈ 0.065 (low induced drag factor — large span, moderate CL range)
+ * - Forward stall ~40° (CL peak in legacy data at 35°; sigmoid catches it)
+ * - Back stall ~-5° (limited back-flying data)
+ * - CD_n ≈ 1.1 (collapsed canopy broadside)
+ * - CP ≈ 0.40 nearly constant across normal flight range
  */
 export const ibexulContinuous: ContinuousPolar = {
   name: 'Ibex UL',
   type: 'Canopy',
 
-  cl_alpha: 3.5,
+  cl_alpha: 1.75,
   alpha_0: -3,
 
-  cd_0: 0.12,
-  k: 0.15,
+  cd_0: 0.21,
+  k: 0.085,
 
-  cd_n: 1.0,
+  cd_n: 1.1,
   cd_n_lateral: 0.8,
 
-  alpha_stall_fwd: 35,
-  s1_fwd: 5,
+  alpha_stall_fwd: 15,
+  s1_fwd: 4,
 
-  alpha_stall_back: -3,
+  alpha_stall_back: -5,
   s1_back: 3,
 
   cy_beta: -0.4,
@@ -573,8 +576,8 @@ export const ibexulContinuous: ContinuousPolar = {
   cm_0: -0.03,
   cm_alpha: -0.10,
 
-  cp_0: 0.38,
-  cp_alpha: -0.03,
+  cp_0: 0.40,
+  cp_alpha: -0.01,
 
   cg: 0.35,
   cp_lateral: 0.50,
@@ -585,10 +588,10 @@ export const ibexulContinuous: ContinuousPolar = {
 
   controls: {
     brake: {
-      d_alpha_0: -5,            // Full brakes shift α_0 down 5° (more camber)
-      d_cd_0: 0.08,             // Full brakes add ~0.08 parasitic drag
-      d_cl_alpha: 0.3,          // Slight increase in lift slope from camber
-      d_k: 0.05,                // Small increase in induced drag factor
+      d_alpha_0: -3,            // Full brakes shift α_0 down 3° (more camber)
+      d_cd_0: 0.06,             // Full brakes add ~0.06 parasitic drag
+      d_cl_alpha: 0.15,         // Slight increase in lift slope from camber
+      d_k: 0.03,                // Small increase in induced drag factor
       d_alpha_stall_fwd: -5,    // Full brakes lower stall angle by 5°
       cm_delta: -0.04,          // Brakes add nose-down pitching moment
     }
