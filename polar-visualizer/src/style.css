@@ -172,16 +172,29 @@ html, body {
   padding: 4px 8px;
   background: #1a1a2e;
   border-bottom: 1px solid #0f3460;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chart-header select {
-  width: 100%;
+  flex: 1;
   padding: 3px 6px;
   background: #16213e;
   color: #e0e0e0;
   border: 1px solid #0f3460;
   border-radius: 3px;
   font-size: 11px;
+}
+
+.legacy-toggle {
+  font-size: 10px;
+  color: #aaa;
+  white-space: nowrap;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .chart-container {

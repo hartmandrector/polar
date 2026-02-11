@@ -7,6 +7,8 @@
 
 import { getAllCoefficients, coeffToSS } from '../polar/coefficients.ts'
 import type { ContinuousPolar, FullCoefficients } from '../polar/continuous-polar.ts'
+import { getLegacyCoefficients } from '../polar/polar-data.ts'
+import type { WSEQPolar } from '../polar/polar-data.ts'
 
 // ─── AOA Color Map ───────────────────────────────────────────────────────────
 
@@ -104,6 +106,60 @@ export function sweepPolar(
       f: coeffs.f,
       cn: coeffs.cn,
       cl_roll: coeffs.cl_roll,
+      ld,
+      vxs: ss.vxs,
+      vys: ss.vys,
+      color: aoaToColor(alpha, cfg.minAlpha, cfg.maxAlpha),
+    })
+  }
+
+  return points
+}
+
+// ─── Legacy Polar Sweep ──────────────────────────────────────────────────────
+
+/** Simplified point for legacy polars (only CL, CD, CP available). */
+export interface LegacyPoint {
+  alpha: number
+  cl: number
+  cd: number
+  cp: number
+  ld: number
+  vxs: number
+  vys: number
+  color: string
+}
+
+/**
+ * Sweep a legacy WSEQPolar over the chart's α range.
+ * Only produces points within the legacy polar's actual AOA range.
+ * Points outside have no data, so we skip them.
+ */
+export function sweepLegacyPolar(
+  polar: WSEQPolar,
+  config: Partial<SweepConfig> = {}
+): LegacyPoint[] {
+  const cfg = { ...DEFAULT_SWEEP, ...config }
+  if (!polar.aoas || !polar.stallpoint) return []
+
+  // Legacy aoas are sorted descending (high → low)
+  const legacyMin = polar.aoas[polar.aoas.length - 1]
+  const legacyMax = polar.aoas[0]
+
+  const points: LegacyPoint[] = []
+  for (let alpha = cfg.minAlpha; alpha <= cfg.maxAlpha; alpha += cfg.step) {
+    // Skip α values outside the legacy polar's range
+    if (alpha < legacyMin || alpha > legacyMax) continue
+
+    const c = getLegacyCoefficients(alpha, polar)
+    const ld = c.cd > 0.001 ? c.cl / c.cd : 0
+    const ss = coeffToSS(c.cl, c.cd, polar.s, polar.m, cfg.rho)
+
+    points.push({
+      alpha,
+      cl: c.cl,
+      cd: c.cd,
+      cp: c.cp,
       ld,
       vxs: ss.vxs,
       vys: ss.vys,

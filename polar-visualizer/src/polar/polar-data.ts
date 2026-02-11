@@ -486,19 +486,19 @@ export const aurafiveContinuous: ContinuousPolar = {
   type: 'Wingsuit',
 
   cl_alpha: 2.9,
-  alpha_0: 0,
+  alpha_0: -1,
 
   cd_0: 0.101,
-  k: 0.40,
+  k: 0.320,
 
   cd_n: 1.1,
   cd_n_lateral: 1.0,
 
-  alpha_stall_fwd: 25,
+  alpha_stall_fwd: 34.5,
   s1_fwd: 4,
 
-  alpha_stall_back: -5,
-  s1_back: 3,
+  alpha_stall_back: -34.5,
+  s1_back: 7,
 
   cy_beta: -0.3,
   cn_beta: 0.08,

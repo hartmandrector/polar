@@ -18,8 +18,9 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
-import { sweepPolar, aoaToColor, aoaColorLegend, type PolarPoint, type SweepConfig } from './chart-data.ts'
+import { sweepPolar, sweepLegacyPolar, aoaToColor, aoaColorLegend, type PolarPoint, type LegacyPoint, type SweepConfig } from './chart-data.ts'
 import type { ContinuousPolar } from '../polar/continuous-polar.ts'
+import type { WSEQPolar } from '../polar/polar-data.ts'
 
 // ─── Register Chart.js components ────────────────────────────────────────────
 
@@ -34,6 +35,9 @@ interface ChartState {
   chart1: Chart | null
   chart2: Chart | null
   points: PolarPoint[]
+  legacyPoints: LegacyPoint[]
+  showLegacy: boolean
+  useMph: boolean
   chart1View: Chart1View
   chart2View: Chart2View
   currentAlpha: number
@@ -47,6 +51,9 @@ const state: ChartState = {
   chart1: null,
   chart2: null,
   points: [],
+  legacyPoints: [],
+  showLegacy: true,
+  useMph: false,
   chart1View: 'cl',
   chart2View: 'polar',
   currentAlpha: 12,
@@ -89,9 +96,12 @@ const CHART1_LABELS: Record<Chart1View, { title: string, yLabel: string }> = {
   ld: { title: 'Glide Ratio', yLabel: 'L/D' },
 }
 
-const CHART2_LABELS: Record<Chart2View, { title: string, xLabel: string, yLabel: string }> = {
-  polar: { title: 'Polar Curve', xLabel: 'CD', yLabel: 'CL' },
-  speed: { title: 'Speed Polar', xLabel: 'Vxs (m/s)', yLabel: 'Vys (m/s)' },
+const MS_TO_MPH = 2.23694
+
+function chart2Labels(view: Chart2View, mph: boolean): { title: string, xLabel: string, yLabel: string } {
+  if (view === 'polar') return { title: 'Polar Curve', xLabel: 'CD', yLabel: 'CL' }
+  const unit = mph ? 'mph' : 'm/s'
+  return { title: 'Speed Polar', xLabel: `Vxs (${unit})`, yLabel: `Vys (${unit})` }
 }
 
 function chart1Data(view: Chart1View, points: PolarPoint[]): { x: number, y: number }[] {
@@ -107,7 +117,27 @@ function chart1Data(view: Chart1View, points: PolarPoint[]): { x: number, y: num
 
 function chart2Data(view: Chart2View, points: PolarPoint[]): { x: number, y: number }[] {
   if (view === 'polar') return points.map(p => ({ x: p.cd, y: p.cl }))
-  return points.map(p => ({ x: p.vxs, y: p.vys }))
+  const k = state.useMph ? MS_TO_MPH : 1
+  return points.map(p => ({ x: p.vxs * k, y: p.vys * k }))
+}
+
+// ─── Legacy data helpers ─────────────────────────────────────────────────────
+
+function legacyChart1Data(view: Chart1View, points: LegacyPoint[]): { x: number, y: number }[] {
+  const getter: Record<Chart1View, (p: LegacyPoint) => number> = {
+    cl: p => p.cl,
+    cd: p => p.cd,
+    cp: p => p.cp,
+    ld: p => p.ld,
+  }
+  const fn = getter[view]
+  return points.map(p => ({ x: p.alpha, y: fn(p) }))
+}
+
+function legacyChart2Data(view: Chart2View, points: LegacyPoint[]): { x: number, y: number }[] {
+  if (view === 'polar') return points.map(p => ({ x: p.cd, y: p.cl }))
+  const k = state.useMph ? MS_TO_MPH : 1
+  return points.map(p => ({ x: p.vxs * k, y: p.vys * k }))
 }
 
 /** Find the point nearest to currentAlpha for the cursor highlight on chart2 */
@@ -120,7 +150,8 @@ function cursorPoint2(view: Chart2View, points: PolarPoint[], alpha: number): { 
     if (d < bestDist) { best = p; bestDist = d }
   }
   if (view === 'polar') return { x: best.cd, y: best.cl }
-  return { x: best.vxs, y: best.vys }
+  const k = state.useMph ? MS_TO_MPH : 1
+  return { x: best.vxs * k, y: best.vys * k }
 }
 
 // ─── Dark theme defaults ─────────────────────────────────────────────────────
@@ -140,8 +171,27 @@ function baseScaleOptions(label: string): any {
 
 // ─── Create / update charts ──────────────────────────────────────────────────
 
+/** Create a legacy overlay dataset (thin line, same AOA coloring) */
+function legacyDataset(data: { x: number, y: number }[], colors: string[]): any {
+  return {
+    label: 'Legacy',
+    data,
+    pointBackgroundColor: colors,
+    pointBorderColor: colors,
+    pointRadius: 0.8,
+    pointHoverRadius: 3,
+    showLine: true,
+    borderWidth: 1,
+    borderDash: [],
+    segment: {
+      borderColor: (ctx: any) => colors[ctx.p0DataIndex] || '#888',
+    },
+    fill: false,
+  }
+}
+
 function createChart1(canvas: HTMLCanvasElement): Chart {
-  const { points, chart1View, currentAlpha, minAlpha, maxAlpha } = state
+  const { points, legacyPoints, showLegacy, chart1View, currentAlpha, minAlpha, maxAlpha } = state
   const data = chart1Data(chart1View, points)
   const colors = points.map(p => p.color)
   const info = CHART1_LABELS[chart1View]
@@ -150,6 +200,7 @@ function createChart1(canvas: HTMLCanvasElement): Chart {
     type: 'scatter',
     data: {
       datasets: [
+        // Continuous polar (thick)
         {
           label: info.yLabel,
           data,
@@ -158,12 +209,19 @@ function createChart1(canvas: HTMLCanvasElement): Chart {
           pointRadius: 1.5,
           pointHoverRadius: 4,
           showLine: true,
-          borderWidth: 2,
+          borderWidth: 2.5,
           segment: {
             borderColor: (ctx: any) => colors[ctx.p0DataIndex] || '#888',
           },
           fill: false,
         },
+        // Legacy polar (thin) — only if enabled and has data
+        ...(showLegacy && legacyPoints.length > 0 ? [
+          legacyDataset(
+            legacyChart1Data(chart1View, legacyPoints),
+            legacyPoints.map(p => p.color)
+          )
+        ] : []),
       ],
     },
     options: {
@@ -190,16 +248,17 @@ function createChart1(canvas: HTMLCanvasElement): Chart {
 }
 
 function createChart2(canvas: HTMLCanvasElement): Chart {
-  const { points, chart2View, currentAlpha } = state
+  const { points, legacyPoints, showLegacy, chart2View, currentAlpha } = state
   const data = chart2Data(chart2View, points)
   const colors = points.map(p => p.color)
-  const info = CHART2_LABELS[chart2View]
+  const info = chart2Labels(chart2View, state.useMph)
   const cursor = cursorPoint2(chart2View, points, currentAlpha)
 
   return new Chart(canvas, {
     type: 'scatter',
     data: {
       datasets: [
+        // Continuous polar (thick)
         {
           label: info.yLabel,
           data,
@@ -208,13 +267,20 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
           pointRadius: 1.5,
           pointHoverRadius: 4,
           showLine: true,
-          borderWidth: 2,
+          borderWidth: 2.5,
           segment: {
             borderColor: (ctx: any) => colors[ctx.p0DataIndex] || '#888',
           },
           fill: false,
         },
-        // Cursor point
+        // Legacy polar (thin) — only if enabled and has data
+        ...(showLegacy && legacyPoints.length > 0 ? [
+          legacyDataset(
+            legacyChart2Data(chart2View, legacyPoints),
+            legacyPoints.map(p => p.color)
+          )
+        ] : []),
+        // Cursor point (always last)
         {
           label: 'Current α',
           data: cursor ? [cursor] : [],
@@ -279,6 +345,28 @@ export function initCharts(): void {
     rebuildChart2()
   })
 
+  // Wire legacy checkboxes
+  const legacyCb1 = document.getElementById('chart1-legacy') as HTMLInputElement
+  const legacyCb2 = document.getElementById('chart2-legacy') as HTMLInputElement
+  const syncLegacy = () => {
+    // Both checkboxes stay in sync
+    const checked = legacyCb1?.checked ?? legacyCb2?.checked ?? true
+    if (legacyCb1) legacyCb1.checked = checked
+    if (legacyCb2) legacyCb2.checked = checked
+    state.showLegacy = checked
+    rebuildChart1()
+    rebuildChart2()
+  }
+  legacyCb1?.addEventListener('change', syncLegacy)
+  legacyCb2?.addEventListener('change', syncLegacy)
+
+  // Wire mph checkbox
+  const mphCb = document.getElementById('chart2-mph') as HTMLInputElement
+  mphCb?.addEventListener('change', () => {
+    state.useMph = mphCb.checked
+    rebuildChart2()
+  })
+
   // Build AOA legend
   buildAoaLegend()
 }
@@ -305,6 +393,7 @@ export function updateChartSweep(
   polar: ContinuousPolar,
   config: Partial<SweepConfig>,
   currentAlpha: number,
+  legacyPolar?: WSEQPolar,
 ): void {
   state.currentAlpha = currentAlpha
   state.minAlpha = config.minAlpha ?? -10
@@ -318,10 +407,31 @@ export function updateChartSweep(
     ...config,
   })
 
+  // Recompute legacy sweep
+  if (legacyPolar) {
+    state.legacyPoints = sweepLegacyPolar(legacyPolar, {
+      minAlpha: state.minAlpha,
+      maxAlpha: state.maxAlpha,
+      step: 0.5,
+      ...config,
+    })
+  } else {
+    state.legacyPoints = []
+  }
+
   // Rebuild both charts (full data change)
   rebuildChart1()
   rebuildChart2()
   buildAoaLegend()
+}
+
+/**
+ * Toggle legacy polar overlay on charts.
+ */
+export function setChartLegacy(show: boolean): void {
+  state.showLegacy = show
+  rebuildChart1()
+  rebuildChart2()
 }
 
 /**
@@ -340,10 +450,11 @@ export function updateChartCursor(currentAlpha: number): void {
     state.chart1.update('none')
   }
 
-  // Chart 2: move cursor point
+  // Chart 2: move cursor point (always the last dataset)
   if (state.chart2) {
     const cursor = cursorPoint2(state.chart2View, state.points, currentAlpha)
-    const cursorDataset = state.chart2.data.datasets[1]
+    const datasets = state.chart2.data.datasets
+    const cursorDataset = datasets[datasets.length - 1]
     if (cursorDataset && cursor) {
       cursorDataset.data = [cursor]
     }

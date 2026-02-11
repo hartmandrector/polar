@@ -88,12 +88,10 @@ function updateVisualization(state: FlightState): void {
   }
 
   // Legacy comparison
+  const legacyPolar = legacyPolars[state.polarKey]
   let legacyCoeffs: { cl: number, cd: number, cp: number } | undefined
-  if (state.showLegacy) {
-    const legacyPolar = legacyPolars[state.polarKey]
-    if (legacyPolar) {
-      legacyCoeffs = getLegacyCoefficients(state.alpha_deg, legacyPolar)
-    }
+  if (state.showLegacy && legacyPolar) {
+    legacyCoeffs = getLegacyCoefficients(state.alpha_deg, legacyPolar)
   }
 
   // Update readout panel
@@ -113,7 +111,7 @@ function updateVisualization(state: FlightState): void {
       dirty: state.dirty,
       rho: state.rho,
       airspeed: state.airspeed,
-    }, state.alpha_deg)
+    }, state.alpha_deg, legacyPolar)
   } else {
     // Only α changed → move cursor
     updateChartCursor(state.alpha_deg)
