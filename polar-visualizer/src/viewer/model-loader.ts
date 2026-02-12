@@ -7,6 +7,7 @@
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { bodyToInertialQuat } from './frames.ts'
 
 export type ModelType = 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
 
@@ -98,32 +99,32 @@ export async function loadModel(type: ModelType): Promise<LoadedModel> {
 }
 
 /**
- * Apply alpha/beta rotation to the model group.
- * In body frame: model is fixed, we rotate the wind.
- * In inertial frame: wind is fixed, we rotate the model.
- * 
- * Convention:
- * - α (pitch) rotates about the body X-axis (right wing)
- * - β (yaw/sideslip) rotates about the body Y-axis (up)
+ * Apply attitude rotation to the model group using 3-2-1 Euler angles.
+ *
+ * In body frame: model stays fixed (identity rotation).
+ * In inertial frame: model is rotated by (φ, θ, ψ) using a proper
+ * NED-to-Three.js quaternion — no Euler order ambiguity.
+ *
+ * When attitude sliders are at defaults (φ=0, θ=α, ψ=-β), this reproduces
+ * the legacy behaviour of the old applyAlphaBeta().
  */
-export function applyAlphaBeta(
+export function applyAttitude(
   group: THREE.Group,
-  alpha_deg: number,
-  beta_deg: number,
+  phi_deg: number,
+  theta_deg: number,
+  psi_deg: number,
   frameMode: 'body' | 'inertial'
 ): void {
   const DEG2RAD = Math.PI / 180
 
   if (frameMode === 'body') {
-    // Body frame: model stays fixed, vectors are rotated (handled in vector code)
-    group.rotation.set(0, 0, 0)
+    group.quaternion.identity()
   } else {
-    // Inertial frame: rotate the model so wind appears to come from +Z (or -Z)
-    // α = pitch (rotation about X), β = yaw (rotation about Y)
-    group.rotation.set(
-      -alpha_deg * DEG2RAD,  // pitch (nose up = positive α)
-      -beta_deg * DEG2RAD,   // yaw (sideslip)
-      0
+    const q = bodyToInertialQuat(
+      phi_deg * DEG2RAD,
+      theta_deg * DEG2RAD,
+      psi_deg * DEG2RAD
     )
+    group.quaternion.copy(q)
   }
 }

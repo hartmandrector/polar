@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadModel, applyAlphaBeta, LoadedModel, ModelType } from './viewer/model-loader.ts'
+import { loadModel, applyAttitude, LoadedModel, ModelType } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -81,12 +81,21 @@ function updateVisualization(state: FlightState): void {
     state.airspeed,
     state.rho,
     state.frameMode,
-    currentModel?.bodyLength ?? 2.0
+    currentModel?.bodyLength ?? 2.0,
+    state.roll_deg,
+    state.pitch_deg,
+    state.yaw_deg
   )
 
   // Update model rotation
   if (currentModel) {
-    applyAlphaBeta(currentModel.group, state.alpha_deg, state.beta_deg, state.frameMode)
+    applyAttitude(
+      currentModel.group,
+      state.roll_deg,
+      state.pitch_deg,
+      state.yaw_deg,
+      state.frameMode
+    )
   }
 
   // Legacy comparison

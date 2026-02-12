@@ -227,6 +227,26 @@ html, body {
   margin-top: 2px;
 }
 
+/* ─── Attitude group ───────────────────────────────────────────────────────── */
+
+.attitude-group {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  padding: 8px 6px 6px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: rgba(15, 52, 96, 0.15);
+}
+
+.control-group-header {
+  font-size: 11px;
+  color: #e94560;
+  margin-bottom: 8px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #0f3460;
+  font-weight: 600;
+}
+
 /* ─── Debug Override Panel ─────────────────────────────────────────────────── */
 
 .debug-toggle-btn {

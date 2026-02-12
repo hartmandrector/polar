@@ -13,6 +13,10 @@ export interface FlightState {
   modelType: 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
   frameMode: 'body' | 'inertial'
   showLegacy: boolean
+  // 3-2-1 Euler attitude angles (deg)
+  roll_deg: number   // φ  — bank angle
+  pitch_deg: number  // θ  — body pitch (distinct from α)
+  yaw_deg: number    // ψ  — heading
 }
 
 export type StateChangeCallback = (state: FlightState) => void
@@ -36,12 +40,19 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const frameSelect = document.getElementById('frame-select') as HTMLSelectElement
   const showLegacy = document.getElementById('show-legacy') as HTMLInputElement
 
+  const rollSlider = document.getElementById('roll-slider') as HTMLInputElement
+  const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement
+  const yawSlider = document.getElementById('yaw-slider') as HTMLInputElement
+
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
   const deltaLabel = document.getElementById('delta-value')!
   const dirtyLabel = document.getElementById('dirty-value')!
   const airspeedLabel = document.getElementById('airspeed-value')!
   const rhoLabel = document.getElementById('rho-value')!
+  const rollLabel = document.getElementById('roll-value')!
+  const pitchLabel = document.getElementById('pitch-value')!
+  const yawLabel = document.getElementById('yaw-value')!
 
   function readState(): FlightState {
     const alpha = parseFloat(alphaSlider.value)
@@ -53,6 +64,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const polarKey = polarSelect.value
     const modelType = modelSelect.value as 'wingsuit' | 'canopy' | 'skydiver'
     const frameMode = frameSelect.value as 'body' | 'inertial'
+    const roll = parseFloat(rollSlider.value)
+    const pitch = parseFloat(pitchSlider.value)
+    const yaw = parseFloat(yawSlider.value)
 
     alphaLabel.textContent = `${alpha.toFixed(1)}°`
     betaLabel.textContent = `${beta.toFixed(1)}°`
@@ -60,6 +74,15 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     dirtyLabel.textContent = dirty.toFixed(2)
     airspeedLabel.textContent = `${airspeed.toFixed(1)} m/s`
     rhoLabel.textContent = `${rho.toFixed(3)} kg/m³`
+    rollLabel.textContent = `${roll.toFixed(1)}°`
+    pitchLabel.textContent = `${pitch.toFixed(1)}°`
+    yawLabel.textContent = `${yaw.toFixed(1)}°`
+
+    // Show/hide attitude sliders based on frame mode
+    const attitudeGroup = document.getElementById('attitude-group')
+    if (attitudeGroup) {
+      attitudeGroup.style.display = frameMode === 'inertial' ? '' : 'none'
+    }
 
     return {
       alpha_deg: alpha,
@@ -71,7 +94,10 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       polarKey,
       modelType,
       frameMode,
-      showLegacy: showLegacy.checked
+      showLegacy: showLegacy.checked,
+      roll_deg: roll,
+      pitch_deg: pitch,
+      yaw_deg: yaw,
     }
   }
 
@@ -91,7 +117,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider]) {
     el.addEventListener('input', onInput)
   }
 

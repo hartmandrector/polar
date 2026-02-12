@@ -25,6 +25,7 @@ import type { FullCoefficients, ContinuousPolar } from '../polar/continuous-pola
 import { coeffToForces } from '../polar/coefficients.ts'
 import { ShadedArrow } from './shaded-arrow.ts'
 import { CurvedArrow } from './curved-arrow.ts'
+import { bodyToInertialMatrix4, windDirectionBody } from './frames.ts'
 
 const DEG2RAD = Math.PI / 180
 
@@ -130,7 +131,10 @@ export function updateForceVectors(
   airspeed: number,
   rho: number,
   frameMode: 'body' | 'inertial',
-  bodyLength: number = 2.0
+  bodyLength: number = 2.0,
+  phi_deg: number = 0,
+  theta_deg: number = 0,
+  psi_deg: number = 0
 ): void {
   const alpha_rad = alpha_deg * DEG2RAD
   const beta_rad = beta_deg * DEG2RAD
@@ -141,11 +145,7 @@ export function updateForceVectors(
   const cpLatBody = chordFractionToBody(polar.cp_lateral, bodyLength)
 
   // Wind direction in body frame (where the air comes FROM)
-  const windDir = new THREE.Vector3(
-    -Math.sin(beta_rad) * Math.cos(alpha_rad),
-    -Math.sin(alpha_rad),
-    Math.cos(beta_rad) * Math.cos(alpha_rad)
-  ).normalize()
+  const windDir = windDirectionBody(alpha_deg, beta_deg)
 
   // Compute forces (lift/side can be negative when CL/CY < 0)
   const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
@@ -168,14 +168,14 @@ export function updateForceVectors(
   const sideDir = new THREE.Vector3()
   sideDir.crossVectors(windDir, liftDir).normalize()
 
-  // Frame rotation for inertial view
+  // Frame rotation for inertial view — uses the same 3-2-1 Euler DCM as the model
   let rotationMatrix: THREE.Matrix4 | null = null
   if (frameMode === 'inertial') {
-    rotationMatrix = new THREE.Matrix4()
-    const quat = new THREE.Quaternion()
-    const euler = new THREE.Euler(-alpha_rad, -beta_rad, 0, 'YXZ')
-    quat.setFromEuler(euler)
-    rotationMatrix.makeRotationFromQuaternion(quat)
+    rotationMatrix = bodyToInertialMatrix4(
+      phi_deg * DEG2RAD,
+      theta_deg * DEG2RAD,
+      psi_deg * DEG2RAD
+    )
   }
 
   function applyFrame(dir: THREE.Vector3): THREE.Vector3 {
@@ -268,6 +268,21 @@ export function updateForceVectors(
   vectors.rollArc.setAngle(rollArcAngle)
   vectors.rollArc.position.copy(cgOrigin)
   vectors.rollArc.visible = Math.abs(rollArcAngle) > 0.02
+
+  // ── Rotate moment arcs into inertial frame ──
+  // In body mode the arcs' own axis definitions are already correct.
+  // In inertial mode we apply the same attitude rotation as the model.
+  if (rotationMatrix) {
+    const rotQ = new THREE.Quaternion()
+    rotQ.setFromRotationMatrix(rotationMatrix)
+    vectors.pitchArc.quaternion.copy(rotQ)
+    vectors.yawArc.quaternion.copy(rotQ)
+    vectors.rollArc.quaternion.copy(rotQ)
+  } else {
+    vectors.pitchArc.quaternion.identity()
+    vectors.yawArc.quaternion.identity()
+    vectors.rollArc.quaternion.identity()
+  }
 }
 
 // ── Helper ───────────────────────────────────────────────────────────────────
