@@ -19,6 +19,8 @@ import { initCharts, updateChartSweep, updateChartCursor } from './ui/polar-char
 import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients } from './polar/index.ts'
 import type { ContinuousPolar } from './polar/index.ts'
 import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, debugSweepKey } from './ui/debug-panel.ts'
+import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
+import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
 
@@ -71,6 +73,33 @@ function updateVisualization(state: FlightState): void {
   // Evaluate coefficients
   const coeffs = getAllCoefficients(state.alpha_deg, state.beta_deg, state.delta, polar, state.dirty)
 
+  // ── Compute body-to-inertial rotation ──
+  // null = body frame (no rotation); Quaternion = inertial frame
+  const DEG2RAD = Math.PI / 180
+  let bodyQuat: THREE.Quaternion | null = null
+  let bodyMatrix: THREE.Matrix4 | null = null
+
+  if (state.frameMode === 'inertial') {
+    if (state.attitudeMode === 'wind') {
+      // Sliders specify wind direction; combine with α/β to get body attitude
+      bodyQuat = bodyQuatFromWindAttitude(
+        state.roll_deg * DEG2RAD,
+        state.pitch_deg * DEG2RAD,
+        state.yaw_deg * DEG2RAD,
+        state.alpha_deg * DEG2RAD,
+        state.beta_deg * DEG2RAD
+      )
+    } else {
+      // Sliders specify body attitude directly
+      bodyQuat = bodyToInertialQuat(
+        state.roll_deg * DEG2RAD,
+        state.pitch_deg * DEG2RAD,
+        state.yaw_deg * DEG2RAD
+      )
+    }
+    bodyMatrix = new THREE.Matrix4().makeRotationFromQuaternion(bodyQuat)
+  }
+
   // Update force vectors
   updateForceVectors(
     forceVectors,
@@ -80,22 +109,13 @@ function updateVisualization(state: FlightState): void {
     state.beta_deg,
     state.airspeed,
     state.rho,
-    state.frameMode,
     currentModel?.bodyLength ?? 2.0,
-    state.roll_deg,
-    state.pitch_deg,
-    state.yaw_deg
+    bodyMatrix
   )
 
   // Update model rotation
   if (currentModel) {
-    applyAttitude(
-      currentModel.group,
-      state.roll_deg,
-      state.pitch_deg,
-      state.yaw_deg,
-      state.frameMode
-    )
+    applyAttitude(currentModel.group, bodyQuat)
   }
 
   // Legacy comparison

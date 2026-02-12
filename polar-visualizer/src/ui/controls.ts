@@ -17,6 +17,7 @@ export interface FlightState {
   roll_deg: number   // φ  — bank angle
   pitch_deg: number  // θ  — body pitch (distinct from α)
   yaw_deg: number    // ψ  — heading
+  attitudeMode: 'body' | 'wind'
 }
 
 export type StateChangeCallback = (state: FlightState) => void
@@ -43,6 +44,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const rollSlider = document.getElementById('roll-slider') as HTMLInputElement
   const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement
   const yawSlider = document.getElementById('yaw-slider') as HTMLInputElement
+  const attitudeModeCheck = document.getElementById('attitude-mode') as HTMLInputElement
 
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
@@ -67,6 +69,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const roll = parseFloat(rollSlider.value)
     const pitch = parseFloat(pitchSlider.value)
     const yaw = parseFloat(yawSlider.value)
+    const attitudeMode = attitudeModeCheck.checked ? 'wind' as const : 'body' as const
 
     alphaLabel.textContent = `${alpha.toFixed(1)}°`
     betaLabel.textContent = `${beta.toFixed(1)}°`
@@ -84,6 +87,23 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       attitudeGroup.style.display = frameMode === 'inertial' ? '' : 'none'
     }
 
+    // Update slider labels based on attitude mode
+    const rollLabelEl = document.getElementById('roll-label')
+    const pitchLabelEl = document.getElementById('pitch-label')
+    const yawLabelEl = document.getElementById('yaw-label')
+    const attHeader = document.getElementById('attitude-header')
+    if (attitudeMode === 'wind') {
+      if (rollLabelEl) rollLabelEl.textContent = 'φ_w (Wind Roll): '
+      if (pitchLabelEl) pitchLabelEl.textContent = 'θ_w (Wind Pitch): '
+      if (yawLabelEl) yawLabelEl.textContent = 'ψ_w (Wind Yaw): '
+      if (attHeader) attHeader.textContent = 'Wind Direction (Euler 3-2-1)'
+    } else {
+      if (rollLabelEl) rollLabelEl.textContent = 'φ (Roll): '
+      if (pitchLabelEl) pitchLabelEl.textContent = 'θ (Pitch): '
+      if (yawLabelEl) yawLabelEl.textContent = 'ψ (Yaw): '
+      if (attHeader) attHeader.textContent = 'Attitude (Euler 3-2-1)'
+    }
+
     return {
       alpha_deg: alpha,
       beta_deg: beta,
@@ -98,6 +118,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       roll_deg: roll,
       pitch_deg: pitch,
       yaw_deg: yaw,
+      attitudeMode,
     }
   }
 
@@ -127,6 +148,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   }
 
   showLegacy.addEventListener('change', onInput)
+  attitudeModeCheck.addEventListener('change', onInput)
 
   // Return initial state
   return readState()

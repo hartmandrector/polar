@@ -7,7 +7,6 @@
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { bodyToInertialQuat } from './frames.ts'
 
 export type ModelType = 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
 
@@ -99,32 +98,22 @@ export async function loadModel(type: ModelType): Promise<LoadedModel> {
 }
 
 /**
- * Apply attitude rotation to the model group using 3-2-1 Euler angles.
+ * Apply a pre-computed attitude quaternion to the model group.
  *
- * In body frame: model stays fixed (identity rotation).
- * In inertial frame: model is rotated by (φ, θ, ψ) using a proper
- * NED-to-Three.js quaternion — no Euler order ambiguity.
+ * Pass `null` for body frame (identity rotation).
+ * Pass the body-to-inertial quaternion for inertial frame.
  *
- * When attitude sliders are at defaults (φ=0, θ=α, ψ=-β), this reproduces
- * the legacy behaviour of the old applyAlphaBeta().
+ * The quaternion is computed upstream (main.ts) from either body Euler
+ * angles or wind Euler angles + α/β, so this function doesn't need
+ * to know which mode is active.
  */
 export function applyAttitude(
   group: THREE.Group,
-  phi_deg: number,
-  theta_deg: number,
-  psi_deg: number,
-  frameMode: 'body' | 'inertial'
+  rotation: THREE.Quaternion | null
 ): void {
-  const DEG2RAD = Math.PI / 180
-
-  if (frameMode === 'body') {
+  if (!rotation) {
     group.quaternion.identity()
   } else {
-    const q = bodyToInertialQuat(
-      phi_deg * DEG2RAD,
-      theta_deg * DEG2RAD,
-      psi_deg * DEG2RAD
-    )
-    group.quaternion.copy(q)
+    group.quaternion.copy(rotation)
   }
 }

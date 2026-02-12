@@ -25,7 +25,7 @@ import type { FullCoefficients, ContinuousPolar } from '../polar/continuous-pola
 import { coeffToForces } from '../polar/coefficients.ts'
 import { ShadedArrow } from './shaded-arrow.ts'
 import { CurvedArrow } from './curved-arrow.ts'
-import { bodyToInertialMatrix4, windDirectionBody } from './frames.ts'
+import { windDirectionBody } from './frames.ts'
 
 const DEG2RAD = Math.PI / 180
 
@@ -130,11 +130,8 @@ export function updateForceVectors(
   beta_deg: number,
   airspeed: number,
   rho: number,
-  frameMode: 'body' | 'inertial',
-  bodyLength: number = 2.0,
-  phi_deg: number = 0,
-  theta_deg: number = 0,
-  psi_deg: number = 0
+  bodyLength: number,
+  rotationMatrix: THREE.Matrix4 | null
 ): void {
   const alpha_rad = alpha_deg * DEG2RAD
   const beta_rad = beta_deg * DEG2RAD
@@ -168,15 +165,7 @@ export function updateForceVectors(
   const sideDir = new THREE.Vector3()
   sideDir.crossVectors(windDir, liftDir).normalize()
 
-  // Frame rotation for inertial view — uses the same 3-2-1 Euler DCM as the model
-  let rotationMatrix: THREE.Matrix4 | null = null
-  if (frameMode === 'inertial') {
-    rotationMatrix = bodyToInertialMatrix4(
-      phi_deg * DEG2RAD,
-      theta_deg * DEG2RAD,
-      psi_deg * DEG2RAD
-    )
-  }
+  // Frame rotation — pre-computed upstream (null = body frame, no rotation)
 
   function applyFrame(dir: THREE.Vector3): THREE.Vector3 {
     if (rotationMatrix) return dir.clone().applyMatrix4(rotationMatrix)

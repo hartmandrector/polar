@@ -283,3 +283,51 @@ export function attitudeFromAlphaBeta(
 ): { phi_deg: number; theta_deg: number; psi_deg: number } {
   return { phi_deg: 0, theta_deg: alpha_deg, psi_deg: -beta_deg }
 }
+
+// ─── Wind-attitude mode ──────────────────────────────────────────────────────
+
+/**
+ * Compute the body-to-inertial quaternion (Three.js) from:
+ *   - Wind Euler angles (φ_w, θ_w, ψ_w) — orientation of the airspeed vector
+ *     in the inertial frame, using the same 3-2-1 convention.
+ *   - α, β — angle of attack and sideslip, defining the body's orientation
+ *     relative to the wind.
+ *
+ * Composition:
+ *   q_body = q_wind · Rx(-α) · Ry(β)
+ *
+ *   - q_wind sets the wind frame in inertial space (from slider Euler angles)
+ *   - Rx(-α) pitches the body nose-up relative to the wind (positive α → nose up)
+ *   - Ry(β) yaws the body so wind comes from the right (positive β → sideslip right)
+ *
+ * This reproduces the windDirectionBody() convention:
+ *   wind_body = Ry(-β) · Rx(α) · (0,0,1) = (-sin(β)cos(α), -sin(α), cos(β)cos(α))
+ *
+ * Behaviour:
+ *   - Adjusting wind roll → body rotates around the static wind vector
+ *   - Adjusting α/β → body tilts away from the wind direction
+ *   - At all sliders zero and α=β=0, body points forward (+Z)
+ */
+export function bodyQuatFromWindAttitude(
+  wind_phi_rad: number,
+  wind_theta_rad: number,
+  wind_psi_rad: number,
+  alpha_rad: number,
+  beta_rad: number
+): THREE.Quaternion {
+  // Wind frame orientation in inertial space
+  const qWind = bodyToInertialQuat(wind_phi_rad, wind_theta_rad, wind_psi_rad)
+
+  // Body rotation relative to wind frame:
+  //   Pitch by -α about X  (nose up for positive α)
+  //   Then yaw by +β about Y  (nose left → wind from right for positive β)
+  const qAlpha = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(1, 0, 0), -alpha_rad
+  )
+  const qBeta = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0), beta_rad
+  )
+
+  // q_body = q_wind · qAlpha · qBeta
+  return qWind.multiply(qAlpha).multiply(qBeta)
+}
