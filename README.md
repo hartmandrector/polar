@@ -37,7 +37,10 @@ The dev server will open at `http://localhost:5173`.
 
 ## Features
 
-- **3D Viewer** — Three.js scene with OrbitControls, body-frame and wind-frame rendering
+- **3D Viewer** — Three.js scene with OrbitControls, body-frame and inertial-frame rendering with independent φ/θ/ψ attitude control
+
+<p align="center"><img src="gifs/body-inertial-frames.gif" width="720" alt="Body vs inertial frame switching with attitude sliders" /></p>
+
 - **Force Vectors** — Lift (blue), drag (red), side force (cyan), weight (yellow), net (white) as shaded 3D arrows originating from the center of pressure (CP) or center of gravity (CG)
 - **Moment Arcs** — Pitch (red), yaw (green), roll (purple) curved arrows at CG
 - **4 Models** — Aura 5 wingsuit, Ibex UL canopy, Slick Sin skydiver, Caravan airplane
