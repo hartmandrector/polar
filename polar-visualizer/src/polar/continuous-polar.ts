@@ -29,6 +29,21 @@ export interface FullCoefficients {
 }
 
 /**
+ * Mass segment — a single point-mass in the body mass model.
+ *
+ * Positions are height-normalized and in the NED body frame:
+ *   x = forward (head direction), y = right, z = down
+ *
+ * Mass ratios are fractions of polar.m (total system mass).
+ * They sum to ~1.0 for a complete model.
+ */
+export interface MassSegment {
+  name: string
+  massRatio: number
+  normalizedPosition: { x: number; y: number; z: number }
+}
+
+/**
  * Symmetric (δ) control derivatives — how a single control axis
  * morphs the base polar parameters.  P(δ) = P_base + δ · d_P
  */
@@ -107,4 +122,11 @@ export interface ContinuousPolar {
     rear_riser?: SymmetricControl
     dirty?: SymmetricControl      // Wingsuit: dirty flying (reduced efficiency)
   }
+
+  // Mass distribution (optional — point-mass model for inertia and overlay)
+  massSegments?: MassSegment[]
+
+  // CG offset from bbox center as fraction of body length along flight axis.
+  // Used by model-loader to shift the 3D mesh so CG sits at the scene origin.
+  cgOffsetFraction?: number
 }

@@ -18,6 +18,9 @@ export interface FlightState {
   pitch_deg: number  // θ  — body pitch (distinct from α)
   yaw_deg: number    // ψ  — heading
   attitudeMode: 'body' | 'wind'
+  showMassOverlay: boolean
+  showAccelArcs: boolean
+  canopyPilotType: 'wingsuit' | 'slick'
 }
 
 export type StateChangeCallback = (state: FlightState) => void
@@ -37,14 +40,16 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const airspeedSlider = document.getElementById('airspeed-slider') as HTMLInputElement
   const rhoSlider = document.getElementById('rho-slider') as HTMLInputElement
   const polarSelect = document.getElementById('polar-select') as HTMLSelectElement
-  const modelSelect = document.getElementById('model-select') as HTMLSelectElement
   const frameSelect = document.getElementById('frame-select') as HTMLSelectElement
   const showLegacy = document.getElementById('show-legacy') as HTMLInputElement
+  const canopyPilotSelect = document.getElementById('canopy-pilot-select') as HTMLSelectElement
 
   const rollSlider = document.getElementById('roll-slider') as HTMLInputElement
   const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement
   const yawSlider = document.getElementById('yaw-slider') as HTMLInputElement
   const attitudeModeCheck = document.getElementById('attitude-mode') as HTMLInputElement
+  const showMassOverlayCheck = document.getElementById('show-mass-overlay') as HTMLInputElement
+  const showAccelArcsCheck = document.getElementById('show-accel-arcs') as HTMLInputElement
 
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
@@ -64,8 +69,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const airspeed = parseFloat(airspeedSlider.value)
     const rho = parseFloat(rhoSlider.value) / 1000
     const polarKey = polarSelect.value
-    const modelType = modelSelect.value as 'wingsuit' | 'canopy' | 'skydiver'
+    const modelType = POLAR_TO_MODEL[polarKey] || 'wingsuit'
     const frameMode = frameSelect.value as 'body' | 'inertial'
+    const canopyPilotType = (canopyPilotSelect?.value || 'wingsuit') as 'wingsuit' | 'slick'
     const roll = parseFloat(rollSlider.value)
     const pitch = parseFloat(pitchSlider.value)
     const yaw = parseFloat(yawSlider.value)
@@ -85,6 +91,12 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const attitudeGroup = document.getElementById('attitude-group')
     if (attitudeGroup) {
       attitudeGroup.style.display = frameMode === 'inertial' ? '' : 'none'
+    }
+
+    // Show/hide canopy pilot dropdown based on polar
+    const canopyPilotGroup = document.getElementById('canopy-pilot-group')
+    if (canopyPilotGroup) {
+      canopyPilotGroup.style.display = modelType === 'canopy' ? '' : 'none'
     }
 
     // Update slider labels based on attitude mode
@@ -119,6 +131,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       pitch_deg: pitch,
       yaw_deg: yaw,
       attitudeMode,
+      showMassOverlay: showMassOverlayCheck.checked,
+      showAccelArcs: showAccelArcsCheck.checked,
+      canopyPilotType,
     }
   }
 
@@ -126,12 +141,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     onChange(readState())
   }
 
-  // When polar changes, auto-select the matching model and reset delta
+  // When polar changes, reset delta/dirty
   polarSelect.addEventListener('change', () => {
-    const key = polarSelect.value
-    if (POLAR_TO_MODEL[key]) {
-      modelSelect.value = POLAR_TO_MODEL[key]
-    }
     deltaSlider.value = '0'
     dirtySlider.value = '0'
     onInput()
@@ -143,12 +154,16 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   }
 
   // Discrete selects
-  for (const el of [modelSelect, frameSelect]) {
+  for (const el of [frameSelect]) {
     el.addEventListener('change', onInput)
   }
 
+  canopyPilotSelect.addEventListener('change', onInput)
+
   showLegacy.addEventListener('change', onInput)
   attitudeModeCheck.addEventListener('change', onInput)
+  showMassOverlayCheck.addEventListener('change', onInput)
+  showAccelArcsCheck.addEventListener('change', onInput)
 
   // Return initial state
   return readState()

@@ -10,7 +10,7 @@
  * This module is UI-independent.
  */
 
-import { ContinuousPolar, Coefficients } from './continuous-polar.ts'
+import { ContinuousPolar, Coefficients, MassSegment } from './continuous-polar.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -466,6 +466,128 @@ export const caravanpolar: WSEQPolar = {
   m: 77.5
 }
 
+// ─── Mass Distributions ──────────────────────────────────────────────────────
+
+/**
+ * 14-point wingsuit body mass model.
+ *
+ * Positions are height-normalized (multiply by pilot height in meters).
+ * Mass ratios are fractions of total system weight.
+ * Origin is approximately at CG in NED body frame:
+ *   x = forward (head), y = right, z = down
+ *
+ * Body extends from x_norm = -0.530 (feet) to +0.302 (head), span = 0.832.
+ * Arms spread in flying position.
+ */
+const WINGSUIT_MASS_SEGMENTS: MassSegment[] = [
+  { name: 'head',            massRatio: 0.14,   normalizedPosition: { x:  0.302049, y:  0,         z: -0.01759 } },
+  { name: 'torso',           massRatio: 0.435,  normalizedPosition: { x:  0.078431, y:  0,         z:  0       } },
+  { name: 'right_upper_arm', massRatio: 0.0275, normalizedPosition: { x:  0.174411, y:  0.158291,  z:  0       } },
+  { name: 'right_forearm',   massRatio: 0.016,  normalizedPosition: { x:  0.141245, y:  0.247236,  z:  0       } },
+  { name: 'right_hand',      massRatio: 0.008,  normalizedPosition: { x:  0.090994, y:  0.351759,  z:  0       } },
+  { name: 'right_thigh',     massRatio: 0.1,    normalizedPosition: { x: -0.197951, y:  0.080402,  z:  0       } },
+  { name: 'right_shin',      massRatio: 0.0465, normalizedPosition: { x: -0.397951, y:  0.145729,  z:  0       } },
+  { name: 'right_foot',      massRatio: 0.0145, normalizedPosition: { x: -0.530112, y:  0.201005,  z: -0.00503 } },
+  { name: 'left_upper_arm',  massRatio: 0.0275, normalizedPosition: { x:  0.174411, y: -0.158291,  z:  0       } },
+  { name: 'left_forearm',    massRatio: 0.016,  normalizedPosition: { x:  0.141245, y: -0.247236,  z:  0       } },
+  { name: 'left_hand',       massRatio: 0.008,  normalizedPosition: { x:  0.090994, y: -0.351759,  z:  0       } },
+  { name: 'left_thigh',      massRatio: 0.1,    normalizedPosition: { x: -0.197951, y: -0.080402,  z:  0       } },
+  { name: 'left_shin',       massRatio: 0.0465, normalizedPosition: { x: -0.397951, y: -0.145729,  z:  0       } },
+  { name: 'left_foot',       massRatio: 0.0145, normalizedPosition: { x: -0.530112, y: -0.201005,  z: -0.00503 } },
+]
+
+/**
+ * Canopy + pilot system mass model.
+ *
+ * Same 14 body segments as wingsuit, but rotated 90° for canopy flight:
+ * the pilot hangs vertically below the canopy, so the head-to-toe axis
+ * runs along z (NED down) instead of x (NED forward).
+ *
+ * System CG is near the riser attachment point, just above the pilot's head.
+ * Pilot body hangs below (positive z), canopy sits above (negative z).
+ *
+ * Pilot segments are rotated 6° forward (trim angle) about the y-axis
+ * relative to the riser attachment point — the canopy flies at a trim angle
+ * so the pilot pendulums forward of the vertical line through the risers.
+ *   x_trim = x·cos(6°) + z·sin(6°)
+ *   z_trim = -x·sin(6°) + z·cos(6°)
+ *
+ * Additional masses: canopy structure (~3.5 kg) and canopy air (~27 kg).
+ * Mass ratios are fractions of polar.m; ratios sum > 1.0 to include canopy mass.
+ */
+const TRIM_ANGLE_RAD = 6 * Math.PI / 180
+const COS_TRIM = Math.cos(TRIM_ANGLE_RAD)
+const SIN_TRIM = Math.sin(TRIM_ANGLE_RAD)
+
+// Pre-trim pilot positions (after 90° rotation into canopy frame).
+// x = forward offset from riser attachment. Each segment includes body depth
+// (torso/limb CG sits forward of the spine line due to chest/thigh mass).
+// A uniform forward shift of +0.16 is applied so the mass distribution
+// aligns with the pilot model's center of volume.
+const PILOT_FWD_SHIFT = 0.28
+const PILOT_DOWN_SHIFT = 0.11
+const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: number, z: number }> = [
+  { name: 'head',            massRatio: 0.14,   x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.280 + PILOT_DOWN_SHIFT },
+  { name: 'torso',           massRatio: 0.435,  x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.480 + PILOT_DOWN_SHIFT },
+  { name: 'right_upper_arm', massRatio: 0.0275, x:  0.05 + PILOT_FWD_SHIFT,  y:  0.100,  z:  0.400 + PILOT_DOWN_SHIFT },
+  { name: 'right_forearm',   massRatio: 0.016,  x:  0.04 + PILOT_FWD_SHIFT,  y:  0.090,  z:  0.520 + PILOT_DOWN_SHIFT },
+  { name: 'right_hand',      massRatio: 0.008,  x:  0.03 + PILOT_FWD_SHIFT,  y:  0.080,  z:  0.590 + PILOT_DOWN_SHIFT },
+  { name: 'right_thigh',     massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y:  0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
+  { name: 'right_shin',      massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y:  0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
+  { name: 'right_foot',      massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y:  0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
+  { name: 'left_upper_arm',  massRatio: 0.0275, x:  0.05 + PILOT_FWD_SHIFT,  y: -0.100,  z:  0.400 + PILOT_DOWN_SHIFT },
+  { name: 'left_forearm',    massRatio: 0.016,  x:  0.04 + PILOT_FWD_SHIFT,  y: -0.090,  z:  0.520 + PILOT_DOWN_SHIFT },
+  { name: 'left_hand',       massRatio: 0.008,  x:  0.03 + PILOT_FWD_SHIFT,  y: -0.080,  z:  0.590 + PILOT_DOWN_SHIFT },
+  { name: 'left_thigh',      massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y: -0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
+  { name: 'left_shin',       massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y: -0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
+  { name: 'left_foot',       massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y: -0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
+]
+
+const CANOPY_MASS_SEGMENTS: MassSegment[] = [
+  // Pilot body segments — rotated 6° forward (trim angle)
+  ...CANOPY_PILOT_RAW.map(p => ({
+    name: p.name,
+    massRatio: p.massRatio,
+    normalizedPosition: {
+      x: +(p.x * COS_TRIM + p.z * SIN_TRIM).toFixed(4),
+      y: p.y,
+      z: +(-p.x * SIN_TRIM + p.z * COS_TRIM).toFixed(4),
+    }
+  })),
+  // 7 canopy cells across span, forming an arc over the pilot's head.
+  // Each cell has structure mass and trapped air mass (14 canopy segments total).
+  // Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643
+  // Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → 0.011
+  //
+  // Arc geometry: cells at equal angular spacing (12° apart) on radius R=1.55
+  //   Cell positions: y = R·sin(θ), z = z_center + R·(1 - cos(θ))
+  //   θ = 0°, ±12°, ±24°, ±36°
+  //   Center z = -1.10 (lowest point of arc)
+  //   Then rotated 6° forward about y-axis to sit in canopy's thickest section
+
+  // Cell 0 — center (directly above pilot)
+  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.089 } },
+  { name: 'canopy_air_c',        massRatio: 0.011,   normalizedPosition: { x: 0.165, y:  0,     z: -1.089 } },
+  // Cell 1R — right inner (12°)
+  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.055 } },
+  { name: 'canopy_air_r1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y:  0.322, z: -1.055 } },
+  // Cell 1L — left inner (12°)
+  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.055 } },
+  { name: 'canopy_air_l1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y: -0.322, z: -1.055 } },
+  // Cell 2R — right mid (24°)
+  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -0.955 } },
+  { name: 'canopy_air_r2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y:  0.630, z: -0.955 } },
+  // Cell 2L — left mid (24°)
+  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -0.955 } },
+  { name: 'canopy_air_l2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y: -0.630, z: -0.955 } },
+  // Cell 3R — right outer (36°)
+  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.794 } },
+  { name: 'canopy_air_r3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y:  0.911, z: -0.794 } },
+  // Cell 3L — left outer (36°)
+  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.794 } },
+  { name: 'canopy_air_l3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y: -0.911, z: -0.794 } },
+]
+
 // ─── Continuous Polar Definitions ────────────────────────────────────────────
 
 /**
@@ -516,6 +638,9 @@ export const aurafiveContinuous: ContinuousPolar = {
   s: 2,
   m: 77.5,
   chord: 1.8,
+
+  massSegments: WINGSUIT_MASS_SEGMENTS,
+  cgOffsetFraction: 0.137,
 
   controls: {
     brake: {
@@ -585,6 +710,9 @@ export const ibexulContinuous: ContinuousPolar = {
   s: 20.439,
   m: 77.5,
   chord: 8.0,
+
+  massSegments: CANOPY_MASS_SEGMENTS,
+  cgOffsetFraction: 0,
 
   controls: {
     brake: {

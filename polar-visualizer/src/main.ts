@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadModel, applyAttitude, LoadedModel, ModelType } from './viewer/model-loader.ts'
+import { loadModel, applyAttitude, applyCgOffset, LoadedModel, ModelType, PilotType, updateBridleOrientation } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -20,6 +20,10 @@ import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficien
 import type { ContinuousPolar } from './polar/index.ts'
 import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, debugSweepKey } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
+import { updateInertiaReadout } from './ui/readout.ts'
+import { computeInertia, ZERO_INERTIA } from './viewer/inertia.ts'
+import type { InertiaComponents } from './viewer/inertia.ts'
+import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
@@ -29,12 +33,15 @@ let currentModel: LoadedModel | null = null
 let forceVectors: ForceVectors
 let flightState: FlightState
 let loadingModel = false
+let massOverlay: MassOverlay
+let currentInertia: InertiaComponents = ZERO_INERTIA
+let prevPolarKeyForInertia = ''
 
 // ─── Model Management ────────────────────────────────────────────────────────
 
-async function switchModel(modelType: ModelType): Promise<void> {
+async function switchModel(modelType: ModelType, cgOffsetFraction: number = 0, pilotType?: PilotType): Promise<void> {
   if (loadingModel) return
-  if (currentModel && currentModel.type === modelType) return
+  if (currentModel && currentModel.type === modelType && currentModel.pilotType === pilotType) return
 
   loadingModel = true
 
@@ -44,7 +51,11 @@ async function switchModel(modelType: ModelType): Promise<void> {
   }
 
   try {
-    currentModel = await loadModel(modelType)
+    currentModel = await loadModel(modelType, pilotType)
+    // Apply CG offset from polar so model is centered at CG, not bbox center
+    if (cgOffsetFraction) {
+      applyCgOffset(currentModel, cgOffsetFraction)
+    }
     sceneCtx.scene.add(currentModel.group)
   } catch (err) {
     console.error(`Failed to load model ${modelType}:`, err)
@@ -69,6 +80,14 @@ function updateVisualization(state: FlightState): void {
   // Get the continuous polar (with debug overrides if panel is open)
   const basePolar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
   const polar: ContinuousPolar = getOverriddenPolar(basePolar)
+
+  // Recompute inertia when polar changes
+  if (state.polarKey !== prevPolarKeyForInertia) {
+    prevPolarKeyForInertia = state.polarKey
+    currentInertia = polar.massSegments
+      ? computeInertia(polar.massSegments, 1.875, polar.m)
+      : ZERO_INERTIA
+  }
 
   // Evaluate coefficients
   const coeffs = getAllCoefficients(state.alpha_deg, state.beta_deg, state.delta, polar, state.dirty)
@@ -110,12 +129,15 @@ function updateVisualization(state: FlightState): void {
     state.airspeed,
     state.rho,
     currentModel?.bodyLength ?? 2.0,
-    bodyMatrix
+    bodyMatrix,
+    state.showAccelArcs ? currentInertia : null
   )
 
   // Update model rotation
   if (currentModel) {
     applyAttitude(currentModel.group, bodyQuat)
+    // Orient bridle + pilot chute along relative wind
+    updateBridleOrientation(currentModel, state.alpha_deg, state.beta_deg)
   }
 
   // Legacy comparison
@@ -127,6 +149,19 @@ function updateVisualization(state: FlightState): void {
 
   // Update readout panel
   updateReadout(coeffs, polar, state.airspeed, state.rho, legacyCoeffs)
+  updateInertiaReadout(currentInertia, coeffs, polar, state.airspeed, state.rho)
+
+  // Mass overlay — parented to model group so it rotates in body frame
+  if (currentModel) {
+    // Re-parent if needed (e.g. after model switch)
+    if (massOverlay.group.parent !== currentModel.group) {
+      currentModel.group.add(massOverlay.group)
+    }
+    massOverlay.setVisible(state.showMassOverlay)
+    if (state.showMassOverlay && polar.massSegments) {
+      massOverlay.update(polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
+    }
+  }
 
   // ─── Charts ──────────────────────────────────────────────────────────────
 
@@ -163,6 +198,9 @@ async function init(): Promise<void> {
   forceVectors = createForceVectors()
   sceneCtx.scene.add(forceVectors.group)
 
+  // Create mass overlay (parented to model group later, so it rotates with the body)
+  massOverlay = createMassOverlay()
+
   // Initialize chart panels
   initCharts()
 
@@ -185,7 +223,9 @@ async function init(): Promise<void> {
     }
 
     // When controls change, switch model if needed, then update
-    switchModel(state.modelType).then(() => updateVisualization(state))
+    const basePolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+    const pilotType = state.modelType === 'canopy' ? state.canopyPilotType : undefined
+    switchModel(state.modelType, basePolar.cgOffsetFraction ?? 0, pilotType).then(() => updateVisualization(state))
   })
 
   // Sync debug panel to initial polar
@@ -194,7 +234,9 @@ async function init(): Promise<void> {
   syncDebugPanel(initialPolar)
 
   // Load initial model
-  await switchModel(flightState.modelType)
+  const initialCgOffset = initialPolar.cgOffsetFraction ?? 0
+  const initialPilotType = flightState.modelType === 'canopy' ? flightState.canopyPilotType : undefined
+  await switchModel(flightState.modelType, initialCgOffset, initialPilotType)
 
   // Initial visualization update
   updateVisualization(flightState)

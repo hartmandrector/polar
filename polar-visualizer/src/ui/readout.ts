@@ -5,6 +5,7 @@
 import type { FullCoefficients } from '../polar/continuous-polar.ts'
 import { coeffToForces, coeffToSS } from '../polar/coefficients.ts'
 import type { ContinuousPolar } from '../polar/continuous-polar.ts'
+import type { InertiaComponents } from '../viewer/inertia.ts'
 
 function setTextContent(id: string, text: string): void {
   const el = document.getElementById(id)
@@ -54,4 +55,35 @@ export function updateReadout(
     setTextContent('r-cd-leg', '—')
     setTextContent('r-cp-leg', '—')
   }
+}
+
+/**
+ * Update the inertia & angular acceleration readout.
+ */
+export function updateInertiaReadout(
+  inertia: InertiaComponents,
+  coeffs: FullCoefficients,
+  polar: ContinuousPolar,
+  airspeed: number,
+  rho: number
+): void {
+  // Display principal moments of inertia
+  setTextContent('r-ixx', fmt(inertia.Ixx, 2))
+  setTextContent('r-iyy', fmt(inertia.Iyy, 2))
+  setTextContent('r-izz', fmt(inertia.Izz, 2))
+
+  // Compute torques: τ = q·S·c·C_moment
+  const q = 0.5 * rho * airspeed * airspeed
+  const pitchTorque = q * polar.s * polar.chord * coeffs.cm
+  const yawTorque = q * polar.s * polar.chord * coeffs.cn
+  const rollTorque = q * polar.s * polar.chord * coeffs.cl_roll
+
+  // Angular acceleration: α̈ = τ / I  (simplified, ignoring cross-coupling)
+  const pitchAccel = inertia.Iyy > 0.001 ? pitchTorque / inertia.Iyy : 0
+  const yawAccel = inertia.Izz > 0.001 ? yawTorque / inertia.Izz : 0
+  const rollAccel = inertia.Ixx > 0.001 ? rollTorque / inertia.Ixx : 0
+
+  setTextContent('r-pitch-accel', `${fmt(pitchAccel * 180 / Math.PI, 1)}°/s²`)
+  setTextContent('r-yaw-accel', `${fmt(yawAccel * 180 / Math.PI, 1)}°/s²`)
+  setTextContent('r-roll-accel', `${fmt(rollAccel * 180 / Math.PI, 1)}°/s²`)
 }

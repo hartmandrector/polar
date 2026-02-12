@@ -6,7 +6,7 @@
  * copied into CloudBASE.
  */
 
-export type { ContinuousPolar, Coefficients, SustainedSpeeds, FullCoefficients, SymmetricControl } from './continuous-polar.ts'
+export type { ContinuousPolar, Coefficients, SustainedSpeeds, FullCoefficients, SymmetricControl, MassSegment } from './continuous-polar.ts'
 export { separation, f_fwd, f_back, cl_attached, cd_attached, cl_plate, cd_plate } from './kirchhoff.ts'
 export { getCL, getCD, getCY, getCM, getCP, getAllCoefficients, coeffToForces, coeffToSS } from './coefficients.ts'
 export {

@@ -12,22 +12,20 @@
       <h2>Polar Visualizer</h2>
 
       <div class="control-group">
-        <label>Model</label>
-        <select id="model-select">
-          <option value="wingsuit">Wingsuit</option>
-          <option value="canopy">Canopy</option>
-          <option value="skydiver">Slick Skydiver</option>
-          <option value="airplane">Airplane</option>
-        </select>
-      </div>
-
-      <div class="control-group">
         <label>Polar</label>
         <select id="polar-select">
           <option value="aurafive">Aura 5 (Wingsuit)</option>
           <option value="ibexul">Ibex UL (Canopy)</option>
           <option value="slicksin">Slick Sin (Skydiver)</option>
           <option value="caravan">Caravan (Airplane)</option>
+        </select>
+      </div>
+
+      <div class="control-group" id="canopy-pilot-group" style="display:none;">
+        <label>Canopy Pilot</label>
+        <select id="canopy-pilot-select">
+          <option value="wingsuit">Wingsuit Pilot</option>
+          <option value="slick">Slick Pilot</option>
         </select>
       </div>
 
@@ -92,6 +90,14 @@
         <label><input type="checkbox" id="show-legacy" /> Show Legacy Polar</label>
       </div>
 
+      <div class="control-group">
+        <label><input type="checkbox" id="show-mass-overlay" /> Show Mass Points</label>
+      </div>
+
+      <div class="control-group">
+        <label><input type="checkbox" id="show-accel-arcs" /> Angular Accel Arcs</label>
+      </div>
+
       <div id="readout">
         <h3>Coefficients</h3>
         <div class="readout-grid">
@@ -112,6 +118,15 @@
           <div class="readout-row"><span class="readout-label">Weight</span><span id="r-weight" class="readout-val">—</span></div>
           <div class="readout-row"><span class="readout-label">L/D</span><span id="r-ld" class="readout-val">—</span></div>
           <div class="readout-row"><span class="readout-label">Glide°</span><span id="r-glide" class="readout-val">—</span></div>
+        </div>
+        <h3>Inertia</h3>
+        <div class="readout-grid">
+          <div class="readout-row"><span class="readout-label">I<sub>xx</sub></span><span id="r-ixx" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">I<sub>yy</sub></span><span id="r-iyy" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">I<sub>zz</sub></span><span id="r-izz" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">α̈<sub>pitch</sub></span><span id="r-pitch-accel" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">α̈<sub>yaw</sub></span><span id="r-yaw-accel" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">α̈<sub>roll</sub></span><span id="r-roll-accel" class="readout-val">—</span></div>
         </div>
         <h3>Legacy (table)</h3>
         <div class="readout-grid">

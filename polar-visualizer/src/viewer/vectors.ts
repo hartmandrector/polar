@@ -122,6 +122,8 @@ function chordFractionToBody(fraction: number, bodyLength: number): THREE.Vector
  * - Side force perpendicular to both
  * - Weight always -Y world
  */
+import type { InertiaComponents } from './inertia.ts'
+
 export function updateForceVectors(
   vectors: ForceVectors,
   coeffs: FullCoefficients,
@@ -131,7 +133,8 @@ export function updateForceVectors(
   airspeed: number,
   rho: number,
   bodyLength: number,
-  rotationMatrix: THREE.Matrix4 | null
+  rotationMatrix: THREE.Matrix4 | null,
+  inertia: InertiaComponents | null = null
 ): void {
   const alpha_rad = alpha_deg * DEG2RAD
   const beta_rad = beta_deg * DEG2RAD
@@ -232,31 +235,41 @@ export function updateForceVectors(
     vectors.netArrow.visible = false
   }
 
-  // ── Pitch moment arc (at CG, around X-axis) ──
-  // Negate because CurvedArrow positive-X rotation = nose-down,
-  // but CM positive = nose-up by aerodynamic convention.
+  // ── Moment arcs (at CG) ──
+  // Can display either torque (N·m) or angular acceleration (rad/s²).
   const q = 0.5 * rho * airspeed * airspeed
   const pitchTorque = q * polar.s * polar.chord * coeffs.cm  // N·m
-  const pitchArcAngle = -pitchTorque * TORQUE_SCALE           // radians of visual sweep
-  vectors.pitchArc.setAngle(pitchArcAngle)
-  vectors.pitchArc.position.copy(cgOrigin)
-  vectors.pitchArc.visible = Math.abs(pitchArcAngle) > 0.02
-
-  // ── Yaw moment arc (at CG, around Y-axis) ──
-  // CurvedArrow +Y sweeps nose toward +X; negate to match Cn sign with β convention
   const yawTorque = q * polar.s * polar.chord * coeffs.cn    // N·m
-  const yawArcAngle = -yawTorque * TORQUE_SCALE
-  vectors.yawArc.setAngle(yawArcAngle)
-  vectors.yawArc.position.copy(cgOrigin)
-  vectors.yawArc.visible = Math.abs(yawArcAngle) > 0.02
-
-  // ── Roll moment arc (at CG, around Z-axis) ──
-  // Cl positive = right wing down; CurvedArrow +Z rotation = right wing up → flip sign
   const rollTorque = q * polar.s * polar.chord * coeffs.cl_roll  // N·m
-  const rollArcAngle = rollTorque * TORQUE_SCALE
-  vectors.rollArc.setAngle(rollArcAngle)
+
+  let pitchArc: number, yawArc: number, rollArc: number
+  if (inertia) {
+    // Angular acceleration mode: α̈ = τ / I
+    const ACCEL_SCALE = 0.005  // rad/s² → visual radians
+    const pitchAccel = inertia.Iyy > 0.001 ? pitchTorque / inertia.Iyy : 0
+    const yawAccel = inertia.Izz > 0.001 ? yawTorque / inertia.Izz : 0
+    const rollAccel = inertia.Ixx > 0.001 ? rollTorque / inertia.Ixx : 0
+    pitchArc = -pitchAccel * ACCEL_SCALE
+    yawArc = -yawAccel * ACCEL_SCALE
+    rollArc = rollAccel * ACCEL_SCALE
+  } else {
+    // Torque mode (default)
+    pitchArc = -pitchTorque * TORQUE_SCALE
+    yawArc = -yawTorque * TORQUE_SCALE
+    rollArc = rollTorque * TORQUE_SCALE
+  }
+
+  vectors.pitchArc.setAngle(pitchArc)
+  vectors.pitchArc.position.copy(cgOrigin)
+  vectors.pitchArc.visible = Math.abs(pitchArc) > 0.02
+
+  vectors.yawArc.setAngle(yawArc)
+  vectors.yawArc.position.copy(cgOrigin)
+  vectors.yawArc.visible = Math.abs(yawArc) > 0.02
+
+  vectors.rollArc.setAngle(rollArc)
   vectors.rollArc.position.copy(cgOrigin)
-  vectors.rollArc.visible = Math.abs(rollArcAngle) > 0.02
+  vectors.rollArc.visible = Math.abs(rollArc) > 0.02
 
   // ── Rotate moment arcs into inertial frame ──
   // In body mode the arcs' own axis definitions are already correct.
