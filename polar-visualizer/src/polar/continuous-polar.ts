@@ -129,4 +129,129 @@ export interface ContinuousPolar {
   // CG offset from bbox center as fraction of body length along flight axis.
   // Used by model-loader to shift the 3D mesh so CG sits at the scene origin.
   cgOffsetFraction?: number
+
+  // Aerodynamic segment breakdown (optional — enables per-segment rendering)
+  aeroSegments?: AeroSegment[]
+}
+
+// ─── Aerodynamic Segments ────────────────────────────────────────────────────
+
+/**
+ * A single aerodynamic segment — a surface, body, or sub-wing panel
+ * that produces forces at a known position in the body frame.
+ *
+ * All positions are NED body-frame, normalized by reference height (1.875 m),
+ * matching the MassSegment convention.
+ *
+ * Each canopy cell segment has its own ContinuousPolar and computes
+ * its own local α, β, and δ based on cell orientation and control inputs.
+ * Parasitic bodies (lines, pilot, bridle) use simple constant coefficients.
+ *
+ * Forces from all segments are summed at the combined canopy-pilot CG
+ * using rigid-body equations.
+ */
+export interface AeroSegment {
+  /** Human-readable name (e.g. 'cell_c', 'cell_r1', 'lines', 'pilot') */
+  name: string
+
+  /** Aerodynamic center position in NED body frame (normalized) */
+  position: { x: number; y: number; z: number }
+
+  /**
+   * Cell orientation from arc geometry.
+   * roll_deg: arc angle θ — 0° at center, ±12°/24°/36° at outer cells.
+   *           Determines how freestream α, β map to local flow angles.
+   * pitch_deg: optional incidence offset (washout, trim tab, etc.)
+   *
+   * For non-canopy segments (lines, pilot, bridle), orientation is
+   * { roll_deg: 0 } — they see freestream directly.
+   */
+  orientation: { roll_deg: number; pitch_deg?: number }
+
+  /** Reference area [m²] for this segment */
+  S: number
+
+  /** Segment chord [m] — for local CM calculation (moment = q·S·c·CM) */
+  chord: number
+
+  /**
+   * This segment's own ContinuousPolar, if applicable.
+   *
+   * Canopy cell segments: each cell has its own polar with its own
+   * aerodynamic parameters. All 7 cells typically share the same base
+   * airfoil profile, but each evaluates coefficients independently at
+   * its own local α, β, δ.
+   *
+   * Parasitic bodies: undefined — they use constant coefficients.
+   */
+  polar?: ContinuousPolar
+
+  /**
+   * Evaluate coefficients at given FREESTREAM flow conditions.
+   *
+   * For canopy cells, this function internally:
+   * 1. Transforms freestream α, β into local α_local, β_local
+   *    based on this cell's orientation (arc angle θ)
+   * 2. Applies any riser-induced α offset (Δα from front/rear riser)
+   * 3. Determines the local δ (camber change) from brake inputs
+   *    and this cell's position in the brake cascade
+   * 4. Evaluates cell's own ContinuousPolar at (α_effective, β_local, δ)
+   * 5. Returns coefficients + center of pressure for this segment
+   *
+   * For parasitic bodies, returns constant CD (ignores controls).
+   *
+   * @param alpha_deg  Freestream angle of attack [deg]
+   * @param beta_deg   Freestream sideslip angle [deg]
+   * @param controls   Current control inputs
+   * @returns coefficients + center of pressure (chord fraction)
+   */
+  getCoeffs(
+    alpha_deg: number,
+    beta_deg: number,
+    controls: SegmentControls,
+  ): {
+    cl: number    // lift coefficient
+    cd: number    // drag coefficient
+    cy: number    // side force coefficient
+    cm: number    // pitching moment coefficient (about segment AC)
+    cp: number    // center of pressure (chord fraction, for force application)
+  }
+}
+
+// ─── Segment Controls ────────────────────────────────────────────────────────
+
+/**
+ * All possible control inputs, passed to every segment.
+ * Each segment picks the controls it responds to and ignores the rest.
+ *
+ * Canopy cells respond to brake and riser inputs on their side.
+ * Airplane segments respond to elevator, rudder, flap deflections.
+ * Pilot body responds to weight shift.
+ * Simple drag bodies (lines, bridle) ignore controls entirely.
+ *
+ * Values are normalized: 0 = neutral, +1 = full deflection.
+ * Negative values allowed where meaningful (e.g. speed bar = negative front riser).
+ */
+export interface SegmentControls {
+  // ── Canopy inputs (6 total) ──
+  brakeLeft: number       // 0–1, left brake toggle
+  brakeRight: number      // 0–1, right brake toggle
+  frontRiserLeft: number  // 0–1, left front riser
+  frontRiserRight: number // 0–1, right front riser
+  rearRiserLeft: number   // 0–1, left rear riser
+  rearRiserRight: number  // 0–1, right rear riser
+
+  // ── Pilot body inputs ──
+  weightShiftLR: number   // -1 (left) to +1 (right), lateral weight shift
+
+  // ── Airplane inputs ──
+  elevator: number        // -1 to +1, elevator deflection
+  rudder: number          // -1 to +1, rudder deflection
+  aileronLeft: number     // -1 to +1, left aileron
+  aileronRight: number    // -1 to +1, right aileron
+  flap: number            // 0–1, flap deflection (symmetric)
+
+  // ── Universal ──
+  delta: number           // Generic symmetric control (current δ slider — arch, brakes, etc.)
+  dirty: number           // Wingsuit dirty-flying factor
 }

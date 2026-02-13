@@ -155,7 +155,8 @@ function updateVisualization(state: FlightState): void {
     currentModel?.bodyLength ?? 2.0,
     bodyMatrix,
     state.showAccelArcs ? currentInertia : null,
-    gravityDir
+    gravityDir,
+    currentModel?.pilotScale ?? 1.0,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)

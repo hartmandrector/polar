@@ -10,7 +10,8 @@
  * This module is UI-independent.
  */
 
-import { ContinuousPolar, Coefficients, MassSegment } from './continuous-polar.ts'
+import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
+import { makeCanopyCellSegment, makeParasiticSegment } from './segment-factories.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -588,6 +589,106 @@ const CANOPY_MASS_SEGMENTS: MassSegment[] = [
   { name: 'canopy_air_l3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y: -0.911, z: -0.794 } },
 ]
 
+// ─── Canopy Aero Segments ────────────────────────────────────────────────────
+
+/**
+ * Per-cell base polar for canopy airfoil.
+ *
+ * This is the ContinuousPolar for a single cell panel — NOT the lumped system.
+ * Key differences from the lumped ibexulContinuous:
+ * - S = total canopy area / 7 ≈ 2.92 m² (per cell)
+ * - cd_0 = canopy-only profile drag (~0.035), not system drag (0.21)
+ *   System parasitic drag is handled by separate line/pilot/bridle segments.
+ * - chord = canopy cell chord (~2.5 m), not body reference length (8 m)
+ *
+ * All stall, lift-curve, moment, and CP parameters start from the lumped
+ * polar values. These are initial estimates — tuning via debug overrides
+ * will refine them per-segment.
+ */
+const CANOPY_CELL_POLAR: ContinuousPolar = {
+  name: 'Ibex UL Cell',
+  type: 'Canopy',
+
+  // Lift model — same airfoil profile across all cells
+  cl_alpha: 1.75,
+  alpha_0: -3,
+
+  // Drag model — cell-only, parasitic bodies handle the rest
+  cd_0: 0.035,
+  k: 0.065,
+
+  // Separated flow — same as lumped
+  cd_n: 1.1,
+  cd_n_lateral: 0.8,
+
+  // Stall — same as lumped
+  alpha_stall_fwd: 15,
+  s1_fwd: 4,
+  alpha_stall_back: -5,
+  s1_back: 3,
+
+  // Side force & moments
+  cy_beta: -0.4,
+  cn_beta: 0.12,
+  cl_beta: -0.12,
+
+  // Pitching moment
+  cm_0: -0.03,
+  cm_alpha: -0.10,
+
+  // Center of pressure
+  cp_0: 0.40,
+  cp_alpha: -0.01,
+
+  // CG / CP lateral (per-cell, not system-level)
+  cg: 0.35,
+  cp_lateral: 0.50,
+
+  // Physical — per cell
+  s: 20.439 / 7,   // ≈ 2.92 m²
+  m: 77.5,          // system mass (for weight calculation — only used at system level)
+  chord: 2.5,       // cell chord [m]
+
+  // Brake control derivatives (per-cell — same as lumped, applied via δ)
+  controls: {
+    brake: {
+      d_alpha_0: -3,
+      d_cd_0: 0.06,
+      d_cl_alpha: 0.15,
+      d_k: 0.03,
+      d_alpha_stall_fwd: -5,
+      cm_delta: -0.04,
+    }
+  }
+}
+
+/**
+ * 10 aerodynamic segments for the Ibex UL canopy system.
+ *
+ * 7 canopy cells (using arc geometry from mass segments) +
+ * 3 parasitic bodies (lines, pilot, bridle/PC).
+ *
+ * Cell positions match the mass segment positions exactly.
+ * Brake sensitivity cascades from tips inward: outer=1.0, mid=0.7, inner=0.4, center=0.
+ * Riser sensitivity is ~1.0 for all cells (uniform geometry change).
+ */
+const IBEX_AERO_SEGMENTS: AeroSegment[] = [
+  // ── 7 canopy cells ──
+  makeCanopyCellSegment('cell_c',  { x: 0.165, y:  0,     z: -1.089 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r1', { x: 0.161, y:  0.322, z: -1.055 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l1', { x: 0.161, y: -0.322, z: -1.055 }, -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r2', { x: 0.151, y:  0.630, z: -0.955 },  24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l2', { x: 0.151, y: -0.630, z: -0.955 }, -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r3', { x: 0.134, y:  0.911, z: -0.794 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l3', { x: 0.134, y: -0.911, z: -0.794 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
+
+  // ── 3 parasitic bodies ──
+  //                    name       position (NED norm)                   S      chord  CD    CL
+  makeParasiticSegment('lines',  { x: 0.23, y: 0, z: -0.40 },          0.35,  0.01,  1.0       ),
+  makeParasiticSegment('pilot',  { x: 0.38, y: 0, z:  0.48 },          0.50,  0.50,  1.0,  0.05),
+  makeParasiticSegment('bridle', { x: 0.10, y: 0, z: -1.30 },          0.08,  0.01,  0.9       ),
+]
+
 // ─── Continuous Polar Definitions ────────────────────────────────────────────
 
 /**
@@ -713,6 +814,8 @@ export const ibexulContinuous: ContinuousPolar = {
 
   massSegments: CANOPY_MASS_SEGMENTS,
   cgOffsetFraction: 0,
+
+  aeroSegments: IBEX_AERO_SEGMENTS,
 
   controls: {
     brake: {

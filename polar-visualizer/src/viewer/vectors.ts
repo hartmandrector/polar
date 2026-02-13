@@ -21,11 +21,14 @@
  */
 
 import * as THREE from 'three'
-import type { FullCoefficients, ContinuousPolar } from '../polar/continuous-polar.ts'
+import type { FullCoefficients, ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import { coeffToForces } from '../polar/coefficients.ts'
+import { computeSegmentForce, sumAllSegments, defaultControls } from '../polar/aero-segment.ts'
+import type { SegmentForceResult } from '../polar/aero-segment.ts'
+import { computeCenterOfMass } from '../polar/inertia.ts'
 import { ShadedArrow } from './shaded-arrow.ts'
 import { CurvedArrow } from './curved-arrow.ts'
-import { windDirectionBody } from './frames.ts'
+import { windDirectionBody, nedToThreeJS } from './frames.ts'
 
 const DEG2RAD = Math.PI / 180
 
@@ -72,6 +75,80 @@ export interface SegmentArrows {
   drag: THREE.ArrowHelper
   side: THREE.ArrowHelper
   group: THREE.Group
+}
+
+// ── Segment arrow colors ─────────────────────────────────────────────────────
+
+/**
+ * Per-segment arrow colors by segment name.
+ * Center cell = full saturation, inner/outer cells = lighter tints.
+ * Parasitic bodies = warm/muted tones.
+ */
+interface SegmentColors { lift: number; drag: number; side: number }
+
+const SEGMENT_COLORS: Record<string, SegmentColors> = {
+  // Canopy cells — green/red/blue with tints for outer cells
+  cell_c:  { lift: 0x00ff00, drag: 0xff0000, side: 0x4488ff },  // center: full
+  cell_r1: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },  // inner: lighter
+  cell_l1: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },
+  cell_r2: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },  // mid: lighter
+  cell_l2: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },
+  cell_r3: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },  // outer: lighter
+  cell_l3: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },
+  // Parasitic bodies
+  lines:   { lift: 0x666666, drag: 0xff8800, side: 0x666666 },  // orange drag
+  pilot:   { lift: 0x448844, drag: 0xffaa44, side: 0x666666 },  // yellow-orange drag
+  bridle:  { lift: 0x666666, drag: 0xff88cc, side: 0x666666 },  // pink drag
+}
+
+const DEFAULT_COLORS: SegmentColors = { lift: 0x44cc44, drag: 0xcc4444, side: 0x4488cc }
+
+const SEGMENT_ARROW_LENGTH = 0.001  // minimum length for ArrowHelper init
+
+/**
+ * Create or update the per-segment ArrowHelper groups to match the
+ * current polar's aeroSegments. Reuses existing groups when names match;
+ * removes stale ones and adds new ones.
+ */
+function ensureSegmentArrows(
+  vectors: ForceVectors,
+  segments: AeroSegment[],
+): void {
+  const existing = new Map(vectors.segmentArrows.map(sa => [sa.name, sa]))
+  const needed = new Set(segments.map(s => s.name))
+
+  // Remove stale
+  for (const [name, sa] of existing) {
+    if (!needed.has(name)) {
+      vectors.group.remove(sa.group)
+      sa.lift.dispose()
+      sa.drag.dispose()
+      sa.side.dispose()
+      existing.delete(name)
+    }
+  }
+
+  // Create new or keep existing
+  const result: SegmentArrows[] = []
+  for (const seg of segments) {
+    let sa = existing.get(seg.name)
+    if (!sa) {
+      const colors = SEGMENT_COLORS[seg.name] ?? DEFAULT_COLORS
+      const origin = new THREE.Vector3()
+      const dir = new THREE.Vector3(0, 1, 0)
+      const lift = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.lift, 0.06, 0.03)
+      const drag = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.drag, 0.06, 0.03)
+      const side = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.side, 0.06, 0.03)
+      const group = new THREE.Group()
+      group.name = `seg-${seg.name}`
+      group.add(lift, drag, side)
+      vectors.group.add(group)
+      sa = { name: seg.name, lift, drag, side, group }
+    }
+    result.push(sa)
+  }
+
+  vectors.segmentArrows = result
 }
 
 // ── Force vectors container ──────────────────────────────────────────────────
@@ -185,16 +262,18 @@ export function updateForceVectors(
   bodyLength: number,
   rotationMatrix: THREE.Matrix4 | null,
   inertia: InertiaComponents | null = null,
-  gravityDir?: THREE.Vector3
+  gravityDir?: THREE.Vector3,
+  pilotScale: number = 1.0,
+  controls?: SegmentControls,
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
-  const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
 
-  // ── Origin points (body frame) ──
-  const cpBody = chordFractionToBody(coeffs.cp, bodyLength)
-  const cgBody = chordFractionToBody(polar.cg, bodyLength)
-  const cpLatBody = chordFractionToBody(polar.cp_lateral, bodyLength)
+  const hasSegments = polar.aeroSegments && polar.aeroSegments.length > 0
+  const ctrl = controls ?? defaultControls()
+
+  // Forces from lumped polar (used for single-segment fallback and system weight)
+  const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
 
   // Frame rotation — pre-computed upstream (null = body frame, no rotation)
 
@@ -208,107 +287,234 @@ export function updateForceVectors(
     return pos.clone()
   }
 
-  // Transformed origins for current frame mode
-  const cpOrigin = applyFramePos(cpBody)
-  const cgOrigin = applyFramePos(cgBody)
-  const cpLatOrigin = applyFramePos(cpLatBody)
-  const modelCenter = new THREE.Vector3(0, 0, 0)
-
-  // ── Wind (from model center, always positive length) ──
-  setShadedArrow(vectors.windArrow, modelCenter, applyFrame(windDir), airspeed * 0.03)
-
-  // ── Single-segment aero forces (fallback for polars without aeroSegments) ──
-  // When per-segment rendering is active, these ShadedArrows are hidden
-  // and replaced by per-segment ArrowHelper groups.
-
-  // ── Lift (at CP) ── flip direction when force is negative
-  const liftSigned = forces.lift
-  const liftDrawDir = liftSigned >= 0 ? liftDir.clone() : liftDir.clone().negate()
-  setShadedArrow(vectors.liftArrow, cpOrigin, applyFrame(liftDrawDir), Math.abs(liftSigned) * FORCE_SCALE)
-
-  // ── Drag (at CP, CD always ≥ 0) ──
-  setShadedArrow(vectors.dragArrow, cpOrigin, applyFrame(dragDir), forces.drag * FORCE_SCALE)
-
-  // ── Side (at lateral CP) ──
-  const sideSigned = forces.side
-  const sideDrawDir = sideSigned >= 0 ? sideDir.clone() : sideDir.clone().negate()
-  setShadedArrow(vectors.sideArrow, cpLatOrigin, applyFrame(sideDrawDir), Math.abs(sideSigned) * FORCE_SCALE)
-  vectors.sideArrow.visible = Math.abs(forces.side) > 0.5
-
-  // ── System-level vectors (summed from all segments, rendered at CG) ──
-
-  // ── Total aero force (at CP) ──
-  const totalAero = new THREE.Vector3()
-    .addScaledVector(liftDir, forces.lift)
-    .addScaledVector(dragDir, forces.drag)
-    .addScaledVector(sideDir, forces.side)
-  const totalAeroMag = totalAero.length()
-  if (totalAeroMag > 0.01) {
-    totalAero.normalize()
-    setShadedArrow(vectors.totalAeroArrow, cpOrigin, applyFrame(totalAero), totalAeroMag * FORCE_SCALE)
-    vectors.totalAeroArrow.visible = true
+  // ── Determine CG origin ──
+  // When mass segments exist, use computeCenterOfMass for proper 3D CG.
+  // Otherwise fall back to chord-fraction CG.
+  let cgOrigin: THREE.Vector3
+  if (polar.massSegments && polar.massSegments.length > 0) {
+    const cgNED = computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+    cgOrigin = applyFramePos(nedToThreeJS(cgNED).multiplyScalar(pilotScale))
   } else {
-    vectors.totalAeroArrow.visible = false
+    cgOrigin = applyFramePos(chordFractionToBody(polar.cg, bodyLength))
   }
 
-  // ── Weight (at CG) ──
-  // In body frame, gravity is rotated by the body attitude (gravity comes
-  // from "above" in inertial space, which is not necessarily +Y in body frame).
-  // In inertial frame, gravity is always -Y (straight down in Three.js world).
-  // gravityDir is a unit vector in the current display frame's Three.js coords.
-  const gDir = gravityDir ?? new THREE.Vector3(0, -1, 0)
-  setShadedArrow(vectors.weightArrow, cgOrigin, gDir, forces.weight * FORCE_SCALE)
+  // ── Wind (at CG, same origin as total aero / net force) ──
+  setShadedArrow(vectors.windArrow, cgOrigin, applyFrame(windDir), airspeed * 0.03)
 
-  // ── Net force (at CG) ──
-  const totalAeroWorld = applyFrame(new THREE.Vector3()
-    .addScaledVector(liftDir, forces.lift)
-    .addScaledVector(dragDir, forces.drag)
-    .addScaledVector(sideDir, forces.side))
-  const netForce = totalAeroWorld.clone().addScaledVector(gDir, forces.weight)
-  const netMag = netForce.length()
-  if (netMag > 0.01) {
-    netForce.normalize()
-    setShadedArrow(vectors.netArrow, cgOrigin, netForce, netMag * FORCE_SCALE)
-    vectors.netArrow.visible = true
+  // ── Per-segment rendering ──
+  if (hasSegments) {
+    const segments = polar.aeroSegments!
+    ensureSegmentArrows(vectors, segments)
+
+    // Compute per-segment forces
+    const segForces: SegmentForceResult[] = segments.map(seg =>
+      computeSegmentForce(seg, alpha_deg, beta_deg, ctrl, rho, airspeed)
+    )
+
+    // Render per-segment ArrowHelper arrows
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const sf = segForces[i]
+      const sa = vectors.segmentArrows[i]
+
+      // Segment position: NED normalized → meters → Three.js → pilotScale
+      const posThree = nedToThreeJS(seg.position).multiplyScalar(pilotScale * 1.875)
+      const posWorld = applyFramePos(posThree)
+
+      // Lift arrow — flip direction for negative lift
+      const liftLen = Math.abs(sf.lift) * FORCE_SCALE
+      if (liftLen > 0.001) {
+        const lDir = sf.lift >= 0 ? liftDir.clone() : liftDir.clone().negate()
+        sa.lift.setDirection(applyFrame(lDir).normalize())
+        sa.lift.setLength(liftLen, 0.06, 0.03)
+        sa.lift.position.copy(posWorld)
+        sa.lift.visible = true
+      } else {
+        sa.lift.visible = false
+      }
+
+      // Drag arrow
+      const dragLen = sf.drag * FORCE_SCALE
+      if (dragLen > 0.001) {
+        sa.drag.setDirection(applyFrame(dragDir).normalize())
+        sa.drag.setLength(dragLen, 0.06, 0.03)
+        sa.drag.position.copy(posWorld)
+        sa.drag.visible = true
+      } else {
+        sa.drag.visible = false
+      }
+
+      // Side arrow — flip direction for negative side force
+      const sideLen = Math.abs(sf.side) * FORCE_SCALE
+      if (sideLen > 0.001) {
+        const sDir = sf.side >= 0 ? sideDir.clone() : sideDir.clone().negate()
+        sa.side.setDirection(applyFrame(sDir).normalize())
+        sa.side.setLength(sideLen, 0.06, 0.03)
+        sa.side.position.copy(posWorld)
+        sa.side.visible = true
+      } else {
+        sa.side.visible = false
+      }
+    }
+
+    // Sum segment forces for system-level vectors (NED body frame)
+    const cgNED = polar.massSegments
+      ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+      : { x: 0, y: 0, z: 0 }
+    const windNED = { x: windDir.z, y: -windDir.x, z: -windDir.y }
+    const liftNED = { x: liftDir.z, y: -liftDir.x, z: -liftDir.y }
+    const sideNED = { x: sideDir.z, y: -sideDir.x, z: -sideDir.y }
+    const system = sumAllSegments(segments, segForces, cgNED, 1.875, windNED, liftNED, sideNED)
+
+    // Total aero force (at CG, from summed segments)
+    const totalAeroThree = nedToThreeJS(system.force)
+    const totalAeroMag = totalAeroThree.length()
+    if (totalAeroMag > 0.01) {
+      totalAeroThree.normalize()
+      setShadedArrow(vectors.totalAeroArrow, cgOrigin, applyFrame(totalAeroThree), totalAeroMag * FORCE_SCALE)
+      vectors.totalAeroArrow.visible = true
+    } else {
+      vectors.totalAeroArrow.visible = false
+    }
+
+    // Hide single-segment aero arrows (replaced by per-segment ArrowHelpers)
+    vectors.liftArrow.visible = false
+    vectors.dragArrow.visible = false
+    vectors.sideArrow.visible = false
+
+    // ── Moment arcs from segment summation ──
+    const sysMoment = system.moment
+    let pitchArcVal: number, yawArcVal: number, rollArcVal: number
+    if (inertia) {
+      const ACCEL_SCALE = 0.005
+      pitchArcVal = inertia.Iyy > 0.001 ? -(sysMoment.y / inertia.Iyy) * ACCEL_SCALE : 0
+      yawArcVal   = inertia.Izz > 0.001 ? -(sysMoment.z / inertia.Izz) * ACCEL_SCALE : 0
+      rollArcVal  = inertia.Ixx > 0.001 ?  (sysMoment.x / inertia.Ixx) * ACCEL_SCALE : 0
+    } else {
+      pitchArcVal = -sysMoment.y * TORQUE_SCALE
+      yawArcVal   = -sysMoment.z * TORQUE_SCALE
+      rollArcVal  =  sysMoment.x * TORQUE_SCALE
+    }
+
+    vectors.pitchArc.setAngle(pitchArcVal)
+    vectors.pitchArc.position.copy(cgOrigin)
+    vectors.pitchArc.visible = Math.abs(pitchArcVal) > 0.02
+
+    vectors.yawArc.setAngle(yawArcVal)
+    vectors.yawArc.position.copy(cgOrigin)
+    vectors.yawArc.visible = Math.abs(yawArcVal) > 0.02
+
+    vectors.rollArc.setAngle(rollArcVal)
+    vectors.rollArc.position.copy(cgOrigin)
+    vectors.rollArc.visible = Math.abs(rollArcVal) > 0.02
+
+    // ── Weight (at CG) ──
+    const gDir = gravityDir ?? new THREE.Vector3(0, -1, 0)
+    setShadedArrow(vectors.weightArrow, cgOrigin, gDir, forces.weight * FORCE_SCALE)
+
+    // ── Net force (at CG) ──
+    const totalAeroWorld = applyFrame(nedToThreeJS(system.force))
+    const netForce = totalAeroWorld.clone().addScaledVector(gDir, forces.weight)
+    const netMag = netForce.length()
+    if (netMag > 0.01) {
+      netForce.normalize()
+      setShadedArrow(vectors.netArrow, cgOrigin, netForce, netMag * FORCE_SCALE)
+      vectors.netArrow.visible = true
+    } else {
+      vectors.netArrow.visible = false
+    }
+
   } else {
-    vectors.netArrow.visible = false
+    // ── Single-segment fallback (polars without aeroSegments) ──
+
+    // Remove any stale segment arrows
+    if (vectors.segmentArrows.length > 0) {
+      ensureSegmentArrows(vectors, [])
+    }
+
+    const cpOrigin = applyFramePos(chordFractionToBody(coeffs.cp, bodyLength))
+    const cpLatOrigin = applyFramePos(chordFractionToBody(polar.cp_lateral, bodyLength))
+
+    // ── Lift (at CP) ──
+    const liftSigned = forces.lift
+    const liftDrawDir = liftSigned >= 0 ? liftDir.clone() : liftDir.clone().negate()
+    setShadedArrow(vectors.liftArrow, cpOrigin, applyFrame(liftDrawDir), Math.abs(liftSigned) * FORCE_SCALE)
+
+    // ── Drag (at CP, CD always ≥ 0) ──
+    setShadedArrow(vectors.dragArrow, cpOrigin, applyFrame(dragDir), forces.drag * FORCE_SCALE)
+
+    // ── Side (at lateral CP) ──
+    const sideSigned = forces.side
+    const sideDrawDir = sideSigned >= 0 ? sideDir.clone() : sideDir.clone().negate()
+    setShadedArrow(vectors.sideArrow, cpLatOrigin, applyFrame(sideDrawDir), Math.abs(sideSigned) * FORCE_SCALE)
+    vectors.sideArrow.visible = Math.abs(forces.side) > 0.5
+
+    // ── Total aero force (at CP) ──
+    const totalAero = new THREE.Vector3()
+      .addScaledVector(liftDir, forces.lift)
+      .addScaledVector(dragDir, forces.drag)
+      .addScaledVector(sideDir, forces.side)
+    const totalAeroMag = totalAero.length()
+    if (totalAeroMag > 0.01) {
+      totalAero.normalize()
+      setShadedArrow(vectors.totalAeroArrow, cpOrigin, applyFrame(totalAero), totalAeroMag * FORCE_SCALE)
+      vectors.totalAeroArrow.visible = true
+    } else {
+      vectors.totalAeroArrow.visible = false
+    }
+
+    // ── Weight (at CG) ──
+    const gDir = gravityDir ?? new THREE.Vector3(0, -1, 0)
+    setShadedArrow(vectors.weightArrow, cgOrigin, gDir, forces.weight * FORCE_SCALE)
+
+    // ── Net force (at CG) ──
+    const totalAeroWorld = applyFrame(new THREE.Vector3()
+      .addScaledVector(liftDir, forces.lift)
+      .addScaledVector(dragDir, forces.drag)
+      .addScaledVector(sideDir, forces.side))
+    const netForce = totalAeroWorld.clone().addScaledVector(gDir, forces.weight)
+    const netMag = netForce.length()
+    if (netMag > 0.01) {
+      netForce.normalize()
+      setShadedArrow(vectors.netArrow, cgOrigin, netForce, netMag * FORCE_SCALE)
+      vectors.netArrow.visible = true
+    } else {
+      vectors.netArrow.visible = false
+    }
+
+    // ── Moment arcs (at CG) ──
+    const q = 0.5 * rho * airspeed * airspeed
+    const pitchTorque = q * polar.s * polar.chord * coeffs.cm
+    const yawTorque = q * polar.s * polar.chord * coeffs.cn
+    const rollTorque = q * polar.s * polar.chord * coeffs.cl_roll
+
+    let pitchArc: number, yawArc: number, rollArc: number
+    if (inertia) {
+      const ACCEL_SCALE = 0.005
+      const pitchAccel = inertia.Iyy > 0.001 ? pitchTorque / inertia.Iyy : 0
+      const yawAccel = inertia.Izz > 0.001 ? yawTorque / inertia.Izz : 0
+      const rollAccel = inertia.Ixx > 0.001 ? rollTorque / inertia.Ixx : 0
+      pitchArc = -pitchAccel * ACCEL_SCALE
+      yawArc = -yawAccel * ACCEL_SCALE
+      rollArc = rollAccel * ACCEL_SCALE
+    } else {
+      pitchArc = -pitchTorque * TORQUE_SCALE
+      yawArc = -yawTorque * TORQUE_SCALE
+      rollArc = rollTorque * TORQUE_SCALE
+    }
+
+    vectors.pitchArc.setAngle(pitchArc)
+    vectors.pitchArc.position.copy(cgOrigin)
+    vectors.pitchArc.visible = Math.abs(pitchArc) > 0.02
+
+    vectors.yawArc.setAngle(yawArc)
+    vectors.yawArc.position.copy(cgOrigin)
+    vectors.yawArc.visible = Math.abs(yawArc) > 0.02
+
+    vectors.rollArc.setAngle(rollArc)
+    vectors.rollArc.position.copy(cgOrigin)
+    vectors.rollArc.visible = Math.abs(rollArc) > 0.02
   }
-
-  // ── Moment arcs (at CG) ──
-  // Can display either torque (N·m) or angular acceleration (rad/s²).
-  const q = 0.5 * rho * airspeed * airspeed
-  const pitchTorque = q * polar.s * polar.chord * coeffs.cm  // N·m
-  const yawTorque = q * polar.s * polar.chord * coeffs.cn    // N·m
-  const rollTorque = q * polar.s * polar.chord * coeffs.cl_roll  // N·m
-
-  let pitchArc: number, yawArc: number, rollArc: number
-  if (inertia) {
-    // Angular acceleration mode: α̈ = τ / I
-    const ACCEL_SCALE = 0.005  // rad/s² → visual radians
-    const pitchAccel = inertia.Iyy > 0.001 ? pitchTorque / inertia.Iyy : 0
-    const yawAccel = inertia.Izz > 0.001 ? yawTorque / inertia.Izz : 0
-    const rollAccel = inertia.Ixx > 0.001 ? rollTorque / inertia.Ixx : 0
-    pitchArc = -pitchAccel * ACCEL_SCALE
-    yawArc = -yawAccel * ACCEL_SCALE
-    rollArc = rollAccel * ACCEL_SCALE
-  } else {
-    // Torque mode (default)
-    pitchArc = -pitchTorque * TORQUE_SCALE
-    yawArc = -yawTorque * TORQUE_SCALE
-    rollArc = rollTorque * TORQUE_SCALE
-  }
-
-  vectors.pitchArc.setAngle(pitchArc)
-  vectors.pitchArc.position.copy(cgOrigin)
-  vectors.pitchArc.visible = Math.abs(pitchArc) > 0.02
-
-  vectors.yawArc.setAngle(yawArc)
-  vectors.yawArc.position.copy(cgOrigin)
-  vectors.yawArc.visible = Math.abs(yawArc) > 0.02
-
-  vectors.rollArc.setAngle(rollArc)
-  vectors.rollArc.position.copy(cgOrigin)
-  vectors.rollArc.visible = Math.abs(rollArc) > 0.02
 
   // ── Rotate moment arcs into inertial frame ──
   // In body mode the arcs' own axis definitions are already correct.

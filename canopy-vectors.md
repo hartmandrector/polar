@@ -942,3 +942,5 @@ At trim, both paths produce the same numbers. The segment system adds the abilit
 7. **Back-compatibility**: Polars without `aeroSegments` must work exactly as before. The single-origin code path in `vectors.ts` remains the fallback.
 
 8. **Brake sensitivity tuning**: The sensitivity factors (0→1.0, center=0, inner→outer) are initial estimates. Real values depend on brake cascade geometry and line routing. Should be configurable per canopy model.
+
+9. **Per-segment tuning via debug overrides**: The existing debug override panel becomes the primary tuning tool. Add a **segment selector dropdown** (visible when the selected polar has `aeroSegments`). When a segment is selected, all override sliders (lift model, drag model, separated flow, stall, sideslip, pitch, physical properties) apply to that segment's polar parameters. This gives full per-segment control for live tuning without code changes. Once good parameters are found for all segments, hard-code them as defaults in `polar-data.ts`. This avoids building a separate tuning UI — the debug overrides already cover every parameter.
