@@ -252,7 +252,7 @@ export function updateBridleOrientation(model: LoadedModel, alpha_deg: number, b
   const b = beta_deg * Math.PI / 180
   // Wind direction in body frame (same as windDirectionBody in frames.ts)
   const windDir = new THREE.Vector3(
-    -Math.sin(b) * Math.cos(a),
+    Math.sin(b) * Math.cos(a),
     -Math.sin(a),
     Math.cos(b) * Math.cos(a)
   ).normalize()

@@ -98,6 +98,9 @@ function updateVisualization(state: FlightState): void {
   let bodyQuat: THREE.Quaternion | null = null
   let bodyMatrix: THREE.Matrix4 | null = null
 
+  // Compass labels (N/E) only visible in inertial frame
+  sceneCtx.compassLabels.visible = state.frameMode === 'inertial'
+
   if (state.frameMode === 'inertial') {
     if (state.attitudeMode === 'wind') {
       // Sliders specify wind direction; combine with α/β to get body attitude

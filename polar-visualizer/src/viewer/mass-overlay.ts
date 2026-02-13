@@ -96,9 +96,9 @@ export function createMassOverlay(): MassOverlay {
       const mp = masses[i]
       const mesh = massPoints[i]
 
-      // NED body → Three.js: (ned.y, -ned.z, ned.x)
+      // NED body → Three.js: (-ned.y, -ned.z, ned.x)
       mesh.position.set(
-        mp.y * scale,
+        -mp.y * scale,
         -mp.z * scale,
         mp.x * scale
       )
@@ -110,7 +110,7 @@ export function createMassOverlay(): MassOverlay {
 
     // CG marker
     cgMesh.position.set(
-      cg.y * scale,
+      -cg.y * scale,
       -cg.z * scale,
       cg.x * scale
     )

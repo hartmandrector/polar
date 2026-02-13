@@ -22,19 +22,21 @@ const DEG2RAD = Math.PI / 180
 //
 //   NED        Three.js
 //   x (north)  → z  (toward camera / forward)
-//   y (east)   → x  (right)
+//   y (east)   → -x (left in Three.js = east on screen from above)
 //   z (down)   → -y (up is +Y in Three.js)
 //
-// Both are right-handed, so no parity flip — just axis relabeling.
+// This is a proper rotation (det = +1). From above: North = +Z (up on
+// screen), East = -X (right on screen). Cross product preserved:
+//   +Z × (-X) = -Y  ↔  North × East = Down  ✓
 
-/** Convert a vector from NED (x-fwd, y-right, z-down) to Three.js (X-right, Y-up, Z-fwd). */
+/** Convert a vector from NED (x-fwd, y-right, z-down) to Three.js (X-left, Y-up, Z-fwd). */
 export function nedToThreeJS(v: { x: number; y: number; z: number }): THREE.Vector3 {
-  return new THREE.Vector3(v.y, -v.z, v.x)
+  return new THREE.Vector3(-v.y, -v.z, v.x)
 }
 
 /** Convert a Three.js vector back to NED. */
 export function threeJSToNed(v: THREE.Vector3): { x: number; y: number; z: number } {
-  return { x: v.z, y: v.x, z: -v.y }
+  return { x: v.z, y: -v.x, z: -v.y }
 }
 
 // ─── Direction Cosine Matrices ───────────────────────────────────────────────
@@ -139,16 +141,15 @@ export function bodyToInertialQuat(
   //          are mapped to inertial NED components.
   //
   // We need the equivalent in Three.js coordinates.
-  // NED→ThreeJS mapping:  ned(x,y,z) → three(y, -z, x)
-  //   Wait, let me be precise with the mapping defined above:
-  //   nedToThreeJS: three.x = ned.y,  three.y = -ned.z,  three.z = ned.x
+  // NED→ThreeJS mapping:  ned(x,y,z) → three(-y, -z, x)
+  //   nedToThreeJS: three.x = -ned.y,  three.y = -ned.z,  three.z = ned.x
   //
-  // If we define body axes in Three.js as:
+  // Body axes in Three.js model space:
   //   body_x (fwd)   → Three.js (0, 0, 1)   i.e. +Z
-  //   body_y (right)  → Three.js (1, 0, 0)   i.e. +X
+  //   body_y (right)  → Three.js (-1, 0, 0)  i.e. -X
   //   body_z (down)   → Three.js (0, -1, 0)  i.e. -Y
   //
-  // We want: for each body axis bj, find the Three.js inertial direction.
+  // For each body axis bj, find the Three.js inertial direction:
   //   inertial_ned = DCM_BE * body_ned
   //   inertial_three = nedToThreeJS(inertial_ned)
   //
@@ -157,31 +158,31 @@ export function bodyToInertialQuat(
   //   body_y (right):  col1 = (dcm[3], dcm[4], dcm[5])
   //   body_z (down):   col2 = (dcm[6], dcm[7], dcm[8])
   //
-  // Convert each to Three.js:
-  //   col0_three = nedToThreeJS(col0) = (col0.y, -col0.z, col0.x) = (dcm[1], -dcm[2], dcm[0])
-  //   col1_three = (dcm[4], -dcm[5], dcm[3])
-  //   col2_three = (dcm[7], -dcm[8], dcm[6])
+  // Convert each to Three.js (using corrected -y, -z, x):
+  //   col0_three = nedToThreeJS(col0) = (-dcm[1], -dcm[2], dcm[0])
+  //   col1_three = (-dcm[4], -dcm[5], dcm[3])
+  //   col2_three = (-dcm[7], -dcm[8], dcm[6])
   //
   // These tell us where body_x, body_y, body_z point in Three.js world.
-  // But body_x → Three.js +Z,  body_y → Three.js +X,  body_z → Three.js -Y.
+  // body_x → Three.js +Z,  body_y → Three.js -X,  body_z → Three.js -Y.
   //
   // So the Three.js rotation matrix R_three maps:
   //   R_three * (0,0,1) = col0_three   → column 2 of R_three
-  //   R_three * (1,0,0) = col1_three   → column 0 of R_three
+  //   R_three * (-1,0,0) = col1_three  → column 0 of R_three is -col1_three
   //   R_three * (0,-1,0) = col2_three  → column 1 of R_three is -col2_three
   //
   // Therefore R_three (column-major for Matrix4):
-  //   col0 = col1_three = (dcm[4], -dcm[5], dcm[3])
-  //   col1 = -col2_three = (-dcm[7], dcm[8], -dcm[6])
-  //   col2 = col0_three = (dcm[1], -dcm[2], dcm[0])
+  //   col0 = -col1_three = (dcm[4], dcm[5], -dcm[3])
+  //   col1 = -col2_three = (dcm[7], dcm[8], -dcm[6])
+  //   col2 = col0_three = (-dcm[1], -dcm[2], dcm[0])
 
   const m = new THREE.Matrix4()
   m.set(
     // row-major argument order for THREE.Matrix4.set()
     //    col0         col1          col2         col3
-    dcm[4],     -dcm[7],      dcm[1],      0,   // row 0 (x)
-    -dcm[5],     dcm[8],     -dcm[2],      0,   // row 1 (y)
-    dcm[3],     -dcm[6],      dcm[0],      0,   // row 2 (z)
+    dcm[4],      dcm[7],     -dcm[1],      0,   // row 0 (x)
+    dcm[5],      dcm[8],     -dcm[2],      0,   // row 1 (y)
+    -dcm[3],     -dcm[6],      dcm[0],      0,   // row 2 (z)
     0,           0,            0,           1    // row 3
   )
 
@@ -212,9 +213,9 @@ export function windDirectionBody(alpha_deg: number, beta_deg: number): THREE.Ve
   const b = beta_deg * DEG2RAD
 
   // Matches vectors.ts existing convention:
-  // wind comes from +Z at α=0,β=0; positive α tilts wind down, positive β tilts right.
+  // wind comes from +Z at α=0,β=0; positive α tilts wind down, positive β tilts left.
   return new THREE.Vector3(
-    -Math.sin(b) * Math.cos(a),
+    Math.sin(b) * Math.cos(a),
     -Math.sin(a),
     Math.cos(b) * Math.cos(a)
   ).normalize()
@@ -247,8 +248,8 @@ export function gravityInBodyThreeJS(
   const gy = sp * ct * g
   const gz = cp * ct * g
 
-  // NED body → Three.js body:  (y, -z, x)
-  return new THREE.Vector3(gy, -gz, gx)
+  // NED body → Three.js body:  (-y, -z, x)
+  return new THREE.Vector3(-gy, -gz, gx)
 }
 
 /**
