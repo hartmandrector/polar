@@ -5,7 +5,7 @@
 import type { FullCoefficients } from '../polar/continuous-polar.ts'
 import { coeffToForces, coeffToSS } from '../polar/coefficients.ts'
 import type { ContinuousPolar } from '../polar/continuous-polar.ts'
-import type { InertiaComponents } from '../viewer/inertia.ts'
+import type { InertiaComponents } from '../polar/inertia.ts'
 
 function setTextContent(id: string, text: string): void {
   const el = document.getElementById(id)

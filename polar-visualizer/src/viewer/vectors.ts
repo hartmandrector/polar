@@ -29,6 +29,53 @@ import { windDirectionBody } from './frames.ts'
 
 const DEG2RAD = Math.PI / 180
 
+// ── Wind frame ───────────────────────────────────────────────────────────────
+
+/** Wind, lift, drag, side directions in body-frame Three.js space. */
+export interface WindFrame {
+  windDir: THREE.Vector3   // where air comes FROM
+  dragDir: THREE.Vector3   // opposes velocity (= -windDir)
+  liftDir: THREE.Vector3   // perpendicular to wind, in vertical plane
+  sideDir: THREE.Vector3   // perpendicular to wind and lift
+}
+
+/**
+ * Compute aerodynamic direction vectors from angle of attack and sideslip.
+ * Reusable for both single-origin and per-segment rendering.
+ */
+export function computeWindFrame(alpha_deg: number, beta_deg: number): WindFrame {
+  const windDir = windDirectionBody(alpha_deg, beta_deg)
+  const dragDir = windDir.clone().negate()
+
+  const up = new THREE.Vector3(0, 1, 0)
+  const liftDir = new THREE.Vector3()
+  liftDir.crossVectors(windDir, up)
+  liftDir.crossVectors(liftDir, windDir)
+  if (liftDir.lengthSq() > 1e-10) {
+    liftDir.normalize()
+  } else {
+    liftDir.set(0, 0, -1)
+  }
+
+  const sideDir = new THREE.Vector3()
+  sideDir.crossVectors(windDir, liftDir).normalize()
+
+  return { windDir, dragDir, liftDir, sideDir }
+}
+
+// ── Per-segment arrows ───────────────────────────────────────────────────────
+
+/** Per-segment arrows — lightweight ArrowHelper lines for detail rendering. */
+export interface SegmentArrows {
+  name: string
+  lift: THREE.ArrowHelper
+  drag: THREE.ArrowHelper
+  side: THREE.ArrowHelper
+  group: THREE.Group
+}
+
+// ── Force vectors container ──────────────────────────────────────────────────
+
 export interface ForceVectors {
   windArrow: ShadedArrow
   liftArrow: ShadedArrow
@@ -40,6 +87,8 @@ export interface ForceVectors {
   pitchArc: CurvedArrow
   yawArc: CurvedArrow
   rollArc: CurvedArrow
+  /** Per-segment ArrowHelper groups (empty when polar has no aeroSegments). */
+  segmentArrows: SegmentArrows[]
   group: THREE.Group
 }
 
@@ -76,6 +125,7 @@ export function createForceVectors(): ForceVectors {
     windArrow, liftArrow, dragArrow, sideArrow,
     totalAeroArrow, weightArrow, netArrow,
     pitchArc, yawArc, rollArc,
+    segmentArrows: [],
     group
   }
 }
@@ -122,7 +172,7 @@ function chordFractionToBody(fraction: number, bodyLength: number): THREE.Vector
  * - Side force perpendicular to both
  * - Weight always -Y world
  */
-import type { InertiaComponents } from './inertia.ts'
+import type { InertiaComponents } from '../polar/inertia.ts'
 
 export function updateForceVectors(
   vectors: ForceVectors,
@@ -137,37 +187,14 @@ export function updateForceVectors(
   inertia: InertiaComponents | null = null,
   gravityDir?: THREE.Vector3
 ): void {
-  const alpha_rad = alpha_deg * DEG2RAD
-  const beta_rad = beta_deg * DEG2RAD
+  // ── Wind frame & forces ──
+  const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
+  const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
 
   // ── Origin points (body frame) ──
   const cpBody = chordFractionToBody(coeffs.cp, bodyLength)
   const cgBody = chordFractionToBody(polar.cg, bodyLength)
   const cpLatBody = chordFractionToBody(polar.cp_lateral, bodyLength)
-
-  // Wind direction in body frame (where the air comes FROM)
-  const windDir = windDirectionBody(alpha_deg, beta_deg)
-
-  // Compute forces (lift/side can be negative when CL/CY < 0)
-  const forces = coeffToForces(coeffs.cl, coeffs.cd, coeffs.cy, polar.s, polar.m, rho, airspeed)
-
-  // Drag direction: opposes the body's velocity (opposite to windDir)
-  const dragDir = windDir.clone().negate()
-
-  // Lift direction: perpendicular to wind, in the vertical plane containing wind
-  const up = new THREE.Vector3(0, 1, 0)
-  const liftDir = new THREE.Vector3()
-  liftDir.crossVectors(windDir, up)
-  liftDir.crossVectors(liftDir, windDir)
-  if (liftDir.lengthSq() > 1e-10) {
-    liftDir.normalize()
-  } else {
-    liftDir.set(0, 0, -1)
-  }
-
-  // Side force direction: perpendicular to wind and lift
-  const sideDir = new THREE.Vector3()
-  sideDir.crossVectors(windDir, liftDir).normalize()
 
   // Frame rotation — pre-computed upstream (null = body frame, no rotation)
 
@@ -190,6 +217,10 @@ export function updateForceVectors(
   // ── Wind (from model center, always positive length) ──
   setShadedArrow(vectors.windArrow, modelCenter, applyFrame(windDir), airspeed * 0.03)
 
+  // ── Single-segment aero forces (fallback for polars without aeroSegments) ──
+  // When per-segment rendering is active, these ShadedArrows are hidden
+  // and replaced by per-segment ArrowHelper groups.
+
   // ── Lift (at CP) ── flip direction when force is negative
   const liftSigned = forces.lift
   const liftDrawDir = liftSigned >= 0 ? liftDir.clone() : liftDir.clone().negate()
@@ -203,6 +234,8 @@ export function updateForceVectors(
   const sideDrawDir = sideSigned >= 0 ? sideDir.clone() : sideDir.clone().negate()
   setShadedArrow(vectors.sideArrow, cpLatOrigin, applyFrame(sideDrawDir), Math.abs(sideSigned) * FORCE_SCALE)
   vectors.sideArrow.visible = Math.abs(forces.side) > 0.5
+
+  // ── System-level vectors (summed from all segments, rendered at CG) ──
 
   // ── Total aero force (at CP) ──
   const totalAero = new THREE.Vector3()

@@ -16,3 +16,5 @@ export {
   getLegacyCoefficients
 } from './polar-data.ts'
 export type { WSEQPolar } from './polar-data.ts'
+export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPositions, calculateInertiaComponents } from './inertia.ts'
+export type { InertiaComponents } from './inertia.ts'

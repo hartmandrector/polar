@@ -9,7 +9,8 @@
 
 import * as THREE from 'three'
 import type { MassSegment } from '../polar/continuous-polar.ts'
-import { getPhysicalMassPositions, computeCenterOfMass } from './inertia.ts'
+import { getPhysicalMassPositions, computeCenterOfMass } from '../polar/inertia.ts'
+import { nedToThreeJS } from './frames.ts'
 
 export interface MassOverlay {
   group: THREE.Group
@@ -96,11 +97,12 @@ export function createMassOverlay(): MassOverlay {
       const mp = masses[i]
       const mesh = massPoints[i]
 
-      // NED body → Three.js: (-ned.y, -ned.z, ned.x)
+      // NED body → Three.js via nedToThreeJS
+      const threePos = nedToThreeJS({ x: mp.x, y: mp.y, z: mp.z })
       mesh.position.set(
-        -mp.y * scale,
-        -mp.z * scale,
-        mp.x * scale
+        threePos.x * scale,
+        threePos.y * scale,
+        threePos.z * scale
       )
 
       const t = mp.mass / maxMass
@@ -109,10 +111,11 @@ export function createMassOverlay(): MassOverlay {
     }
 
     // CG marker
+    const cgThree = nedToThreeJS({ x: cg.x, y: cg.y, z: cg.z })
     cgMesh.position.set(
-      -cg.y * scale,
-      -cg.z * scale,
-      cg.x * scale
+      cgThree.x * scale,
+      cgThree.y * scale,
+      cgThree.z * scale
     )
     cgMesh.scale.setScalar(MAX_RADIUS * 1.3)
 

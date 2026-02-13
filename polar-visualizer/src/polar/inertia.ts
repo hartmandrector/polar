@@ -10,9 +10,11 @@
  *   x = forward (head direction), y = right, z = down
  *
  * The mass data itself lives on ContinuousPolar.massSegments.
+ *
+ * This module is UI-independent and portable to CloudBASE.
  */
 
-import type { MassSegment } from '../polar/continuous-polar.ts'
+import type { MassSegment } from './continuous-polar.ts'
 
 export interface InertiaComponents {
   Ixx: number  // roll  (about forward axis)

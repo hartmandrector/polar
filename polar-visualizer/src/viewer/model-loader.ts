@@ -8,6 +8,7 @@
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { windDirectionBody } from './frames.ts'
 
 export type ModelType = 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
 export type PilotType = 'wingsuit' | 'slick'
@@ -248,14 +249,7 @@ const _bridleQuat = new THREE.Quaternion()
 
 export function updateBridleOrientation(model: LoadedModel, alpha_deg: number, beta_deg: number): void {
   if (!model.bridleGroup) return
-  const a = alpha_deg * Math.PI / 180
-  const b = beta_deg * Math.PI / 180
-  // Wind direction in body frame (same as windDirectionBody in frames.ts)
-  const windDir = new THREE.Vector3(
-    Math.sin(b) * Math.cos(a),
-    -Math.sin(a),
-    Math.cos(b) * Math.cos(a)
-  ).normalize()
+  const windDir = windDirectionBody(alpha_deg, beta_deg)
   _bridleQuat.setFromUnitVectors(_defaultBridleDir, windDir)
   model.bridleGroup.quaternion.copy(_bridleQuat)
 }
