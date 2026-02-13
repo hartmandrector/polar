@@ -99,6 +99,58 @@ export function makeCanopyCellSegment(
   }
 }
 
+// ─── Lifting Body Segment ────────────────────────────────────────────────────
+
+/**
+ * Build a lifting body AeroSegment from a full ContinuousPolar.
+ *
+ * Unlike parasitic segments (constant CD), a lifting body evaluates the
+ * full Kirchhoff model at the freestream α and β. This gives proper
+ * angle-dependent CL, CD, CY, CM, and CP — exactly like a standalone
+ * flight vehicle.
+ *
+ * Use cases:
+ * - Wingsuit pilot suspended under a canopy (same aero as freeflying wingsuit)
+ * - Slick skydiver under canopy (body produces some lift at angle)
+ * - Any body with non-trivial aerodynamics
+ *
+ * The segment uses the polar's own S and chord as reference values.
+ * The `delta` and `dirty` controls flow through to the polar's
+ * SymmetricControl derivatives if present.
+ *
+ * @param name            Human-readable segment name (e.g. 'pilot')
+ * @param position        NED body-frame position (normalized by reference height)
+ * @param bodyPolar       The full ContinuousPolar for this body
+ * @param pitchOffset_deg Pitch rotation of this body relative to the canopy body
+ *                        frame [deg]. A canopy pilot hanging vertically has +90°.
+ *                        Default: 0 (prone/aligned with body frame).
+ */
+export function makeLiftingBodySegment(
+  name: string,
+  position: { x: number; y: number; z: number },
+  bodyPolar: ContinuousPolar,
+  pitchOffset_deg: number = 0,
+): AeroSegment {
+  return {
+    name,
+    position,
+    orientation: { roll_deg: 0 },
+    S: bodyPolar.s,
+    chord: bodyPolar.chord,
+    pitchOffset_deg,
+
+    getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      // Transform freestream α to the segment's local frame.
+      // A +90° pitch offset means the body is upright (hanging under canopy):
+      // the canopy's freestream α (≈10°) maps to the body seeing wind from
+      // the front/chest, which is deep post-stall in the wingsuit polar.
+      const localAlpha = alpha_deg - pitchOffset_deg
+      const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, bodyPolar, controls.dirty)
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
+    },
+  }
+}
+
 // ─── Parasitic Body Segment ──────────────────────────────────────────────────
 
 /**

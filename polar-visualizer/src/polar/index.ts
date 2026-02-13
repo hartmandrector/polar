@@ -13,11 +13,11 @@ export {
   continuousPolars, legacyPolars,
   aurafivepolar, ibexulpolar, slicksinpolar, caravanpolar,
   aurafiveContinuous, ibexulContinuous, slicksinContinuous, caravanContinuous,
-  getLegacyCoefficients
+  getLegacyCoefficients, makeIbexAeroSegments
 } from './polar-data.ts'
 export type { WSEQPolar } from './polar-data.ts'
 export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPositions, calculateInertiaComponents } from './inertia.ts'
 export type { InertiaComponents } from './inertia.ts'
 export { computeSegmentForce, sumAllSegments, defaultControls } from './aero-segment.ts'
 export type { Vec3NED, SegmentForceResult, SystemForces } from './aero-segment.ts'
-export { makeCanopyCellSegment, makeParasiticSegment } from './segment-factories.ts'
+export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment } from './segment-factories.ts'

@@ -253,6 +253,23 @@ html, body {
   cursor: pointer;
 }
 
+/* ─── Canopy controls ──────────────────────────────────────────────────────── */
+
+.canopy-mode-toggle {
+  display: flex;
+  gap: 10px;
+}
+
+.canopy-mode-toggle label {
+  font-size: 11px;
+  color: #a0a0c0;
+  cursor: pointer;
+}
+
+.canopy-mode-toggle input[type="radio"] {
+  margin-right: 3px;
+}
+
 /* ─── Debug Override Panel ─────────────────────────────────────────────────── */
 
 .debug-toggle-btn {

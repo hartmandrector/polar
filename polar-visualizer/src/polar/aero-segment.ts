@@ -137,12 +137,16 @@ export function sumAllSegments(
     totalFy += fy
     totalFz += fz
 
-    // CP position in meters: segment AC + CP offset along chord.
+    // CP position in meters: segment AC + CP offset along chord direction.
     // CP is a chord fraction — offset from quarter-chord (AC assumed at 0.25c).
+    // The chord direction rotates with pitchOffset_deg in the x-z plane:
+    //   0° → chord along x (canopy cell, prone body)
+    //  90° → chord along z (upright pilot hanging under canopy)
     const cpOffsetNorm = (f.cp - 0.25) * seg.chord / height
-    const cpX = (seg.position.x + cpOffsetNorm) * height
+    const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
+    const cpX = (seg.position.x + cpOffsetNorm * Math.cos(pitchRad)) * height
     const cpY = seg.position.y * height
-    const cpZ = seg.position.z * height
+    const cpZ = (seg.position.z + cpOffsetNorm * Math.sin(pitchRad)) * height
 
     // Lever arm: segment CP (meters) minus system CG (meters)
     const rx = cpX - cgMeters.x

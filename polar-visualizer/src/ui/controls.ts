@@ -21,6 +21,11 @@ export interface FlightState {
   showMassOverlay: boolean
   showAccelArcs: boolean
   canopyPilotType: 'wingsuit' | 'slick'
+  // ── Canopy asymmetric controls ──
+  canopyControlMode: 'brakes' | 'fronts' | 'rears'
+  canopyLeftHand: number    // 0–1
+  canopyRightHand: number   // 0–1
+  canopyWeightShift: number // -1 to +1
 }
 
 export type StateChangeCallback = (state: FlightState) => void
@@ -51,6 +56,18 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const showMassOverlayCheck = document.getElementById('show-mass-overlay') as HTMLInputElement
   const showAccelArcsCheck = document.getElementById('show-accel-arcs') as HTMLInputElement
 
+  // Canopy asymmetric controls
+  const leftHandSlider = document.getElementById('left-hand-slider') as HTMLInputElement
+  const rightHandSlider = document.getElementById('right-hand-slider') as HTMLInputElement
+  const weightShiftSlider = document.getElementById('weight-shift-slider') as HTMLInputElement
+  const canopyModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="canopy-mode"]')
+
+  const leftHandLabel = document.getElementById('left-hand-value')!
+  const rightHandLabel = document.getElementById('right-hand-value')!
+  const leftHandNameLabel = document.getElementById('left-hand-label')!
+  const rightHandNameLabel = document.getElementById('right-hand-label')!
+  const weightShiftLabel = document.getElementById('weight-shift-value')!
+
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
   const deltaLabel = document.getElementById('delta-value')!
@@ -72,6 +89,13 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const modelType = POLAR_TO_MODEL[polarKey] || 'wingsuit'
     const frameMode = frameSelect.value as 'body' | 'inertial'
     const canopyPilotType = (canopyPilotSelect?.value || 'wingsuit') as 'wingsuit' | 'slick'
+
+    // Canopy asymmetric controls
+    const canopyControlMode = (document.querySelector<HTMLInputElement>('input[name="canopy-mode"]:checked')?.value || 'brakes') as 'brakes' | 'fronts' | 'rears'
+    const canopyLeftHand = parseFloat(leftHandSlider.value) / 100
+    const canopyRightHand = parseFloat(rightHandSlider.value) / 100
+    const canopyWeightShift = parseFloat(weightShiftSlider.value) / 100
+
     const roll = parseFloat(rollSlider.value)
     const pitch = parseFloat(pitchSlider.value)
     const yaw = parseFloat(yawSlider.value)
@@ -87,6 +111,14 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     pitchLabel.textContent = `${pitch.toFixed(1)}°`
     yawLabel.textContent = `${yaw.toFixed(1)}°`
 
+    // Canopy control labels — update based on mode
+    leftHandLabel.textContent = `${(canopyLeftHand * 100).toFixed(0)}%`
+    rightHandLabel.textContent = `${(canopyRightHand * 100).toFixed(0)}%`
+    weightShiftLabel.textContent = `${(canopyWeightShift * 100).toFixed(0)}`
+    const modeNames = { brakes: 'Brake', fronts: 'Front Riser', rears: 'Rear Riser' }
+    leftHandNameLabel.textContent = `Left ${modeNames[canopyControlMode]}: `
+    rightHandNameLabel.textContent = `Right ${modeNames[canopyControlMode]}: `
+
     // Show/hide attitude sliders based on frame mode
     const attitudeGroup = document.getElementById('attitude-group')
     if (attitudeGroup) {
@@ -97,6 +129,12 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const canopyPilotGroup = document.getElementById('canopy-pilot-group')
     if (canopyPilotGroup) {
       canopyPilotGroup.style.display = modelType === 'canopy' ? '' : 'none'
+    }
+
+    // Show/hide canopy controls group based on polar
+    const canopyControlsGroup = document.getElementById('canopy-controls-group')
+    if (canopyControlsGroup) {
+      canopyControlsGroup.style.display = modelType === 'canopy' ? '' : 'none'
     }
 
     // Update slider labels based on attitude mode
@@ -134,6 +172,10 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       showMassOverlay: showMassOverlayCheck.checked,
       showAccelArcs: showAccelArcsCheck.checked,
       canopyPilotType,
+      canopyControlMode,
+      canopyLeftHand,
+      canopyRightHand,
+      canopyWeightShift,
     }
   }
 
@@ -149,8 +191,13 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider]) {
     el.addEventListener('input', onInput)
+  }
+
+  // Canopy mode radio buttons
+  for (const radio of canopyModeRadios) {
+    radio.addEventListener('change', onInput)
   }
 
   // Discrete selects

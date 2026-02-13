@@ -175,6 +175,21 @@ export interface AeroSegment {
   chord: number
 
   /**
+   * Pitch offset of this segment relative to the canopy body frame [deg].
+   *
+   * A canopy pilot hanging vertically is rotated +90° in pitch compared
+   * to a prone wingsuit pilot. The freestream α is transformed by this
+   * offset before evaluating the segment's polar:
+   *   α_local = α_freestream - pitchOffset_deg
+   *
+   * Also rotates the CP offset direction: a 90° pitch means the chord
+   * runs along NED z (vertical) instead of NED x (forward).
+   *
+   * Default: 0 (no rotation — segment aligned with body frame).
+   */
+  pitchOffset_deg?: number
+
+  /**
    * This segment's own ContinuousPolar, if applicable.
    *
    * Canopy cell segments: each cell has its own polar with its own

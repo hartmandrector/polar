@@ -17,6 +17,7 @@ import { getAllCoefficients, coeffToForces } from '../polar/coefficients.ts'
 import { computeSegmentForce, sumAllSegments, defaultControls } from '../polar/aero-segment.ts'
 import type { Vec3NED } from '../polar/aero-segment.ts'
 import { ibexulContinuous } from '../polar/polar-data.ts'
+import { computeCenterOfMass } from '../polar/inertia.ts'
 
 // ─── Helper: wrap a lumped polar into a single AeroSegment ──────────────────
 
@@ -212,7 +213,7 @@ describe('Ibex UL 10-segment system', () => {
     expect(segments.length).toBe(10)
   })
 
-  it('has 7 canopy cells + 3 parasitic bodies', () => {
+  it('has 7 canopy cells + 2 parasitic bodies + 1 lifting body pilot', () => {
     const cells = segments.filter(s => s.name.startsWith('cell_'))
     const bodies = segments.filter(s => !s.name.startsWith('cell_'))
     expect(cells.length).toBe(7)
@@ -247,14 +248,28 @@ describe('Ibex UL 10-segment system', () => {
     }
   })
 
-  it('parasitic bodies produce drag but negligible lift', () => {
+  it('non-cell, non-pilot bodies produce drag but negligible lift', () => {
     const alpha = 8, beta = 0
-    for (const seg of segments.filter(s => !s.name.startsWith('cell_'))) {
+    const parasitic = segments.filter(s => !s.name.startsWith('cell_') && s.name !== 'pilot')
+    expect(parasitic.length).toBeGreaterThan(0)
+    for (const seg of parasitic) {
       const result = computeSegmentForce(seg, alpha, beta, controls, rho, airspeed)
       expect(result.drag).toBeGreaterThan(0)
       // Parasitic lift should be tiny compared to drag
       expect(Math.abs(result.lift)).toBeLessThan(result.drag)
     }
+  })
+
+  it('pilot lifting body produces drag at canopy trim (upright, α_local ≈ -82°)', () => {
+    const alpha = 8, beta = 0
+    const pilot = segments.find(s => s.name === 'pilot')!
+    expect(pilot).toBeDefined()
+    const result = computeSegmentForce(pilot, alpha, beta, controls, rho, airspeed)
+    // At canopy trim α=8°, the pilot (pitched +90°) sees α_local = -82°.
+    // This is deep post-stall/bluff body — mostly drag, negative CL in
+    // the canopy lift direction (wind hits chest, not lifting surface).
+    expect(result.drag).toBeGreaterThan(0)
+    expect(result.drag).toBeGreaterThan(Math.abs(result.lift))
   })
 
   it('segment forces sum in the right ballpark of lumped polar at trim', () => {
@@ -330,5 +345,91 @@ describe('Ibex UL 10-segment system', () => {
 
     expect(fNone.lift).toBeCloseTo(fFull.lift, 10)
     expect(fNone.drag).toBeCloseTo(fFull.drag, 10)
+  })
+})
+
+// ─── Phase 5: Moments from lever arms ──────────────────────────────────────
+
+describe('Ibex UL — lever arm moments', () => {
+  const polar = ibexulContinuous
+  const segments = polar.aeroSegments!
+  const rho = 1.225
+  const airspeed = 15
+  const height = 1.875
+
+  // System CG from mass segments
+  const cgMeters = computeCenterOfMass(polar.massSegments!, height, polar.m)
+
+  // Wind from +x (ahead), lift in -z (up), side in +y (right)
+  const windDir: Vec3NED = { x: 1, y: 0, z: 0 }
+  const liftDir: Vec3NED = { x: 0, y: 0, z: -1 }
+  const sideDir: Vec3NED = { x: 0, y: 1, z: 0 }
+
+  it('symmetric controls produce near-zero roll and yaw moments', () => {
+    const alpha = 8, beta = 0
+    const controls = defaultControls()
+    const forces = segments.map(s => computeSegmentForce(s, alpha, beta, controls, rho, airspeed))
+    const system = sumAllSegments(segments, forces, cgMeters, height, windDir, liftDir, sideDir)
+
+    // Roll (Mx) and yaw (Mz) should be near zero with symmetric input
+    expect(Math.abs(system.moment.x)).toBeLessThan(0.5)
+    expect(Math.abs(system.moment.z)).toBeLessThan(0.5)
+    // Pitch (My) should be non-zero (AC/CG offset + CM)
+    expect(system.moment.y).not.toBeCloseTo(0, 0)
+  })
+
+  it('left brake creates non-zero roll moment (Mx)', () => {
+    const alpha = 8, beta = 0
+    const leftBrake: SegmentControls = { ...defaultControls(), brakeLeft: 1.0 }
+    const forces = segments.map(s => computeSegmentForce(s, alpha, beta, leftBrake, rho, airspeed))
+    const system = sumAllSegments(segments, forces, cgMeters, height, windDir, liftDir, sideDir)
+
+    // Asymmetric lift should create a roll moment
+    expect(Math.abs(system.moment.x)).toBeGreaterThan(0.1)
+  })
+
+  it('left brake creates non-zero yaw moment (Mz)', () => {
+    const alpha = 8, beta = 0
+    const leftBrake: SegmentControls = { ...defaultControls(), brakeLeft: 1.0 }
+    const forces = segments.map(s => computeSegmentForce(s, alpha, beta, leftBrake, rho, airspeed))
+    const system = sumAllSegments(segments, forces, cgMeters, height, windDir, liftDir, sideDir)
+
+    // Asymmetric drag should create a yaw moment
+    expect(Math.abs(system.moment.z)).toBeGreaterThan(0.1)
+  })
+
+  it('left brake vs right brake produce opposite roll moments', () => {
+    const alpha = 8, beta = 0
+    const leftBrake: SegmentControls = { ...defaultControls(), brakeLeft: 1.0 }
+    const rightBrake: SegmentControls = { ...defaultControls(), brakeRight: 1.0 }
+
+    const lForces = segments.map(s => computeSegmentForce(s, alpha, beta, leftBrake, rho, airspeed))
+    const rForces = segments.map(s => computeSegmentForce(s, alpha, beta, rightBrake, rho, airspeed))
+
+    const lSystem = sumAllSegments(segments, lForces, cgMeters, height, windDir, liftDir, sideDir)
+    const rSystem = sumAllSegments(segments, rForces, cgMeters, height, windDir, liftDir, sideDir)
+
+    // Roll moments should be opposite signs
+    expect(lSystem.moment.x * rSystem.moment.x).toBeLessThan(0)
+    // Yaw moments should be opposite signs
+    expect(lSystem.moment.z * rSystem.moment.z).toBeLessThan(0)
+    // Magnitudes should be approximately equal (symmetric geometry)
+    expect(Math.abs(lSystem.moment.x)).toBeCloseTo(Math.abs(rSystem.moment.x), 4)
+    expect(Math.abs(lSystem.moment.z)).toBeCloseTo(Math.abs(rSystem.moment.z), 4)
+  })
+
+  it('front riser creates pitch moment change from α offset', () => {
+    const alpha = 8, beta = 0
+    const noRiser = defaultControls()
+    const fullFront: SegmentControls = { ...defaultControls(), frontRiserLeft: 1.0, frontRiserRight: 1.0 }
+
+    const nForces = segments.map(s => computeSegmentForce(s, alpha, beta, noRiser, rho, airspeed))
+    const fForces = segments.map(s => computeSegmentForce(s, alpha, beta, fullFront, rho, airspeed))
+
+    const nSystem = sumAllSegments(segments, nForces, cgMeters, height, windDir, liftDir, sideDir)
+    const fSystem = sumAllSegments(segments, fForces, cgMeters, height, windDir, liftDir, sideDir)
+
+    // Pitch moment should change with front riser
+    expect(fSystem.moment.y).not.toBeCloseTo(nSystem.moment.y, 1)
   })
 })

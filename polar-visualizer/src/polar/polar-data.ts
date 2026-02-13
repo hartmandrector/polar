@@ -11,7 +11,7 @@
  */
 
 import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
-import { makeCanopyCellSegment, makeParasiticSegment } from './segment-factories.ts'
+import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment } from './segment-factories.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -672,7 +672,7 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
  * Brake sensitivity cascades from tips inward: outer=1.0, mid=0.7, inner=0.4, center=0.
  * Riser sensitivity is ~1.0 for all cells (uniform geometry change).
  */
-const IBEX_AERO_SEGMENTS: AeroSegment[] = [
+const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // ── 7 canopy cells ──
   makeCanopyCellSegment('cell_c',  { x: 0.165, y:  0,     z: -1.089 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_r1', { x: 0.161, y:  0.322, z: -1.055 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
@@ -682,12 +682,46 @@ const IBEX_AERO_SEGMENTS: AeroSegment[] = [
   makeCanopyCellSegment('cell_r3', { x: 0.134, y:  0.911, z: -0.794 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_l3', { x: 0.134, y: -0.911, z: -0.794 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
 
-  // ── 3 parasitic bodies ──
-  //                    name       position (NED norm)                   S      chord  CD    CL
+  // ── 2 parasitic bodies (lines + bridle — always the same) ──
+  //                    name       position (NED norm)                   S      chord  CD
   makeParasiticSegment('lines',  { x: 0.23, y: 0, z: -0.40 },          0.35,  0.01,  1.0       ),
-  makeParasiticSegment('pilot',  { x: 0.38, y: 0, z:  0.48 },          0.50,  0.50,  1.0,  0.05),
   makeParasiticSegment('bridle', { x: 0.10, y: 0, z: -1.30 },          0.08,  0.01,  0.9       ),
 ]
+
+/** Pilot position in NED normalized coordinates (below+behind canopy). */
+const PILOT_POSITION = { x: 0.38, y: 0, z: 0.48 }
+
+/**
+ * Build the complete Ibex UL aero segments array for a given pilot type.
+ *
+ * Canopy cells + parasitic bodies are always the same.
+ * The pilot segment changes based on pilot type:
+ * - 'wingsuit': Full Kirchhoff lifting body using Aura 5 polar (S=2m², proper CL/CD/CY)
+ * - 'slick':    Full Kirchhoff lifting body using Slick Sin polar (S=0.5m², high drag)
+ *
+ * The pilot is hanging vertically under the canopy — rotated 90° in pitch
+ * relative to the prone wingsuit pose. This pitch offset is applied so the
+ * polar is evaluated at the correct local α (freestream α − 90°).
+ */
+export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit'): AeroSegment[] {
+  // Pilot polar must be defined before this is called (it references the
+  // aurafive/slicksin objects declared later). This works because JS
+  // module-level const declarations are initialized before any function
+  // call at runtime.
+  //
+  // pitchOffset = 90°: pilot is upright (hanging), not prone (flying).
+  // This rotates the freestream α by −90° before evaluating the polar,
+  // and shifts the CP offset direction from NED x to NED z.
+  const PILOT_PITCH_OFFSET = 90
+  const pilotSegment = pilotType === 'wingsuit'
+    ? makeLiftingBodySegment('pilot', PILOT_POSITION, aurafiveContinuous, PILOT_PITCH_OFFSET)
+    : makeLiftingBodySegment('pilot', PILOT_POSITION, slicksinContinuous, PILOT_PITCH_OFFSET)
+
+  return [...IBEX_CANOPY_SEGMENTS, pilotSegment]
+}
+
+// Default segments are built after all polars are defined (see bottom of file)
+// to avoid TDZ issues with forward references to aurafiveContinuous/slicksinContinuous.
 
 // ─── Continuous Polar Definitions ────────────────────────────────────────────
 
@@ -815,7 +849,7 @@ export const ibexulContinuous: ContinuousPolar = {
   massSegments: CANOPY_MASS_SEGMENTS,
   cgOffsetFraction: 0,
 
-  aeroSegments: IBEX_AERO_SEGMENTS,
+  aeroSegments: undefined as unknown as AeroSegment[],  // set below after polars defined
 
   controls: {
     brake: {
@@ -926,6 +960,13 @@ export const caravanContinuous: ContinuousPolar = {
   m: 77.5,
   chord: 11.0
 }
+
+// ─── Initialize aeroSegments (after all polars are defined) ──────────────────
+
+// Set default aero segments for Ibex UL (wingsuit pilot).
+// This must happen after aurafiveContinuous is defined since the pilot
+// segment delegates to it for coefficient evaluation.
+ibexulContinuous.aeroSegments = makeIbexAeroSegments('wingsuit')
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 

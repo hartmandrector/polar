@@ -29,6 +29,27 @@
         </select>
       </div>
 
+      <div id="canopy-controls-group" class="attitude-group" style="display:none;">
+        <div class="control-group-header">Canopy Controls</div>
+        <div class="control-group canopy-mode-toggle">
+          <label><input type="radio" name="canopy-mode" value="brakes" checked /> Brakes</label>
+          <label><input type="radio" name="canopy-mode" value="fronts" /> Fronts</label>
+          <label><input type="radio" name="canopy-mode" value="rears" /> Rears</label>
+        </div>
+        <div class="control-group">
+          <label><span id="left-hand-label">Left Brake: </span><span id="left-hand-value">0%</span></label>
+          <input type="range" id="left-hand-slider" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="control-group">
+          <label><span id="right-hand-label">Right Brake: </span><span id="right-hand-value">0%</span></label>
+          <input type="range" id="right-hand-slider" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="control-group">
+          <label>Weight Shift: <span id="weight-shift-value">0</span></label>
+          <input type="range" id="weight-shift-slider" min="-100" max="100" value="0" step="1" />
+        </div>
+      </div>
+
       <div class="control-group">
         <label>α (AOA): <span id="alpha-value">12.0°</span></label>
         <input type="range" id="alpha-slider" min="-180" max="180" value="12" step="0.5" />

@@ -16,8 +16,9 @@ import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/v
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
 import { initCharts, updateChartSweep, updateChartCursor } from './ui/polar-charts.ts'
-import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients } from './polar/index.ts'
-import type { ContinuousPolar } from './polar/index.ts'
+import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients, makeIbexAeroSegments } from './polar/index.ts'
+import type { ContinuousPolar, SegmentControls } from './polar/index.ts'
+import { defaultControls } from './polar/aero-segment.ts'
 import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, debugSweepKey } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
 import { updateInertiaReadout } from './ui/readout.ts'
@@ -74,12 +75,51 @@ function sweepKey(s: FlightState): string {
   return `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}|${debugSweepKey()}`
 }
 
+/**
+ * Build SegmentControls from the canopy UI state.
+ * The context switch determines which SegmentControls fields the hand sliders map to:
+ *   - Brakes mode:  left/right hand → brakeLeft/brakeRight
+ *   - Fronts mode:  left/right hand → frontRiserLeft/frontRiserRight
+ *   - Rears mode:   left/right hand → rearRiserLeft/rearRiserRight
+ * Non-canopy polars get defaultControls() with the generic δ and dirty values.
+ */
+function buildSegmentControls(state: FlightState): SegmentControls {
+  const ctrl = defaultControls()
+  ctrl.delta = state.delta
+  ctrl.dirty = state.dirty
+
+  if (state.modelType === 'canopy') {
+    switch (state.canopyControlMode) {
+      case 'brakes':
+        ctrl.brakeLeft = state.canopyLeftHand
+        ctrl.brakeRight = state.canopyRightHand
+        break
+      case 'fronts':
+        ctrl.frontRiserLeft = state.canopyLeftHand
+        ctrl.frontRiserRight = state.canopyRightHand
+        break
+      case 'rears':
+        ctrl.rearRiserLeft = state.canopyLeftHand
+        ctrl.rearRiserRight = state.canopyRightHand
+        break
+    }
+    ctrl.weightShiftLR = state.canopyWeightShift
+  }
+
+  return ctrl
+}
+
 function updateVisualization(state: FlightState): void {
   flightState = state
 
   // Get the continuous polar (with debug overrides if panel is open)
   const basePolar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
   const polar: ContinuousPolar = getOverriddenPolar(basePolar)
+
+  // Swap pilot segment when canopy pilot type changes
+  if (state.modelType === 'canopy' && polar.aeroSegments) {
+    polar.aeroSegments = makeIbexAeroSegments(state.canopyPilotType as 'wingsuit' | 'slick')
+  }
 
   // Recompute inertia when polar changes
   if (state.polarKey !== prevPolarKeyForInertia) {
@@ -144,6 +184,7 @@ function updateVisualization(state: FlightState): void {
   }
 
   // Update force vectors
+  const segControls = buildSegmentControls(state)
   updateForceVectors(
     forceVectors,
     coeffs,
@@ -157,6 +198,7 @@ function updateVisualization(state: FlightState): void {
     state.showAccelArcs ? currentInertia : null,
     gravityDir,
     currentModel?.pilotScale ?? 1.0,
+    segControls,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
