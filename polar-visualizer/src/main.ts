@@ -92,34 +92,55 @@ function updateVisualization(state: FlightState): void {
   // Evaluate coefficients
   const coeffs = getAllCoefficients(state.alpha_deg, state.beta_deg, state.delta, polar, state.dirty)
 
-  // ── Compute body-to-inertial rotation ──
-  // null = body frame (no rotation); Quaternion = inertial frame
+  // ── Compute body-to-inertial quaternion ──
+  // Always computed from attitude sliders (readable even when hidden) so that
+  // gravity direction is correct in both body and inertial frame modes.
+  //
+  // Four cases (frame × attitude mode):
+  //   Inertial + Wind:  bodyQuat = windQuat(φ_w,θ_w,ψ_w) · Rx(-α) · Ry(β)
+  //   Inertial + Body:  bodyQuat = eulerQuat(φ, θ, ψ)
+  //   Body + Wind:      same quat, but only used for gravity rotation
+  //   Body + Body:      same quat, but only used for gravity rotation
   const DEG2RAD = Math.PI / 180
-  let bodyQuat: THREE.Quaternion | null = null
+  let bodyQuat: THREE.Quaternion
+  if (state.attitudeMode === 'wind') {
+    bodyQuat = bodyQuatFromWindAttitude(
+      state.roll_deg * DEG2RAD,
+      state.pitch_deg * DEG2RAD,
+      state.yaw_deg * DEG2RAD,
+      state.alpha_deg * DEG2RAD,
+      state.beta_deg * DEG2RAD
+    )
+  } else {
+    bodyQuat = bodyToInertialQuat(
+      state.roll_deg * DEG2RAD,
+      state.pitch_deg * DEG2RAD,
+      state.yaw_deg * DEG2RAD
+    )
+  }
+
+  // bodyMatrix is only passed to vectors when rendering in inertial frame
+  // (it rotates force arrows from body → world). null = body frame (no rotation).
   let bodyMatrix: THREE.Matrix4 | null = null
 
   // Compass labels (N/E) only visible in inertial frame
   sceneCtx.compassLabels.visible = state.frameMode === 'inertial'
 
   if (state.frameMode === 'inertial') {
-    if (state.attitudeMode === 'wind') {
-      // Sliders specify wind direction; combine with α/β to get body attitude
-      bodyQuat = bodyQuatFromWindAttitude(
-        state.roll_deg * DEG2RAD,
-        state.pitch_deg * DEG2RAD,
-        state.yaw_deg * DEG2RAD,
-        state.alpha_deg * DEG2RAD,
-        state.beta_deg * DEG2RAD
-      )
-    } else {
-      // Sliders specify body attitude directly
-      bodyQuat = bodyToInertialQuat(
-        state.roll_deg * DEG2RAD,
-        state.pitch_deg * DEG2RAD,
-        state.yaw_deg * DEG2RAD
-      )
-    }
     bodyMatrix = new THREE.Matrix4().makeRotationFromQuaternion(bodyQuat)
+  }
+
+  // ── Gravity direction in current display frame ──
+  // Inertial: gravity = (0, -1, 0) — always straight down in Three.js world.
+  // Body:     gravity = inverse(bodyQuat) · (0, -1, 0) — inertial down rotated
+  //           into body frame. This correctly handles all attitude combinations
+  //           (wind mode with α/β, or direct Euler angles).
+  let gravityDir: THREE.Vector3
+  if (state.frameMode === 'body') {
+    const invQuat = bodyQuat.clone().invert()
+    gravityDir = new THREE.Vector3(0, -1, 0).applyQuaternion(invQuat).normalize()
+  } else {
+    gravityDir = new THREE.Vector3(0, -1, 0)
   }
 
   // Update force vectors
@@ -133,12 +154,13 @@ function updateVisualization(state: FlightState): void {
     state.rho,
     currentModel?.bodyLength ?? 2.0,
     bodyMatrix,
-    state.showAccelArcs ? currentInertia : null
+    state.showAccelArcs ? currentInertia : null,
+    gravityDir
   )
 
-  // Update model rotation
+  // Update model rotation (only in inertial frame — body frame keeps model fixed)
   if (currentModel) {
-    applyAttitude(currentModel.group, bodyQuat)
+    applyAttitude(currentModel.group, state.frameMode === 'inertial' ? bodyQuat : null)
     // Orient bridle + pilot chute along relative wind
     updateBridleOrientation(currentModel, state.alpha_deg, state.beta_deg)
   }

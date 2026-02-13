@@ -134,7 +134,8 @@ export function updateForceVectors(
   rho: number,
   bodyLength: number,
   rotationMatrix: THREE.Matrix4 | null,
-  inertia: InertiaComponents | null = null
+  inertia: InertiaComponents | null = null,
+  gravityDir?: THREE.Vector3
 ): void {
   const alpha_rad = alpha_deg * DEG2RAD
   const beta_rad = beta_deg * DEG2RAD
@@ -217,15 +218,20 @@ export function updateForceVectors(
     vectors.totalAeroArrow.visible = false
   }
 
-  // ── Weight (at CG, always -Y world) ──
-  setShadedArrow(vectors.weightArrow, cgOrigin, new THREE.Vector3(0, -1, 0), forces.weight * FORCE_SCALE)
+  // ── Weight (at CG) ──
+  // In body frame, gravity is rotated by the body attitude (gravity comes
+  // from "above" in inertial space, which is not necessarily +Y in body frame).
+  // In inertial frame, gravity is always -Y (straight down in Three.js world).
+  // gravityDir is a unit vector in the current display frame's Three.js coords.
+  const gDir = gravityDir ?? new THREE.Vector3(0, -1, 0)
+  setShadedArrow(vectors.weightArrow, cgOrigin, gDir, forces.weight * FORCE_SCALE)
 
   // ── Net force (at CG) ──
   const totalAeroWorld = applyFrame(new THREE.Vector3()
     .addScaledVector(liftDir, forces.lift)
     .addScaledVector(dragDir, forces.drag)
     .addScaledVector(sideDir, forces.side))
-  const netForce = totalAeroWorld.clone().add(new THREE.Vector3(0, -forces.weight, 0))
+  const netForce = totalAeroWorld.clone().addScaledVector(gDir, forces.weight)
   const netMag = netForce.length()
   if (netMag > 0.01) {
     netForce.normalize()
