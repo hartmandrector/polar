@@ -265,6 +265,7 @@ export function updateForceVectors(
   gravityDir?: THREE.Vector3,
   pilotScale: number = 1.0,
   controls?: SegmentControls,
+  cgOffsetThree?: THREE.Vector3,
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -287,15 +288,21 @@ export function updateForceVectors(
     return pos.clone()
   }
 
+  /** Subtract the model CG offset (if any) so positions align with the shifted model. */
+  const modelOffset = cgOffsetThree ?? new THREE.Vector3()
+  function shiftPos(pos: THREE.Vector3): THREE.Vector3 {
+    return pos.clone().sub(modelOffset)
+  }
+
   // ── Determine CG origin ──
   // When mass segments exist, use computeCenterOfMass for proper 3D CG.
   // Otherwise fall back to chord-fraction CG.
   let cgOrigin: THREE.Vector3
   if (polar.massSegments && polar.massSegments.length > 0) {
     const cgNED = computeCenterOfMass(polar.massSegments, 1.875, polar.m)
-    cgOrigin = applyFramePos(nedToThreeJS(cgNED).multiplyScalar(pilotScale))
+    cgOrigin = applyFramePos(shiftPos(nedToThreeJS(cgNED).multiplyScalar(pilotScale)))
   } else {
-    cgOrigin = applyFramePos(chordFractionToBody(polar.cg, bodyLength))
+    cgOrigin = applyFramePos(shiftPos(chordFractionToBody(polar.cg, bodyLength)))
   }
 
   // ── Wind (at CG, same origin as total aero / net force) ──
@@ -331,7 +338,7 @@ export function updateForceVectors(
         z: seg.position.z + cpOffsetNorm * Math.sin(pitchRad),
       }
       const posThree = nedToThreeJS(cpNED).multiplyScalar(pilotScale * 1.875)
-      const posWorld = applyFramePos(posThree)
+      const posWorld = applyFramePos(shiftPos(posThree))
 
       // Lift arrow — flip direction for negative lift
       const liftLen = Math.abs(sf.lift) * FORCE_SCALE
@@ -444,8 +451,8 @@ export function updateForceVectors(
       ensureSegmentArrows(vectors, [])
     }
 
-    const cpOrigin = applyFramePos(chordFractionToBody(coeffs.cp, bodyLength))
-    const cpLatOrigin = applyFramePos(chordFractionToBody(polar.cp_lateral, bodyLength))
+    const cpOrigin = applyFramePos(shiftPos(chordFractionToBody(coeffs.cp, bodyLength)))
+    const cpLatOrigin = applyFramePos(shiftPos(chordFractionToBody(polar.cp_lateral, bodyLength)))
 
     // ── Lift (at CP) ──
     const liftSigned = forces.lift

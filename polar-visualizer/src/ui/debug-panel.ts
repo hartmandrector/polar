@@ -6,15 +6,22 @@
  * (from the Polar dropdown). Switching polars resets all sliders to that
  * polar's baseline values.
  *
+ * Segment mode:
+ * When the active polar has `aeroSegments`, a segment selector dropdown
+ * appears at the top of the panel. Selecting a segment switches all sliders
+ * to that segment's own ContinuousPolar. Overrides are stored per-segment
+ * so switching between segments preserves changes.
+ *
  * Architecture:
  * - Reads the base polar from the registry (e.g. aurafiveContinuous)
  * - Each slider shows the current value and allows adjustment within a
  *   sensible range derived from the parameter's baseline
  * - getOverriddenPolar() returns a new ContinuousPolar with overrides applied
+ * - getSegmentPolarOverrides() returns a map of segment name → overridden polar
  * - A "Reset" button restores all sliders to the baseline
  */
 
-import type { ContinuousPolar } from '../polar/continuous-polar.ts'
+import type { ContinuousPolar, AeroSegment } from '../polar/continuous-polar.ts'
 
 // ─── Parameter Definitions ───────────────────────────────────────────────────
 
@@ -82,11 +89,22 @@ let overrides: Map<string, number> = new Map()
 let onChange: DebugChangeCallback | null = null
 let panelVisible = false
 
+// Segment-level override state
+/** Currently selected segment name, or 'system' for whole-polar overrides */
+let selectedSegment = 'system'
+/** Per-segment overrides: segmentName → Map<paramKey, value> */
+const segmentOverrides: Map<string, Map<string, number>> = new Map()
+/** Cached reference to segments from the current polar */
+let currentSegments: AeroSegment[] | undefined
+
 // DOM references
 let panelEl: HTMLElement | null = null
 let toggleBtn: HTMLElement | null = null
+let segmentSelector: HTMLSelectElement | null = null
+let segmentSelectorRow: HTMLElement | null = null
 const sliderEls: Map<string, HTMLInputElement> = new Map()
 const valueEls: Map<string, HTMLSpanElement> = new Map()
+const rowEls: Map<string, HTMLElement> = new Map()
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -104,6 +122,25 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
     console.warn('Debug panel DOM elements not found')
     return
   }
+
+  // Build segment selector (hidden until a polar with segments is synced)
+  segmentSelectorRow = document.createElement('div')
+  segmentSelectorRow.className = 'debug-row debug-segment-selector-row'
+  segmentSelectorRow.style.display = 'none'
+
+  const segLabel = document.createElement('label')
+  segLabel.className = 'debug-label'
+  segLabel.textContent = 'Segment'
+  segmentSelectorRow.appendChild(segLabel)
+
+  segmentSelector = document.createElement('select')
+  segmentSelector.className = 'debug-segment-select'
+  segmentSelector.addEventListener('change', () => {
+    switchToSegment(segmentSelector!.value)
+  })
+  segmentSelectorRow.appendChild(segmentSelector)
+
+  panelEl.appendChild(segmentSelectorRow)
 
   // Build slider groups
   buildSliders(panelEl)
@@ -127,27 +164,48 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
 export function syncDebugPanel(polar: ContinuousPolar): void {
   basePolar = { ...polar }   // shallow clone as our baseline reference
   overrides.clear()
+  segmentOverrides.clear()
+  selectedSegment = 'system'
+  currentSegments = polar.aeroSegments
 
-  // Update all sliders to the new polar's values
-  for (const def of PARAM_DEFS) {
-    const val = polar[def.key] as number
-    const slider = sliderEls.get(def.key)
-    const label = valueEls.get(def.key)
-    if (slider) {
-      slider.min = String(def.min)
-      slider.max = String(def.max)
-      slider.step = String(def.step)
-      slider.value = String(val)
-    }
-    if (label) {
-      label.textContent = formatVal(val, def)
+  // Update segment selector dropdown
+  if (segmentSelector && segmentSelectorRow) {
+    segmentSelector.innerHTML = ''
+
+    if (currentSegments && currentSegments.length > 0) {
+      segmentSelectorRow.style.display = ''
+
+      // System-level option
+      const sysOpt = document.createElement('option')
+      sysOpt.value = 'system'
+      sysOpt.textContent = 'System (whole polar)'
+      segmentSelector.appendChild(sysOpt)
+
+      // One option per segment
+      for (const seg of currentSegments) {
+        const opt = document.createElement('option')
+        opt.value = seg.name
+        // Nicer label: capitalize, show type
+        const segType = seg.polar ? (seg.pitchOffset_deg ? 'lifting body' : 'cell') : 'parasitic'
+        opt.textContent = `${seg.name} (${segType})`
+        segmentSelector.appendChild(opt)
+      }
+      segmentSelector.value = 'system'
+    } else {
+      segmentSelectorRow.style.display = 'none'
     }
   }
+
+  // Update all sliders to the system polar's values
+  syncSlidersToBaseline(polar)
 }
 
 /**
  * Returns a ContinuousPolar with debug overrides applied.
  * If no overrides are active, returns the base polar unchanged.
+ *
+ * Only applies system-level overrides (segment='system').
+ * For per-segment overrides, use getSegmentPolarOverrides().
  */
 export function getOverriddenPolar(polar: ContinuousPolar): ContinuousPolar {
   if (overrides.size === 0 || !panelVisible) return polar
@@ -160,17 +218,50 @@ export function getOverriddenPolar(polar: ContinuousPolar): ContinuousPolar {
 }
 
 /**
+ * Returns a map of segment name → overridden ContinuousPolar for segments
+ * that have active debug overrides.
+ *
+ * Only populated when debug panel is open and segment-level overrides exist.
+ * Segments not in the map should use their default polar unchanged.
+ *
+ * For parasitic segments (no .polar), overrides for 'cd_0' and 's' are
+ * stored but applied differently — the caller should read 'cd_0' as the
+ * parasitic CD and 's' as the reference area.
+ */
+export function getSegmentPolarOverrides(): Map<string, Map<string, number>> {
+  if (!panelVisible) return new Map()
+  // Return a copy so callers can't mutate our state
+  const result = new Map<string, Map<string, number>>()
+  for (const [name, ov] of segmentOverrides) {
+    if (ov.size > 0) {
+      result.set(name, new Map(ov))
+    }
+  }
+  return result
+}
+
+/**
  * Returns true if the debug panel is open and has active overrides,
  * useful for adding the debug overrides to the sweep key so charts
  * recompute when sliders change.
  */
 export function debugSweepKey(): string {
-  if (!panelVisible || overrides.size === 0) return ''
-  // Create a deterministic key from overrides
+  if (!panelVisible) return ''
+
+  // System-level overrides
   const parts: string[] = []
   for (const [k, v] of overrides) {
-    parts.push(`${k}:${v}`)
+    parts.push(`sys:${k}:${v}`)
   }
+
+  // Per-segment overrides
+  for (const [segName, segOv] of segmentOverrides) {
+    for (const [k, v] of segOv) {
+      parts.push(`${segName}:${k}:${v}`)
+    }
+  }
+
+  if (parts.length === 0) return ''
   return parts.sort().join(',')
 }
 
@@ -178,6 +269,126 @@ export function debugSweepKey(): string {
 
 function formatVal(val: number, def: ParamDef): string {
   return `${val.toFixed(def.decimals)} ${def.unit}`
+}
+
+/**
+ * Get the baseline polar for the currently selected segment.
+ * - 'system' → basePolar
+ * - segment with .polar → that segment's ContinuousPolar
+ * - parasitic segment → synthesized mini-polar from S/CD
+ */
+function getBaselineForSelection(): ContinuousPolar | null {
+  if (selectedSegment === 'system') return basePolar
+  const seg = currentSegments?.find(s => s.name === selectedSegment)
+  if (!seg) return basePolar
+  if (seg.polar) return seg.polar
+  // Parasitic: build a fake polar so the S, cd_0, and chord sliders work
+  return { ...basePolar!, s: seg.S, cd_0: seg.getCoeffs(0, 0, dummyControls()).cd, chord: seg.chord }
+}
+
+/** Minimal controls for reading parasitic segment baseline CD */
+function dummyControls() {
+  return {
+    brakeLeft: 0, brakeRight: 0,
+    frontRiserLeft: 0, frontRiserRight: 0,
+    rearRiserLeft: 0, rearRiserRight: 0,
+    weightShiftLR: 0,
+    elevator: 0, rudder: 0, aileronLeft: 0, aileronRight: 0, flap: 0,
+    delta: 0, dirty: 0,
+  }
+}
+
+/**
+ * Get the active overrides map for the current selection.
+ */
+function getActiveOverrides(): Map<string, number> {
+  if (selectedSegment === 'system') return overrides
+  if (!segmentOverrides.has(selectedSegment)) {
+    segmentOverrides.set(selectedSegment, new Map())
+  }
+  return segmentOverrides.get(selectedSegment)!
+}
+
+/** Which PARAM_DEFS keys are relevant for parasitic segments (no full polar) */
+const PARASITIC_KEYS: Set<string> = new Set(['s', 'cd_0', 'chord'])
+
+/**
+ * Sync all slider positions and value labels to a given polar baseline.
+ * Resets "modified" highlights based on current active overrides.
+ */
+function syncSlidersToBaseline(polar: ContinuousPolar): void {
+  const isParasitic = selectedSegment !== 'system' &&
+    currentSegments?.find(s => s.name === selectedSegment) &&
+    !currentSegments.find(s => s.name === selectedSegment)!.polar
+
+  // System selection on a segmented polar → hide all sliders
+  // (system-level Kirchhoff model is not used when segments exist)
+  const isSystemWithSegments = selectedSegment === 'system' &&
+    currentSegments && currentSegments.length > 0
+
+  const activeOv = getActiveOverrides()
+
+  for (const def of PARAM_DEFS) {
+    const slider = sliderEls.get(def.key)
+    const label = valueEls.get(def.key)
+    const row = rowEls.get(def.key)
+
+    // Hide sliders: all for system+segments, non-parasitic-keys for parasitic
+    if (row) {
+      if (isSystemWithSegments) {
+        row.style.display = 'none'
+      } else if (isParasitic && !PARASITIC_KEYS.has(def.key)) {
+        row.style.display = 'none'
+      } else {
+        row.style.display = ''
+      }
+    }
+
+    const val = activeOv.has(def.key) ? activeOv.get(def.key)! : (polar[def.key] as number ?? 0)
+    if (slider) {
+      slider.min = String(def.min)
+      slider.max = String(def.max)
+      slider.step = String(def.step)
+      slider.value = String(val)
+    }
+    if (label) {
+      label.textContent = formatVal(val, def)
+    }
+    if (row) {
+      row.classList.toggle('debug-modified', activeOv.has(def.key))
+    }
+  }
+
+  // Also hide/show group headers
+  if (panelEl) {
+    const headers = panelEl.querySelectorAll<HTMLElement>('.debug-group-header')
+    const resetBtn = panelEl.querySelector<HTMLElement>('#debug-reset')
+    headers.forEach(h => {
+      if (isSystemWithSegments) {
+        h.style.display = 'none'
+      } else if (isParasitic) {
+        const text = h.textContent || ''
+        h.style.display = (text === 'Drag Model' || text === 'Physical') ? '' : 'none'
+      } else {
+        h.style.display = ''
+      }
+    })
+    // Hide reset button when system is selected on segmented polar
+    if (resetBtn) {
+      resetBtn.style.display = isSystemWithSegments ? 'none' : ''
+    }
+  }
+}
+
+/**
+ * Switch the debug panel to show/edit a different segment (or system).
+ */
+function switchToSegment(segName: string): void {
+  selectedSegment = segName
+  const baseline = getBaselineForSelection()
+  if (baseline) {
+    syncSlidersToBaseline(baseline)
+  }
 }
 
 function buildSliders(container: HTMLElement): void {
@@ -188,6 +399,9 @@ function buildSliders(container: HTMLElement): void {
   resetBtn.addEventListener('click', () => {
     if (basePolar) {
       overrides.clear()
+      segmentOverrides.clear()
+      selectedSegment = 'system'
+      if (segmentSelector) segmentSelector.value = 'system'
       syncDebugPanel(basePolar)
       onChange?.()
     }
@@ -210,6 +424,7 @@ function buildSliders(container: HTMLElement): void {
     // Row
     const row = document.createElement('div')
     row.className = 'debug-row'
+    rowEls.set(def.key, row)
 
     // Label
     const label = document.createElement('label')
@@ -232,23 +447,25 @@ function buildSliders(container: HTMLElement): void {
     slider.className = 'debug-slider'
     sliderEls.set(def.key, slider)
 
-    // Input handler
+    // Input handler — routes to system or segment overrides based on selection
     slider.addEventListener('input', () => {
       const numVal = parseFloat(slider.value)
       valSpan.textContent = formatVal(numVal, def)
 
-      // Check if this differs from the baseline
-      if (basePolar) {
-        const baseVal = basePolar[def.key] as number
+      const baseline = getBaselineForSelection()
+      const activeOv = getActiveOverrides()
+
+      if (baseline) {
+        const baseVal = baseline[def.key] as number ?? 0
         if (Math.abs(numVal - baseVal) < Number(def.step) * 0.5) {
-          overrides.delete(def.key)
+          activeOv.delete(def.key)
           row.classList.remove('debug-modified')
         } else {
-          overrides.set(def.key, numVal)
+          activeOv.set(def.key, numVal)
           row.classList.add('debug-modified')
         }
       } else {
-        overrides.set(def.key, numVal)
+        activeOv.set(def.key, numVal)
         row.classList.add('debug-modified')
       }
 
@@ -257,11 +474,13 @@ function buildSliders(container: HTMLElement): void {
 
     // Double-click to reset individual param
     slider.addEventListener('dblclick', () => {
-      if (basePolar) {
-        const baseVal = basePolar[def.key] as number
+      const baseline = getBaselineForSelection()
+      if (baseline) {
+        const baseVal = baseline[def.key] as number ?? 0
         slider.value = String(baseVal)
         valSpan.textContent = formatVal(baseVal, def)
-        overrides.delete(def.key)
+        const activeOv = getActiveOverrides()
+        activeOv.delete(def.key)
         row.classList.remove('debug-modified')
         onChange?.()
       }

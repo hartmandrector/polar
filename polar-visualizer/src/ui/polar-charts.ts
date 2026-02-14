@@ -18,8 +18,8 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
-import { sweepPolar, sweepLegacyPolar, aoaToColor, aoaColorLegend, type PolarPoint, type LegacyPoint, type SweepConfig } from './chart-data.ts'
-import type { ContinuousPolar } from '../polar/continuous-polar.ts'
+import { sweepPolar, sweepSegments, sweepLegacyPolar, aoaToColor, aoaColorLegend, type PolarPoint, type LegacyPoint, type SweepConfig } from './chart-data.ts'
+import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import type { WSEQPolar } from '../polar/polar-data.ts'
 
 // ─── Register Chart.js components ────────────────────────────────────────────
@@ -394,18 +394,29 @@ export function updateChartSweep(
   config: Partial<SweepConfig>,
   currentAlpha: number,
   legacyPolar?: WSEQPolar,
+  segments?: AeroSegment[],
+  controls?: SegmentControls,
 ): void {
   state.currentAlpha = currentAlpha
   state.minAlpha = config.minAlpha ?? -10
   state.maxAlpha = config.maxAlpha ?? 90
 
-  // Recompute full sweep
-  state.points = sweepPolar(polar, {
-    minAlpha: state.minAlpha,
-    maxAlpha: state.maxAlpha,
-    step: 0.5,
-    ...config,
-  })
+  // Use segment-summed sweep when segments are available, otherwise single-airfoil
+  if (segments && segments.length > 0 && controls) {
+    state.points = sweepSegments(segments, polar, controls, {
+      minAlpha: state.minAlpha,
+      maxAlpha: state.maxAlpha,
+      step: 0.5,
+      ...config,
+    })
+  } else {
+    state.points = sweepPolar(polar, {
+      minAlpha: state.minAlpha,
+      maxAlpha: state.maxAlpha,
+      step: 0.5,
+      ...config,
+    })
+  }
 
   // Recompute legacy sweep
   if (legacyPolar) {

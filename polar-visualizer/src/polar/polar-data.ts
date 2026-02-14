@@ -526,19 +526,21 @@ const SIN_TRIM = Math.sin(TRIM_ANGLE_RAD)
 // A uniform forward shift of +0.16 is applied so the mass distribution
 // aligns with the pilot model's center of volume.
 const PILOT_FWD_SHIFT = 0.28
-const PILOT_DOWN_SHIFT = 0.11
+const PILOT_DOWN_SHIFT = 0.163   // 0.11 base + 0.053 visual alignment (~10 cm lower)
 const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: number, z: number }> = [
   { name: 'head',            massRatio: 0.14,   x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.280 + PILOT_DOWN_SHIFT },
   { name: 'torso',           massRatio: 0.435,  x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.480 + PILOT_DOWN_SHIFT },
-  { name: 'right_upper_arm', massRatio: 0.0275, x:  0.05 + PILOT_FWD_SHIFT,  y:  0.100,  z:  0.400 + PILOT_DOWN_SHIFT },
-  { name: 'right_forearm',   massRatio: 0.016,  x:  0.04 + PILOT_FWD_SHIFT,  y:  0.090,  z:  0.520 + PILOT_DOWN_SHIFT },
-  { name: 'right_hand',      massRatio: 0.008,  x:  0.03 + PILOT_FWD_SHIFT,  y:  0.080,  z:  0.590 + PILOT_DOWN_SHIFT },
+  // Arms in flying position: upper arms raised alongside head, elbows bent ~90°,
+  // forearms angled forward toward risers, hands near riser attachment (toggles).
+  { name: 'right_upper_arm', massRatio: 0.0275, x:  0.08 + PILOT_FWD_SHIFT,  y:  0.090,  z:  0.300 + PILOT_DOWN_SHIFT },
+  { name: 'right_forearm',   massRatio: 0.016,  x:  0.14 + PILOT_FWD_SHIFT,  y:  0.080,  z:  0.220 + PILOT_DOWN_SHIFT },
+  { name: 'right_hand',      massRatio: 0.008,  x:  0.18 + PILOT_FWD_SHIFT,  y:  0.070,  z:  0.160 + PILOT_DOWN_SHIFT },
   { name: 'right_thigh',     massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y:  0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
   { name: 'right_shin',      massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y:  0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
   { name: 'right_foot',      massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y:  0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
-  { name: 'left_upper_arm',  massRatio: 0.0275, x:  0.05 + PILOT_FWD_SHIFT,  y: -0.100,  z:  0.400 + PILOT_DOWN_SHIFT },
-  { name: 'left_forearm',    massRatio: 0.016,  x:  0.04 + PILOT_FWD_SHIFT,  y: -0.090,  z:  0.520 + PILOT_DOWN_SHIFT },
-  { name: 'left_hand',       massRatio: 0.008,  x:  0.03 + PILOT_FWD_SHIFT,  y: -0.080,  z:  0.590 + PILOT_DOWN_SHIFT },
+  { name: 'left_upper_arm',  massRatio: 0.0275, x:  0.08 + PILOT_FWD_SHIFT,  y: -0.090,  z:  0.300 + PILOT_DOWN_SHIFT },
+  { name: 'left_forearm',    massRatio: 0.016,  x:  0.14 + PILOT_FWD_SHIFT,  y: -0.080,  z:  0.220 + PILOT_DOWN_SHIFT },
+  { name: 'left_hand',       massRatio: 0.008,  x:  0.18 + PILOT_FWD_SHIFT,  y: -0.070,  z:  0.160 + PILOT_DOWN_SHIFT },
   { name: 'left_thigh',      massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y: -0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
   { name: 'left_shin',       massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y: -0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
   { name: 'left_foot',       massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y: -0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
@@ -565,28 +567,31 @@ const CANOPY_MASS_SEGMENTS: MassSegment[] = [
   //   θ = 0°, ±12°, ±24°, ±36°
   //   Center z = -1.10 (lowest point of arc)
   //   Then rotated 6° forward about y-axis to sit in canopy's thickest section
+  //
+  // CANOPY_Z_SHIFT: visual alignment nudge — 20 cm higher (~-0.107 normalised)
+  // to better match the 3D model's canopy position.
 
   // Cell 0 — center (directly above pilot)
-  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.089 } },
-  { name: 'canopy_air_c',        massRatio: 0.011,   normalizedPosition: { x: 0.165, y:  0,     z: -1.089 } },
+  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
+  { name: 'canopy_air_c',        massRatio: 0.011,   normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
   // Cell 1R — right inner (12°)
-  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.055 } },
-  { name: 'canopy_air_r1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y:  0.322, z: -1.055 } },
+  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
+  { name: 'canopy_air_r1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
   // Cell 1L — left inner (12°)
-  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.055 } },
-  { name: 'canopy_air_l1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y: -0.322, z: -1.055 } },
+  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
+  { name: 'canopy_air_l1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
   // Cell 2R — right mid (24°)
-  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -0.955 } },
-  { name: 'canopy_air_r2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y:  0.630, z: -0.955 } },
+  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
+  { name: 'canopy_air_r2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
   // Cell 2L — left mid (24°)
-  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -0.955 } },
-  { name: 'canopy_air_l2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y: -0.630, z: -0.955 } },
+  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
+  { name: 'canopy_air_l2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
   // Cell 3R — right outer (36°)
-  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.794 } },
-  { name: 'canopy_air_r3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y:  0.911, z: -0.794 } },
+  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
+  { name: 'canopy_air_r3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
   // Cell 3L — left outer (36°)
-  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.794 } },
-  { name: 'canopy_air_l3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y: -0.911, z: -0.794 } },
+  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+  { name: 'canopy_air_l3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
 ]
 
 // ─── Canopy Aero Segments ────────────────────────────────────────────────────
@@ -674,13 +679,16 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
  */
 const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // ── 7 canopy cells ──
-  makeCanopyCellSegment('cell_c',  { x: 0.165, y:  0,     z: -1.089 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r1', { x: 0.161, y:  0.322, z: -1.055 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l1', { x: 0.161, y: -0.322, z: -1.055 }, -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r2', { x: 0.151, y:  0.630, z: -0.955 },  24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l2', { x: 0.151, y: -0.630, z: -0.955 }, -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r3', { x: 0.134, y:  0.911, z: -0.794 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l3', { x: 0.134, y: -0.911, z: -0.794 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
+  // Positions extended outward along arc radius to sit on the upper canopy skin.
+  // Graduated push: center ~4.5 cm, inner ~9 cm, mid ~15 cm, outer ~22 cm extra
+  // because the real canopy is flatter than a perfect arc at the wingtips.
+  makeCanopyCellSegment('cell_c',  { x: 0.174, y:  0,     z: -1.220 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r1', { x: 0.170, y:  0.358, z: -1.182 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l1', { x: 0.170, y: -0.358, z: -1.182 }, -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r2', { x: 0.162, y:  0.735, z: -1.114 },  24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l2', { x: 0.162, y: -0.735, z: -1.114 }, -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r3', { x: 0.145, y:  1.052, z: -0.954 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l3', { x: 0.145, y: -1.052, z: -0.954 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
 
   // ── 2 parasitic bodies (lines + bridle — always the same) ──
   //                    name       position (NED norm)                   S      chord  CD

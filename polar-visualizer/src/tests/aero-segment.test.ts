@@ -14,10 +14,12 @@
 import { describe, it, expect } from 'vitest'
 import type { AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import { getAllCoefficients, coeffToForces } from '../polar/coefficients.ts'
-import { computeSegmentForce, sumAllSegments, defaultControls } from '../polar/aero-segment.ts'
+import { netForceToPseudo } from '../polar/coefficients.ts'
+import { computeSegmentForce, sumAllSegments, defaultControls, computeWindFrameNED } from '../polar/aero-segment.ts'
 import type { Vec3NED } from '../polar/aero-segment.ts'
-import { ibexulContinuous } from '../polar/polar-data.ts'
+import { ibexulContinuous, makeIbexAeroSegments } from '../polar/polar-data.ts'
 import { computeCenterOfMass } from '../polar/inertia.ts'
+import { sweepSegments } from '../ui/chart-data.ts'
 
 // ─── Helper: wrap a lumped polar into a single AeroSegment ──────────────────
 
@@ -431,5 +433,164 @@ describe('Ibex UL — lever arm moments', () => {
 
     // Pitch moment should change with front riser
     expect(fSystem.moment.y).not.toBeCloseTo(nSystem.moment.y, 1)
+  })
+})
+
+// ─── computeWindFrameNED ─────────────────────────────────────────────────────
+
+describe('computeWindFrameNED', () => {
+  it('at α=0, β=0: wind comes from straight ahead (+x)', () => {
+    const { windDir, liftDir, sideDir } = computeWindFrameNED(0, 0)
+    expect(windDir.x).toBeCloseTo(1, 5)
+    expect(windDir.y).toBeCloseTo(0, 5)
+    expect(windDir.z).toBeCloseTo(0, 5)
+    // Lift should point up (-z in NED)
+    expect(liftDir.z).toBeLessThan(-0.5)
+  })
+
+  it('at α=90, β=0: wind comes from below (+z)', () => {
+    const { windDir } = computeWindFrameNED(90, 0)
+    expect(windDir.x).toBeCloseTo(0, 4)
+    expect(windDir.z).toBeCloseTo(1, 4)
+  })
+
+  it('at α=0, β=90: wind comes from the left (-y in NED)', () => {
+    const { windDir } = computeWindFrameNED(0, 90)
+    expect(windDir.x).toBeCloseTo(0, 4)
+    expect(windDir.y).toBeCloseTo(-1, 4)
+  })
+
+  it('wind, lift, and side are mutually orthogonal', () => {
+    const { windDir: w, liftDir: l, sideDir: s } = computeWindFrameNED(25, 10)
+    const dot_wl = w.x * l.x + w.y * l.y + w.z * l.z
+    const dot_ws = w.x * s.x + w.y * s.y + w.z * s.z
+    const dot_ls = l.x * s.x + l.y * s.y + l.z * s.z
+    expect(dot_wl).toBeCloseTo(0, 5)
+    expect(dot_ws).toBeCloseTo(0, 5)
+    expect(dot_ls).toBeCloseTo(0, 5)
+  })
+
+  it('all direction vectors are unit length', () => {
+    const { windDir: w, liftDir: l, sideDir: s } = computeWindFrameNED(30, 15)
+    expect(Math.sqrt(w.x ** 2 + w.y ** 2 + w.z ** 2)).toBeCloseTo(1, 5)
+    expect(Math.sqrt(l.x ** 2 + l.y ** 2 + l.z ** 2)).toBeCloseTo(1, 5)
+    expect(Math.sqrt(s.x ** 2 + s.y ** 2 + s.z ** 2)).toBeCloseTo(1, 5)
+  })
+})
+
+// ─── netForceToPseudo ────────────────────────────────────────────────────────
+
+describe('netForceToPseudo', () => {
+  it('at equilibrium (L=W, D=0): kd ≈ 0, kl > 0', () => {
+    const mass = 77.5
+    const g = 9.80665
+    const W = mass * g
+    // Level flight at 15 m/s — aero lift exactly cancels weight, no drag
+    // In inertial NED: velocity = (15, 0, 0), gravity = (0,0,+mg)
+    // Aero force = (0, 0, -mg) [lift pointing up]. Net force = (0, 0, 0).
+    const velocity = { x: 15, y: 0, z: 0 }
+    const netForce = { x: 0, y: 0, z: 0 }  // perfect equilibrium
+
+    const result = netForceToPseudo(netForce, velocity, mass)
+    expect(result.kd).toBeCloseTo(0, 3)
+    // kl should still be computed from gravity decomposition
+  })
+
+  it('in steady glide: vxs and vys are positive', () => {
+    const mass = 77.5
+    const g = 9.80665
+    const W = mass * g
+    // Glide at 45° → equal horiz and vert speeds
+    const v = 15
+    const vxs = v * Math.cos(Math.PI / 4)  // horizontal
+    const vys = v * Math.sin(Math.PI / 4)  // vertical (down)
+    // velocity in NED: forward + down = (vxs, 0, vys)
+    const velocity = { x: vxs, y: 0, z: vys }
+    // At steady state: net force ≈ 0 (aero + weight perfectly balanced along flight path)
+    const netForce = { x: 0, y: 0, z: 0 }
+
+    const result = netForceToPseudo(netForce, velocity, mass)
+    expect(result.vxs).toBeGreaterThan(0)
+    expect(result.vys).toBeGreaterThan(0)
+  })
+
+  it('zero velocity returns zero coefficients', () => {
+    const result = netForceToPseudo({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 77.5)
+    expect(result.kl).toBe(0)
+    expect(result.kd).toBe(0)
+    expect(result.vxs).toBe(0)
+    expect(result.vys).toBe(0)
+  })
+})
+
+// ─── sweepSegments ───────────────────────────────────────────────────────────
+
+describe('sweepSegments', () => {
+  it('produces points across the sweep range', () => {
+    const segments = makeIbexAeroSegments('slick')
+    const polar = ibexulContinuous
+    const controls = defaultControls()
+    const points = sweepSegments(segments, polar, controls, {
+      minAlpha: -5,
+      maxAlpha: 25,
+      step: 1.0,
+    })
+    expect(points.length).toBeGreaterThan(25)
+    expect(points[0].alpha).toBe(-5)
+    expect(points[points.length - 1].alpha).toBe(25)
+  })
+
+  it('at trim α: CL > 0 and CD > 0', () => {
+    const segments = makeIbexAeroSegments('slick')
+    const polar = ibexulContinuous
+    const controls = defaultControls()
+    const points = sweepSegments(segments, polar, controls, {
+      minAlpha: 8,
+      maxAlpha: 10,
+      step: 1.0,
+    })
+    const trimPoint = points.find(p => p.alpha === 9)
+    expect(trimPoint).toBeDefined()
+    expect(trimPoint!.cl).toBeGreaterThan(0)
+    expect(trimPoint!.cd).toBeGreaterThan(0)
+    expect(trimPoint!.ld).toBeGreaterThan(0)
+    expect(trimPoint!.vxs).toBeGreaterThan(0)
+    expect(trimPoint!.vys).toBeGreaterThan(0)
+  })
+
+  it('PolarPoint has all required fields', () => {
+    const segments = makeIbexAeroSegments('slick')
+    const polar = ibexulContinuous
+    const controls = defaultControls()
+    const points = sweepSegments(segments, polar, controls, {
+      minAlpha: 5,
+      maxAlpha: 6,
+      step: 1.0,
+    })
+    const p = points[0]
+    expect(p).toHaveProperty('alpha')
+    expect(p).toHaveProperty('cl')
+    expect(p).toHaveProperty('cd')
+    expect(p).toHaveProperty('cy')
+    expect(p).toHaveProperty('cm')
+    expect(p).toHaveProperty('cn')
+    expect(p).toHaveProperty('cl_roll')
+    expect(p).toHaveProperty('ld')
+    expect(p).toHaveProperty('vxs')
+    expect(p).toHaveProperty('vys')
+    expect(p).toHaveProperty('color')
+  })
+
+  it('brake input changes outer cell CL', () => {
+    const segments = makeIbexAeroSegments('slick')
+    const polar = ibexulContinuous
+    const noBrake = defaultControls()
+    const fullBrake: SegmentControls = { ...defaultControls(), brakeLeft: 1, brakeRight: 1 }
+
+    const noPoints = sweepSegments(segments, polar, noBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
+    const brPoints = sweepSegments(segments, polar, fullBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
+
+    // Both brakes add camber → more CL at the same α
+    expect(brPoints[0].cl).not.toBeCloseTo(noPoints[0].cl, 2)
   })
 })

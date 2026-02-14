@@ -61,6 +61,9 @@ export function makeCanopyCellSegment(
     polar: cellPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      // Use this.polar so debug overrides applied to seg.polar take effect
+      const polar = this.polar ?? cellPolar
+
       // ── Local flow angles from cell orientation ──
       // Cell at arc angle θ sees a rotated projection of freestream
       const alphaLocal = alpha_deg * Math.cos(theta) + beta_deg * Math.sin(theta)
@@ -93,7 +96,7 @@ export function makeCanopyCellSegment(
       const deltaEffective = brakeInput * brakeSensitivity
 
       // ── Evaluate Kirchhoff model at (α_effective, β_local, δ_effective) ──
-      const c = getAllCoefficients(alphaEffective, betaLocal, deltaEffective, cellPolar)
+      const c = getAllCoefficients(alphaEffective, betaLocal, deltaEffective, polar)
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
     },
   }
@@ -138,14 +141,18 @@ export function makeLiftingBodySegment(
     S: bodyPolar.s,
     chord: bodyPolar.chord,
     pitchOffset_deg,
+    polar: bodyPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      // Use this.polar so debug overrides applied to seg.polar take effect
+      const polar = this.polar ?? bodyPolar
+
       // Transform freestream α to the segment's local frame.
       // A +90° pitch offset means the body is upright (hanging under canopy):
       // the canopy's freestream α (≈10°) maps to the body seeing wind from
       // the front/chest, which is deep post-stall in the wingsuit polar.
       const localAlpha = alpha_deg - pitchOffset_deg
-      const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, bodyPolar, controls.dirty)
+      const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, polar, controls.dirty)
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
     },
   }

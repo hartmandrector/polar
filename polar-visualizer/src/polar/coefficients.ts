@@ -223,3 +223,100 @@ export function coeffToSS(cl: number, cd: number, s: number, m: number, rho: num
   const vys = v * cd / ctot
   return { vxs, vys }
 }
+
+// ─── Pseudo-Coefficients (Net Force Decomposition) ───────────────────────────
+
+/**
+ * Pseudo-coefficients from net force decomposition.
+ * Follows WSE.java calculateWingsuitParameters() convention.
+ */
+export interface PseudoCoefficients {
+  kl: number        // pseudo lift coefficient
+  kd: number        // pseudo drag coefficient
+  roll: number      // roll angle [rad]
+  vxs: number       // sustained horizontal speed [m/s]
+  vys: number       // sustained vertical speed [m/s]
+  glideRatio: number // kl / kd
+}
+
+/**
+ * Decompose net force (aero + weight) into pseudo kl, kd, roll.
+ *
+ * Both inputs must be in **inertial NED** (not body frame).
+ * In inertial NED, gravity = (0, 0, +g) so only the D-component
+ * needs correction — N and E are already aerodynamic-only.
+ *
+ * This matches WSE.java calculateWingsuitParameters(), adapted from ENU to NED.
+ *
+ * @param netForce  Total force (aero + weight) in inertial NED [N]
+ * @param velocity  Velocity vector in inertial NED [m/s]
+ * @param mass      System mass [kg]
+ */
+export function netForceToPseudo(
+  netForce: { x: number; y: number; z: number },
+  velocity: { x: number; y: number; z: number },
+  mass: number,
+): PseudoCoefficients {
+  const g = 9.80665
+
+  // Total acceleration
+  const aN = netForce.x / mass
+  const aE = netForce.y / mass
+  const aD = netForce.z / mass
+
+  // Subtract gravity from down-component (isolate aerodynamic acceleration)
+  const aDaero = aD - g
+
+  // Speed
+  const vN = velocity.x
+  const vE = velocity.y
+  const vD = velocity.z
+  const v = Math.sqrt(vN * vN + vE * vE + vD * vD)
+  const vGround = Math.sqrt(vN * vN + vE * vE)
+
+  if (v < 0.01) {
+    return { kl: 0, kd: 0, roll: 0, vxs: 0, vys: 0, glideRatio: 0 }
+  }
+
+  // Drag acceleration: projection of aero acceleration onto velocity
+  const aProj = (aN * vN + aE * vE + aDaero * vD) / v
+  const dragN = aProj * vN / v
+  const dragE = aProj * vE / v
+  const dragD = aProj * vD / v
+
+  // Drag scalar (sign-corrected: drag opposes velocity)
+  const dragDotV = dragN * vN + dragE * vE + dragD * vD
+  const dragMag = Math.sqrt(dragN * dragN + dragE * dragE + dragD * dragD)
+  const aDscalar = dragDotV > 0 ? -dragMag : dragMag
+
+  // Lift acceleration: rejection (perpendicular to velocity)
+  const liftN = aN - dragN
+  const liftE = aE - dragE
+  const liftD = aDaero - dragD
+  const aL = Math.sqrt(liftN * liftN + liftE * liftE + liftD * liftD)
+
+  // Pseudo-coefficients: normalize by g·v²
+  const kl = aL / (g * v * v)
+  const kd = aDscalar / (g * v * v)
+
+  // Roll angle — uses raw aD (with gravity, NOT aDaero)
+  let roll = 0
+  if (kl * vGround * v > 1e-10) {
+    const cosRoll = (1 - aD / g - kd * v * vD) / (kl * vGround * v)
+    const clampedCos = Math.max(-1, Math.min(1, cosRoll))
+    roll = Math.acos(clampedCos)
+    // Sign from cross product of lift and velocity tangent
+    const sign = liftN * (-vE) + liftE * vN
+    if (sign < 0) roll = -roll
+  }
+
+  // Pseudo sustained speeds
+  const klkd = kl * kl + kd * kd
+  const denom = klkd > 1e-20 ? Math.pow(klkd, 0.75) : 1e-10
+  const vxs = kl / denom
+  const vys = kd / denom
+
+  const glideRatio = Math.abs(kd) > 1e-10 ? kl / kd : 0
+
+  return { kl, kd, roll, vxs, vys, glideRatio }
+}

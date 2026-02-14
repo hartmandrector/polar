@@ -59,6 +59,81 @@ export function defaultControls(): SegmentControls {
   }
 }
 
+// ─── NED Wind Frame ──────────────────────────────────────────────────────────
+
+/**
+ * Wind-frame direction vectors in NED body frame.
+ * Pure math — no Three.js dependency.
+ */
+export interface WindFrameNED {
+  windDir: Vec3NED   // unit vector: where air comes FROM
+  liftDir: Vec3NED   // unit vector: perpendicular to wind, in x-z (vertical) plane
+  sideDir: Vec3NED   // unit vector: cross(wind, lift)
+}
+
+/**
+ * Compute aerodynamic direction vectors from angle of attack and sideslip
+ * in NED body frame. Equivalent to computeWindFrame() in vectors.ts but
+ * without Three.js.
+ *
+ * NED body frame:
+ *   x = forward, y = right, z = down
+ *
+ * At α=0, β=0: wind comes from straight ahead (+x).
+ * Positive α: nose up → wind tilts to come from below (+z component).
+ * Positive β: sideslip right → wind comes from the right (+y component).
+ */
+export function computeWindFrameNED(alpha_deg: number, beta_deg: number): WindFrameNED {
+  const a = alpha_deg * Math.PI / 180
+  const b = beta_deg * Math.PI / 180
+
+  // Wind direction: where air comes FROM in body NED
+  // Derived from Three.js windDirectionBody → NED conversion:
+  //   Three.js: (sin(β)cos(α), -sin(α), cos(β)cos(α))
+  //   NED.x = Three.z = cos(β)cos(α)
+  //   NED.y = -Three.x = -sin(β)cos(α)
+  //   NED.z = -Three.y = sin(α)
+  const windDir: Vec3NED = {
+    x: Math.cos(b) * Math.cos(a),
+    y: -Math.sin(b) * Math.cos(a),
+    z: Math.sin(a),
+  }
+
+  // Lift direction: perpendicular to wind in x-z vertical plane, pointing "up"
+  // In NED, "up" reference is (0, 0, -1). Lift = cross(wind, up_ref) × wind,
+  // but simpler: rotate wind 90° in x-z plane toward -z.
+  // liftDir = (-sin(α)cos(β), sin(β)sin(α) [≈0 at small β], -cos(α))
+  // But to match Three.js exactly: use the double-cross formula.
+  //
+  // up_NED = (0, 0, -1)  [Three.js (0,1,0) → NED]
+  // temp = cross(wind, up) = (wind.y·(-1) - wind.z·0, wind.z·0 - wind.x·(-1), wind.x·0 - wind.y·0)
+  //      = (-wind.y, wind.x, 0) = (sin(β)cos(α), cos(β)cos(α), 0)
+  // lift = cross(temp, wind)
+  const tx = Math.sin(b) * Math.cos(a)
+  const ty = Math.cos(b) * Math.cos(a)
+  const tz = 0
+  let lx = ty * windDir.z - tz * windDir.y
+  let ly = tz * windDir.x - tx * windDir.z
+  let lz = tx * windDir.y - ty * windDir.x
+  const lLen = Math.sqrt(lx * lx + ly * ly + lz * lz)
+  if (lLen > 1e-10) {
+    lx /= lLen; ly /= lLen; lz /= lLen
+  } else {
+    // Degenerate (α ≈ ±90°): lift along -x in NED (= -z in Three.js)
+    lx = -1; ly = 0; lz = 0
+  }
+  const liftDir: Vec3NED = { x: lx, y: ly, z: lz }
+
+  // Side direction: cross(wind, lift)
+  const sideDir: Vec3NED = {
+    x: windDir.y * lz - windDir.z * ly,
+    y: windDir.z * lx - windDir.x * lz,
+    z: windDir.x * ly - windDir.y * lx,
+  }
+
+  return { windDir, liftDir, sideDir }
+}
+
 // ─── Per-Segment Force ──────────────────────────────────────────────────────
 
 /**

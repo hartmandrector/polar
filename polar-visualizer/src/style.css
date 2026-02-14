@@ -300,6 +300,35 @@ html, body {
   padding-bottom: 20px;
 }
 
+.debug-segment-selector-row {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-segment-selector-row .debug-label {
+  white-space: nowrap;
+}
+
+.debug-segment-select {
+  flex: 1;
+  padding: 3px 6px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 11px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  cursor: pointer;
+}
+
+.debug-segment-select:hover,
+.debug-segment-select:focus {
+  border-color: #e94560;
+  outline: none;
+}
+
 .debug-group-header {
   font-size: 11px;
   color: #e94560;

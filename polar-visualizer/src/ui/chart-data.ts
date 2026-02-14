@@ -6,7 +6,9 @@
  */
 
 import { getAllCoefficients, coeffToSS } from '../polar/coefficients.ts'
-import type { ContinuousPolar, FullCoefficients } from '../polar/continuous-polar.ts'
+import type { ContinuousPolar, FullCoefficients, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
+import { computeSegmentForce, sumAllSegments, computeWindFrameNED, defaultControls } from '../polar/aero-segment.ts'
+import { computeCenterOfMass } from '../polar/inertia.ts'
 import { getLegacyCoefficients } from '../polar/polar-data.ts'
 import type { WSEQPolar } from '../polar/polar-data.ts'
 
@@ -106,6 +108,92 @@ export function sweepPolar(
       f: coeffs.f,
       cn: coeffs.cn,
       cl_roll: coeffs.cl_roll,
+      ld,
+      vxs: ss.vxs,
+      vys: ss.vys,
+      color: aoaToColor(alpha, cfg.minAlpha, cfg.maxAlpha),
+    })
+  }
+
+  return points
+}
+
+// ─── Segment-Summed Sweep ────────────────────────────────────────────────────
+
+/**
+ * Sweep α using per-segment force summation instead of the lumped single-airfoil model.
+ *
+ * At each α step:
+ * 1. Compute per-segment forces via computeSegmentForce()
+ * 2. Compute NED wind/lift/side directions from α,β
+ * 3. Sum forces and moments via sumAllSegments()
+ * 4. Decompose total force back into pseudo CL/CD/CY by dotting with direction vectors
+ * 5. Normalize by q·S_ref to get pseudo coefficients comparable to single-airfoil data
+ * 6. Compute sustained speeds from pseudo CL/CD
+ *
+ * The result uses the same PolarPoint interface so charts render unchanged.
+ */
+export function sweepSegments(
+  segments: AeroSegment[],
+  polar: ContinuousPolar,
+  controls: SegmentControls,
+  config: Partial<SweepConfig> = {}
+): PolarPoint[] {
+  const cfg = { ...DEFAULT_SWEEP, ...config }
+  const points: PolarPoint[] = []
+
+  // System CG from mass segments (or fallback to origin)
+  const cgMeters = polar.massSegments && polar.massSegments.length > 0
+    ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+    : { x: 0, y: 0, z: 0 }
+
+  // Reference values for coefficient normalization
+  const sRef = polar.s
+  const mRef = polar.m
+  const chordRef = polar.chord
+
+  for (let alpha = cfg.minAlpha; alpha <= cfg.maxAlpha; alpha += cfg.step) {
+    const q = 0.5 * cfg.rho * cfg.airspeed * cfg.airspeed
+    const qS = q * sRef
+
+    // 1. Per-segment forces
+    const segForces = segments.map(seg =>
+      computeSegmentForce(seg, alpha, cfg.beta_deg, controls, cfg.rho, cfg.airspeed)
+    )
+
+    // 2. Wind frame in NED body coordinates
+    const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha, cfg.beta_deg)
+
+    // 3. Sum all segment forces and moments
+    const system = sumAllSegments(segments, segForces, cgMeters, 1.875, windDir, liftDir, sideDir)
+
+    // 4. Decompose total force into lift/drag/side magnitudes
+    // by projecting onto the wind-frame direction vectors
+    const totalLift = liftDir.x * system.force.x + liftDir.y * system.force.y + liftDir.z * system.force.z
+    const totalDrag = -(windDir.x * system.force.x + windDir.y * system.force.y + windDir.z * system.force.z)
+    const totalSide = sideDir.x * system.force.x + sideDir.y * system.force.y + sideDir.z * system.force.z
+
+    // 5. Pseudo coefficients (normalized by system reference area)
+    const cl = qS > 1e-10 ? totalLift / qS : 0
+    const cd = qS > 1e-10 ? totalDrag / qS : 0
+    const cy = qS > 1e-10 ? totalSide / qS : 0
+
+    // Moment coefficients from segment summation
+    const qSc = qS * chordRef
+    const cm = qSc > 1e-10 ? system.moment.y / qSc : 0       // pitch (NED y)
+    const cn = qSc > 1e-10 ? system.moment.z / qSc : 0       // yaw   (NED z)
+    const cl_roll = qSc > 1e-10 ? system.moment.x / qSc : 0  // roll  (NED x)
+
+    // 6. Derived quantities
+    const ld = cd > 0.001 ? cl / cd : 0
+    const ss = coeffToSS(cl, cd, sRef, mRef, cfg.rho)
+
+    points.push({
+      alpha,
+      cl, cd, cy, cm,
+      cp: 0.25,    // not meaningful for multi-segment — CP emerges from geometry
+      f: 0,        // not applicable to multi-segment
+      cn, cl_roll,
       ld,
       vxs: ss.vxs,
       vys: ss.vys,

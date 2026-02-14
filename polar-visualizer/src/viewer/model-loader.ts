@@ -57,6 +57,13 @@ export interface LoadedModel {
   pilotType?: PilotType
   /** Pivot group for bridle + pilot chute (only for canopy), rotatable per wind direction */
   bridleGroup?: THREE.Group
+  /**
+   * CG offset applied to center the model at the origin [Three.js scene units].
+   * This is the vector subtracted from the model's position so the CG sits at (0,0,0).
+   * Force vectors must subtract this same offset from their computed positions.
+   * Only set for canopy models positioned via applyCgFromMassSegments.
+   */
+  cgOffsetThree?: THREE.Vector3
 }
 
 const loader = new GLTFLoader()
@@ -221,6 +228,61 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
 export function applyCgOffset(loadedModel: LoadedModel, cgOffsetFraction: number): void {
   // Three.js Z = NED X (forward); shift model backward so CG sits at origin
   loadedModel.model.position.z -= cgOffsetFraction * loadedModel.bodyLength
+}
+
+/**
+ * Shift the model so the mass-segment CG sits at the scene origin.
+ *
+ * For canopy systems, the CG is computed from mass segments (pilot body +
+ * canopy cells) and doesn't coincide with the geometric center. This function
+ * moves the entire model group so the thick force vectors (which originate
+ * at the computed CG) emanate from the scene origin.
+ *
+ * CG centering works in three coordinated steps, all using the same offset:
+ *
+ *   1. **Model mesh** — this function shifts the 3D model and bridle so the
+ *      computed CG sits at the scene origin (Three.js 0,0,0).
+ *
+ *   2. **Force vectors** — `updateForceVectors()` in vectors.ts receives
+ *      `cgOffsetThree` (stored on LoadedModel) and subtracts it from every
+ *      arrow position via the `shiftPos()` helper.
+ *
+ *   3. **Mass overlay** — `massOverlay.group.position` is set to
+ *      `-cgOffsetThree` in main.ts so the point-mass spheres move with
+ *      the model mesh.
+ *
+ * If mass segment positions are adjusted later, the CG recomputes
+ * automatically and all three systems stay in sync.
+ *
+ * @param loadedModel  The loaded model to adjust
+ * @param cgNED        CG position in NED meters from computeCenterOfMass()
+ */
+export function applyCgFromMassSegments(
+  loadedModel: LoadedModel,
+  cgNED: { x: number; y: number; z: number },
+): void {
+  // NED→Three.js: three.x = -ned.y, three.y = -ned.z, three.z = ned.x
+  // Scale by pilotScale to get model units
+  const ps = loadedModel.pilotScale
+  const cgThreeX = -cgNED.y * ps
+  const cgThreeY = -cgNED.z * ps
+  const cgThreeZ =  cgNED.x * ps
+
+  // Step 1: Shift model so CG is at origin
+  const cgOffsetThree = new THREE.Vector3(cgThreeX, cgThreeY, cgThreeZ)
+  loadedModel.model.position.x -= cgThreeX
+  loadedModel.model.position.y -= cgThreeY
+  loadedModel.model.position.z -= cgThreeZ
+
+  // Also shift bridle group if present (it's a sibling of model in the group)
+  if (loadedModel.bridleGroup) {
+    loadedModel.bridleGroup.position.x -= cgThreeX
+    loadedModel.bridleGroup.position.y -= cgThreeY
+    loadedModel.bridleGroup.position.z -= cgThreeZ
+  }
+
+  // Store offset for Steps 2 & 3 (vectors and mass overlay)
+  loadedModel.cgOffsetThree = cgOffsetThree
 }
 
 /**
