@@ -303,6 +303,8 @@ Sideslip affects all coefficients through crossflow scaling:
 
 ![Effect of sideslip (β) on coefficients](polar-visualizer/docs/gifs/effect-beta-sideslip.gif)
 
+![Effect of sideslip on canopy with per-segment forces](polar-visualizer/docs/gifs/effect-canopy-sideslip.gif)
+
 $$C_L(\alpha, \beta) = C_L(\alpha) \cdot \cos^2(\beta)$$
 
 $$C_D(\alpha, \beta) = C_D(\alpha) \cdot \cos^2(\beta) + C_{D_n,lat} \cdot \sin^2(\beta)$$
