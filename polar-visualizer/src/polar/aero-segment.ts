@@ -56,6 +56,7 @@ export function defaultControls(): SegmentControls {
     flap: 0,
     delta: 0,
     dirty: 0,
+    unzip: 0,
   }
 }
 

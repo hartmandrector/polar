@@ -137,6 +137,32 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       canopyControlsGroup.style.display = modelType === 'canopy' ? '' : 'none'
     }
 
+    // ── Delta slider: relabel as "Unzip" in canopy+wingsuit mode ──
+    const deltaLabelEl = document.getElementById('delta-label')
+    const deltaGroup = document.getElementById('delta-group')
+    const isCanopyWingsuit = modelType === 'canopy' && canopyPilotType === 'wingsuit'
+    if (deltaLabelEl) {
+      deltaLabelEl.textContent = isCanopyWingsuit ? 'Unzip' : 'δ (Control)'
+    }
+    if (isCanopyWingsuit) {
+      // Unzip: 0–100 (0 = zipped, 100 = unzipped)
+      deltaSlider.min = '0'
+      deltaSlider.max = '100'
+    } else {
+      deltaSlider.min = '-100'
+      deltaSlider.max = '100'
+    }
+    // Hide delta slider entirely for canopy+slick (no unzip, no δ use)
+    if (deltaGroup) {
+      deltaGroup.style.display = (modelType === 'canopy' && canopyPilotType === 'slick') ? 'none' : ''
+    }
+
+    // ── Hide dirty slider in canopy mode (segments handle everything) ──
+    const dirtyGroup = document.getElementById('dirty-group')
+    if (dirtyGroup) {
+      dirtyGroup.style.display = modelType === 'canopy' ? 'none' : ''
+    }
+
     // Update slider labels based on attitude mode
     const rollLabelEl = document.getElementById('roll-label')
     const pitchLabelEl = document.getElementById('pitch-label')

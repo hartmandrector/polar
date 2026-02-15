@@ -95,10 +95,17 @@ const SEGMENT_COLORS: Record<string, SegmentColors> = {
   cell_l2: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },
   cell_r3: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },  // outer: lighter
   cell_l3: { lift: 0x66ff66, drag: 0xff4444, side: 0x6699ff },
+  // Brake flap segments — darker/dimmer variants of parent cell colors
+  flap_r1: { lift: 0x228822, drag: 0x882222, side: 0x224488 },  // inner: dark
+  flap_l1: { lift: 0x228822, drag: 0x882222, side: 0x224488 },
+  flap_r2: { lift: 0x338833, drag: 0x993333, side: 0x335599 },  // mid: dark-mid
+  flap_l2: { lift: 0x338833, drag: 0x993333, side: 0x335599 },
+  flap_r3: { lift: 0x448844, drag: 0xaa4444, side: 0x4466aa },  // outer: dark-bright
+  flap_l3: { lift: 0x448844, drag: 0xaa4444, side: 0x4466aa },
   // Parasitic bodies
   lines:   { lift: 0x666666, drag: 0xff8800, side: 0x666666 },  // orange drag
   pilot:   { lift: 0x448844, drag: 0xffaa44, side: 0x666666 },  // yellow-orange drag
-  bridle:  { lift: 0x666666, drag: 0xff88cc, side: 0x666666 },  // pink drag
+  pc:      { lift: 0x666666, drag: 0xff88cc, side: 0x666666 },  // pink drag
 }
 
 const DEFAULT_COLORS: SegmentColors = { lift: 0x44cc44, drag: 0xcc4444, side: 0x4488cc }
@@ -266,6 +273,7 @@ export function updateForceVectors(
   pilotScale: number = 1.0,
   controls?: SegmentControls,
   cgOffsetThree?: THREE.Vector3,
+  cachedSegForces?: SegmentForceResult[],
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -313,8 +321,8 @@ export function updateForceVectors(
     const segments = polar.aeroSegments!
     ensureSegmentArrows(vectors, segments)
 
-    // Compute per-segment forces
-    const segForces: SegmentForceResult[] = segments.map(seg =>
+    // Use cached segment forces if provided, otherwise compute
+    const segForces: SegmentForceResult[] = cachedSegForces ?? segments.map(seg =>
       computeSegmentForce(seg, alpha_deg, beta_deg, ctrl, rho, airspeed)
     )
 

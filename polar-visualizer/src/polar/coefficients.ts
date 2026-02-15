@@ -320,3 +320,53 @@ export function netForceToPseudo(
 
   return { kl, kd, roll, vxs, vys, glideRatio }
 }
+
+// ─── Polar Interpolation ─────────────────────────────────────────────────────
+
+/**
+ * Linearly interpolate every scalar field between two ContinuousPolar objects.
+ *
+ * t = 0 → returns polarA (all values from A)
+ * t = 1 → returns polarB (all values from B)
+ * 0 < t < 1 → blended polar
+ *
+ * Non-scalar fields (name, type, controls, massSegments, aeroSegments, etc.)
+ * are taken from polarA. Only aerodynamic scalars are interpolated.
+ */
+export function lerpPolar(t: number, polarA: ContinuousPolar, polarB: ContinuousPolar): ContinuousPolar {
+  const lerp = (a: number, b: number) => a + t * (b - a)
+  return {
+    ...polarA,
+    // Attached-flow lift
+    cl_alpha:        lerp(polarA.cl_alpha,        polarB.cl_alpha),
+    alpha_0:         lerp(polarA.alpha_0,         polarB.alpha_0),
+    // Drag
+    cd_0:            lerp(polarA.cd_0,            polarB.cd_0),
+    k:               lerp(polarA.k,               polarB.k),
+    // Separated flow
+    cd_n:            lerp(polarA.cd_n,            polarB.cd_n),
+    cd_n_lateral:    lerp(polarA.cd_n_lateral,    polarB.cd_n_lateral),
+    // Stall
+    alpha_stall_fwd: lerp(polarA.alpha_stall_fwd, polarB.alpha_stall_fwd),
+    s1_fwd:          lerp(polarA.s1_fwd,          polarB.s1_fwd),
+    alpha_stall_back:lerp(polarA.alpha_stall_back,polarB.alpha_stall_back),
+    s1_back:         lerp(polarA.s1_back,         polarB.s1_back),
+    // Side force & moments
+    cy_beta:         lerp(polarA.cy_beta,         polarB.cy_beta),
+    cn_beta:         lerp(polarA.cn_beta,         polarB.cn_beta),
+    cl_beta:         lerp(polarA.cl_beta,         polarB.cl_beta),
+    // Pitching moment
+    cm_0:            lerp(polarA.cm_0,            polarB.cm_0),
+    cm_alpha:        lerp(polarA.cm_alpha,        polarB.cm_alpha),
+    // Center of pressure
+    cp_0:            lerp(polarA.cp_0,            polarB.cp_0),
+    cp_alpha:        lerp(polarA.cp_alpha,        polarB.cp_alpha),
+    // CG
+    cg:              lerp(polarA.cg,              polarB.cg),
+    cp_lateral:      lerp(polarA.cp_lateral,      polarB.cp_lateral),
+    // Physical
+    s:               lerp(polarA.s,               polarB.s),
+    m:               lerp(polarA.m,               polarB.m),
+    chord:           lerp(polarA.chord,           polarB.chord),
+  }
+}

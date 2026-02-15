@@ -395,3 +395,36 @@ html, body {
   color: #e94560;
   border-color: #e94560;
 }
+
+/* System summary view tables */
+#debug-system-view {
+  padding: 4px 0;
+}
+
+.debug-system-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+
+.debug-system-table th,
+.debug-system-table td {
+  padding: 2px 4px;
+  text-align: left;
+  border-bottom: 1px solid #1a1a2e;
+  color: #a0a0c0;
+}
+
+.debug-system-table th {
+  color: #6080b0;
+  font-weight: 600;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.debug-system-table .debug-total-row td {
+  border-top: 1px solid #0f3460;
+  color: #c0c0e0;
+  font-weight: 600;
+}

@@ -388,6 +388,62 @@ At `dirty = 1.0`, the effective polar becomes:
 
 ---
 
+### Canopy Brake Controls & Flap Segments
+
+![Effect of canopy brakes on per-segment forces](polar-visualizer/docs/gifs/effect-canopy%20brakes.gif)
+
+Canopy brakes are modelled with **three simultaneous effects** that act together when the pilot pulls a toggle:
+
+1. **Primary — Flap segments.** Six dedicated `AeroSegment`s represent the deflected trailing-edge fabric. They are created by `makeBrakeFlapSegment()` in `segment-factories.ts` and produce their own lift and drag via `BRAKE_FLAP_POLAR`.
+2. **Secondary — Camber change.** A `SymmetricControl` named `brake` on each canopy cell morphs the cell's base polar (shifts α₀, increases cd₀, moves CP aft, etc.).
+3. **Tertiary — α coupling.** Each cell segment adds a small angle-of-attack increment proportional to brake input (`BRAKE_ALPHA_COUPLING_DEG = 2.5°` per unit), simulating the overall pitch-up as brakes load the trailing edge.
+
+#### Brake input routing
+
+The UI exposes `brakeLeft` and `brakeRight` (0 → 1). Each flap segment has a `brakeSensitivity` (0 → 1) that scales the raw input — outer flaps respond fully while inner flaps move less:
+
+| Segment pair | Chord fraction | Sensitivity | Position (x) |
+|--------------|---------------|-------------|---------------|
+| `flap_r3 / flap_l3` (outer) | 30% of cell chord | 1.0 | −0.689 |
+| `flap_r2 / flap_l2` (mid) | 20% | 0.7 | −0.672 |
+| `flap_r1 / flap_l1` (inner) | 10% | 0.4 | −0.664 |
+
+The effective brake for each flap is `clamp(rawBrake × sensitivity, 0, 1)`.
+
+#### `makeBrakeFlapSegment()` — what it does
+
+Each call stores a **base trailing-edge position** from `polar-data.ts`. On every frame `getCoeffs()`:
+
+1. Computes `effectiveBrake` from the raw input and sensitivity.
+2. Scales **reference area** (`S`) and **chord** from zero up to their full values proportionally to `effectiveBrake`. This means retracted flaps produce zero force — they don't exist as a surface until the pilot pulls the toggle.
+3. Interpolates the segment's **x position** from the canopy's aerodynamic-center line forward toward the trailing edge as the flap deploys.
+4. Adds a **flap deflection angle** (`effectiveBrake × MAX_FLAP_DEFLECTION_DEG`, default 50°) to the local α so the segment sees a high angle of attack even when the canopy is flying level.
+
+#### `BRAKE_FLAP_POLAR`
+
+The flap segments use their own Kirchhoff polar tuned for a thin, cambered fabric surface:
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| `cl_alpha` | 4.0 | High lift slope — small, highly cambered surface |
+| `cd_0` | 0.02 | Clean fabric baseline drag |
+| `k` | 0.05 | Low induced drag factor (high AR flap strip) |
+| `alpha_stall_fwd` | 35° | Wide attached-flow range so light brake input improves L/D before drag dominates |
+| `s1_fwd` | 5° | Gentle stall transition |
+| `cm_0` | −0.05 | Mild nose-down moment |
+| `cp_0` | 0.60 | CP aft of mid-chord |
+
+#### Modifying the brake system
+
+- **Flap strength / drag.** Adjust `cd_0` and `k` in `BRAKE_FLAP_POLAR` (in `polar-data.ts`). Raising `k` makes brakes draggier at high deflection.
+- **Stall onset.** Lower `alpha_stall_fwd` to make flaps stall earlier (more drag at mid-range brake). Raise it to keep lift attached longer.
+- **Sensitivity cascade.** Change the per-segment `brakeSensitivity` values in the flap definitions in `polar-data.ts` to reshape the graduated response.
+- **Chord fractions.** The `chord` value of each flap segment (as a fraction of the cell chord) determines how much trailing edge it represents. Increase for stronger brakes.
+- **Camber / cell effect.** Edit the `brake` `SymmetricControl` on the canopy cell polar to change how much the cells themselves respond to brake input.
+- **α coupling.** Change `BRAKE_ALPHA_COUPLING_DEG` in `segment-factories.ts` to strengthen or weaken the pitch-up tendency.
+
+---
+
 ## Sustained Speed Polar
 
 Given CL and CD at a particular α, the model computes equilibrium glide speeds:

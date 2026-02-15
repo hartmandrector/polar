@@ -11,7 +11,7 @@
  */
 
 import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
-import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment } from './segment-factories.ts'
+import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment } from './segment-factories.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -546,52 +546,69 @@ const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: n
   { name: 'left_foot',       massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y: -0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
 ]
 
-const CANOPY_MASS_SEGMENTS: MassSegment[] = [
-  // Pilot body segments — rotated 6° forward (trim angle)
-  ...CANOPY_PILOT_RAW.map(p => ({
-    name: p.name,
-    massRatio: p.massRatio,
-    normalizedPosition: {
-      x: +(p.x * COS_TRIM + p.z * SIN_TRIM).toFixed(4),
-      y: p.y,
-      z: +(-p.x * SIN_TRIM + p.z * COS_TRIM).toFixed(4),
-    }
-  })),
-  // 7 canopy cells across span, forming an arc over the pilot's head.
-  // Each cell has structure mass and trapped air mass (14 canopy segments total).
-  // Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643
-  // Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → 0.011
-  //
-  // Arc geometry: cells at equal angular spacing (12° apart) on radius R=1.55
-  //   Cell positions: y = R·sin(θ), z = z_center + R·(1 - cos(θ))
-  //   θ = 0°, ±12°, ±24°, ±36°
-  //   Center z = -1.10 (lowest point of arc)
-  //   Then rotated 6° forward about y-axis to sit in canopy's thickest section
-  //
-  // CANOPY_Z_SHIFT: visual alignment nudge — 20 cm higher (~-0.107 normalised)
-  // to better match the 3D model's canopy position.
+// Pilot body segments rotated by trim angle (shared between weight and inertia)
+const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
+  name: p.name,
+  massRatio: p.massRatio,
+  normalizedPosition: {
+    x: +(p.x * COS_TRIM + p.z * SIN_TRIM).toFixed(4),
+    y: p.y,
+    z: +(-p.x * SIN_TRIM + p.z * COS_TRIM).toFixed(4),
+  }
+}))
 
-  // Cell 0 — center (directly above pilot)
+// 7 canopy cells across span, forming an arc over the pilot's head.
+// Each cell has structure mass and trapped air mass.
+// Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643
+// Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → 0.011
+//
+// Arc geometry: cells at equal angular spacing (12° apart) on radius R=1.55
+//   Cell positions: y = R·sin(θ), z = z_center + R·(1 - cos(θ))
+//   θ = 0°, ±12°, ±24°, ±36°
+//   Center z = -1.10 (lowest point of arc)
+//   Then rotated 6° forward about y-axis to sit in canopy's thickest section
+//
+// CANOPY_Z_SHIFT: visual alignment nudge — 20 cm higher (~-0.107 normalised)
+// to better match the 3D model's canopy position.
+
+const CANOPY_STRUCTURE_SEGMENTS: MassSegment[] = [
   { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
-  { name: 'canopy_air_c',        massRatio: 0.011,   normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
-  // Cell 1R — right inner (12°)
   { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
-  { name: 'canopy_air_r1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
-  // Cell 1L — left inner (12°)
   { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
-  { name: 'canopy_air_l1',       massRatio: 0.011,   normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
-  // Cell 2R — right mid (24°)
   { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
-  { name: 'canopy_air_r2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
-  // Cell 2L — left mid (24°)
   { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
-  { name: 'canopy_air_l2',       massRatio: 0.011,   normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
-  // Cell 3R — right outer (36°)
   { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
-  { name: 'canopy_air_r3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
-  // Cell 3L — left outer (36°)
   { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
-  { name: 'canopy_air_l3',       massRatio: 0.011,   normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+]
+
+const CANOPY_AIR_SEGMENTS: MassSegment[] = [
+  { name: 'canopy_air_c',  massRatio: 0.011, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
+  { name: 'canopy_air_r1', massRatio: 0.011, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
+  { name: 'canopy_air_l1', massRatio: 0.011, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
+  { name: 'canopy_air_r2', massRatio: 0.011, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
+  { name: 'canopy_air_l2', massRatio: 0.011, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
+  { name: 'canopy_air_r3', massRatio: 0.011, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
+  { name: 'canopy_air_l3', massRatio: 0.011, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+]
+
+/**
+ * Weight segments — contribute to gravitational force (m·g).
+ * Includes pilot body + canopy structure. Excludes trapped air (buoyant).
+ */
+const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
+  ...CANOPY_PILOT_SEGMENTS,
+  ...CANOPY_STRUCTURE_SEGMENTS,
+]
+
+/**
+ * Inertia segments — contribute to rotational inertia (I·α).
+ * Includes everything: pilot body + canopy structure + trapped air.
+ * Air mass is buoyant so it doesn't add weight, but it does resist rotation.
+ */
+const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
+  ...CANOPY_PILOT_SEGMENTS,
+  ...CANOPY_STRUCTURE_SEGMENTS,
+  ...CANOPY_AIR_SEGMENTS,
 ]
 
 // ─── Canopy Aero Segments ────────────────────────────────────────────────────
@@ -615,20 +632,20 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   type: 'Canopy',
 
   // Lift model — same airfoil profile across all cells
-  cl_alpha: 1.75,
+  cl_alpha: 3.0,
   alpha_0: -3,
 
   // Drag model — cell-only, parasitic bodies handle the rest
   cd_0: 0.035,
-  k: 0.065,
+  k: 0.04,
 
   // Separated flow — same as lumped
   cd_n: 1.1,
   cd_n_lateral: 0.8,
 
-  // Stall — same as lumped
-  alpha_stall_fwd: 15,
-  s1_fwd: 4,
+  // Stall — raised base stall to give headroom when brakes reduce it
+  alpha_stall_fwd: 22,
+  s1_fwd: 6,
   alpha_stall_back: -5,
   s1_back: 3,
 
@@ -657,24 +674,91 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   // Brake control derivatives (per-cell — same as lumped, applied via δ)
   controls: {
     brake: {
-      d_alpha_0: -3,
-      d_cd_0: 0.06,
-      d_cl_alpha: 0.15,
+      d_alpha_0: -5,
+      d_cd_0: 0.09,
+      d_cl_alpha: 0.35,
       d_k: 0.03,
-      d_alpha_stall_fwd: -5,
+      d_alpha_stall_fwd: -4,
       cm_delta: -0.04,
     }
   }
 }
 
 /**
- * 10 aerodynamic segments for the Ibex UL canopy system.
+ * Brake flap polar — for the deflected trailing-edge portion of each cell.
+ *
+ * When brakes are applied, the trailing edge of the canopy deflects downward
+ * like a plain flap. This polar models that deflected fabric panel as a
+ * separate lifting surface.
+ *
+ * Key characteristics:
+ * - High CD_n (fabric plate, not a clean airfoil) → ~1.2
+ * - Moderate CL_α (~4.0 /rad — thin fabric, not ideal airfoil)
+ * - Higher CD_0 than the main cell (~0.08 — partially separated fabric edge)
+ * - No controls (deflection modeled via α offset in the factory)
+ *
+ * The flap area and chord scale with brake input (variable-area model):
+ * at brake=0 the flap contributes nothing; at brake=1 the flap is fully deployed.
+ */
+const BRAKE_FLAP_POLAR: ContinuousPolar = {
+  name: 'Brake Flap',
+  type: 'Canopy',
+
+  // Lift model — fabric trailing edge, lower efficiency than main airfoil
+  cl_alpha: 4.0,        // ~thin flat plate theory, fabric efficiency loss
+  alpha_0: 0,           // flap neutral when aligned with local flow
+
+  // Drag model — clean fabric at low deflection, low parasitic drag
+  cd_0: 0.02,
+  k: 0.05,              // flap in parent cell's flowfield — efficient lift production
+
+  // Separated flow — fabric plate, high normal force
+  cd_n: 1.2,
+  cd_n_lateral: 0.8,
+
+  // Stall — fabric flap stays attached over the full deflection range.
+  // At full brake (50° deflection + ~12° α_local = 62°), the flap must
+  // still be in attached flow to produce the lift needed for landing flare.
+  // Real fabric trailing edges don't hard-stall like rigid airfoils.
+  alpha_stall_fwd: 70,
+  s1_fwd: 8,
+  alpha_stall_back: -5,
+  s1_back: 3,
+
+  // Side force & moments — minimal contribution from flap
+  cy_beta: -0.1,
+  cn_beta: 0.02,
+  cl_beta: -0.02,
+
+  // Pitching moment — flap at TE creates nose-down moment
+  cm_0: -0.05,
+  cm_alpha: -0.05,
+
+  // Center of pressure — aft on the deflected panel
+  cp_0: 0.60,
+  cp_alpha: -0.01,
+
+  // CG / CP lateral
+  cg: 0.35,
+  cp_lateral: 0.50,
+
+  // Physical — base values, overridden per-flap by the factory
+  s: 0.5,               // placeholder, factory sets actual area
+  m: 77.5,
+  chord: 0.5,           // placeholder, factory sets actual chord
+}
+
+/**
+ * 16 aerodynamic segments for the Ibex UL canopy system.
  *
  * 7 canopy cells (using arc geometry from mass segments) +
- * 3 parasitic bodies (lines, pilot, bridle/PC).
+ * 6 brake flap segments (trailing edge of non-center cells) +
+ * 2 parasitic bodies (lines + pilot chute) +
+ * 1 pilot (added by makeIbexAeroSegments).
  *
  * Cell positions match the mass segment positions exactly.
  * Brake sensitivity cascades from tips inward: outer=1.0, mid=0.7, inner=0.4, center=0.
+ * Flap chord fractions graduate: outer=30%, mid=20%, inner=10%.
  * Riser sensitivity is ~1.0 for all cells (uniform geometry change).
  */
 const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
@@ -690,10 +774,26 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   makeCanopyCellSegment('cell_r3', { x: 0.145, y:  1.052, z: -0.954 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_l3', { x: 0.145, y: -1.052, z: -0.954 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
 
-  // ── 2 parasitic bodies (lines + bridle — always the same) ──
+  // ── 6 brake flap segments (trailing edge of non-center cells) ──
+  // Variable-area flap model: S and chord scale with brake input.
+  // Graduated chord fraction: inner=10%, mid=20%, outer=30%.
+  // Positions at the trailing edge of each cell (aft = lower x in NED).
+  // TE offset from cell AC ≈ 0.75 × chord / height ≈ 1.0 normalized.
+  // z values use the inner arc surface (structure positions), not the pushed-out
+  // cell skin positions, because the canopy profile tapers to zero at the TE.
+  // As brake is applied, position shifts forward toward cell center (quarter-chord of deployed flap).
+  //                         name        TE position (NED norm)                       θ     side     brkSens chordFrac  cellS         cellChord  polar
+  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+
+  // ── 2 parasitic bodies (lines + pilot chute — always the same) ──
   //                    name       position (NED norm)                   S      chord  CD
   makeParasiticSegment('lines',  { x: 0.23, y: 0, z: -0.40 },          0.35,  0.01,  1.0       ),
-  makeParasiticSegment('bridle', { x: 0.10, y: 0, z: -1.30 },          0.08,  0.01,  0.9       ),
+  makeParasiticSegment('pc',     { x: 0.10, y: 0, z: -1.30 },          0.732, 0.01,  1.0       ),
 ]
 
 /** Pilot position in NED normalized coordinates (below+behind canopy). */
@@ -722,7 +822,7 @@ export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit
   // and shifts the CP offset direction from NED x to NED z.
   const PILOT_PITCH_OFFSET = 90
   const pilotSegment = pilotType === 'wingsuit'
-    ? makeLiftingBodySegment('pilot', PILOT_POSITION, aurafiveContinuous, PILOT_PITCH_OFFSET)
+    ? makeUnzippablePilotSegment('pilot', PILOT_POSITION, aurafiveContinuous, slicksinContinuous, PILOT_PITCH_OFFSET)
     : makeLiftingBodySegment('pilot', PILOT_POSITION, slicksinContinuous, PILOT_PITCH_OFFSET)
 
   return [...IBEX_CANOPY_SEGMENTS, pilotSegment]
@@ -854,7 +954,8 @@ export const ibexulContinuous: ContinuousPolar = {
   m: 77.5,
   chord: 8.0,
 
-  massSegments: CANOPY_MASS_SEGMENTS,
+  massSegments: CANOPY_WEIGHT_SEGMENTS,
+  inertiaMassSegments: CANOPY_INERTIA_SEGMENTS,
   cgOffsetFraction: 0,
 
   aeroSegments: undefined as unknown as AeroSegment[],  // set below after polars defined

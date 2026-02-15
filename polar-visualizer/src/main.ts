@@ -20,7 +20,8 @@ import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficien
 import type { ContinuousPolar, SegmentControls, FullCoefficients } from './polar/index.ts'
 import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED } from './polar/aero-segment.ts'
 import { coeffToSS } from './polar/coefficients.ts'
-import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey } from './ui/debug-panel.ts'
+import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView } from './ui/debug-panel.ts'
+import type { SystemViewData } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
 import { updateInertiaReadout } from './ui/readout.ts'
 import { computeInertia, ZERO_INERTIA, computeCenterOfMass } from './polar/inertia.ts'
@@ -101,6 +102,13 @@ function buildSegmentControls(state: FlightState): SegmentControls {
   ctrl.dirty = state.dirty
 
   if (state.modelType === 'canopy') {
+    // In canopy mode, δ slider drives unzip (wingsuit pilot only)
+    if (state.canopyPilotType === 'wingsuit') {
+      ctrl.unzip = state.delta  // δ repurposed as unzip: 0 = zipped, 1 = unzipped
+      ctrl.delta = 0            // no generic δ for canopy segments
+    }
+    ctrl.dirty = 0  // dirty not used in canopy mode
+
     switch (state.canopyControlMode) {
       case 'brakes':
         ctrl.brakeLeft = state.canopyLeftHand
@@ -133,13 +141,14 @@ function computeSegmentReadout(
   beta_deg: number,
   rho: number,
   airspeed: number,
+  cachedForces?: import('./polar/aero-segment.ts').SegmentForceResult[],
 ): FullCoefficients {
   const q = 0.5 * rho * airspeed * airspeed
   const qS = q * polar.s
   const qSc = qS * polar.chord
 
-  // Per-segment forces
-  const segForces = segments.map(seg =>
+  // Per-segment forces (use cache if available)
+  const segForces = cachedForces ?? segments.map(seg =>
     computeSegmentForce(seg, alpha_deg, beta_deg, controls, rho, airspeed)
   )
 
@@ -169,6 +178,82 @@ function computeSegmentReadout(
   return { cl, cd, cy, cm, cn, cl_roll, cp: 0.25, f: 0 }
 }
 
+/**
+ * Build and push system summary data to the debug panel's system view.
+ */
+function updateSystemViewData(
+  segments: import('./polar/continuous-polar.ts').AeroSegment[],
+  polar: ContinuousPolar,
+  controls: SegmentControls,
+  readout: FullCoefficients,
+  state: FlightState,
+  cachedForces?: import('./polar/aero-segment.ts').SegmentForceResult[],
+): void {
+  const q = 0.5 * state.rho * state.airspeed * state.airspeed
+
+  // Per-segment forces (use cache if available)
+  const segForces = cachedForces ?? segments.map(seg =>
+    computeSegmentForce(seg, state.alpha_deg, state.beta_deg, controls, state.rho, state.airspeed)
+  )
+
+  // Force totals
+  let totalLift = 0, totalDrag = 0, totalSide = 0
+  const segmentForces = segments.map((seg, i) => {
+    totalLift += segForces[i].lift
+    totalDrag += segForces[i].drag
+    totalSide += segForces[i].side
+    return { name: seg.name, lift: segForces[i].lift, drag: segForces[i].drag, side: segForces[i].side }
+  })
+
+  // Mass breakdown — group by category
+  const weightSegs = polar.massSegments ?? []
+  const inertiaSegs = polar.inertiaMassSegments ?? weightSegs
+  const weightNames = new Set(weightSegs.map(s => s.name))
+  const inertiaNames = new Set(inertiaSegs.map(s => s.name))
+
+  // Aggregate by category
+  const categories: { name: string; mass_kg: number; isWeight: boolean; isInertia: boolean }[] = []
+  const catMap = new Map<string, { mass: number; isWeight: boolean; isInertia: boolean }>()
+
+  for (const seg of inertiaSegs) {
+    // Determine category from name prefix
+    let cat: string
+    if (seg.name.startsWith('canopy_air')) cat = 'Canopy air (buoyant)'
+    else if (seg.name.startsWith('canopy_structure')) cat = 'Canopy structure'
+    else cat = 'Pilot body'
+
+    const existing = catMap.get(cat) ?? { mass: 0, isWeight: false, isInertia: false }
+    existing.mass += seg.massRatio * polar.m
+    existing.isInertia = true
+    if (weightNames.has(seg.name)) existing.isWeight = true
+    catMap.set(cat, existing)
+  }
+
+  let totalWeight = 0, totalInertia = 0
+  for (const [name, data] of catMap) {
+    categories.push({ name, mass_kg: data.mass, isWeight: data.isWeight, isInertia: data.isInertia })
+    if (data.isWeight) totalWeight += data.mass
+    totalInertia += data.mass
+  }
+
+  // Aero summary
+  const ss = coeffToSS(readout.cl, readout.cd, polar.s, polar.m, state.rho)
+  const ld = readout.cd > 0.001 ? readout.cl / readout.cd : 0
+
+  const viewData: SystemViewData = {
+    massBreakdown: categories,
+    totalWeight_kg: totalWeight,
+    totalInertia_kg: totalInertia,
+    cl: readout.cl, cd: readout.cd, cy: readout.cy, cm: readout.cm,
+    ld,
+    vxs: ss.vxs, vys: ss.vys,
+    segmentForces,
+    totalLift, totalDrag, totalSide,
+  }
+
+  updateSystemView(viewData)
+}
+
 function updateVisualization(state: FlightState): void {
   flightState = state
 
@@ -188,15 +273,18 @@ function updateVisualization(state: FlightState): void {
         if (!ov || ov.size === 0) continue
 
         if (seg.polar) {
-          // Cell or lifting body — override the segment's ContinuousPolar params
+          // Cell, lifting body, or flap — override the segment's ContinuousPolar params
           const p: any = { ...seg.polar }
           for (const [key, val] of ov) {
             p[key] = val
           }
           seg.polar = p as ContinuousPolar
           // Also update S and chord on the segment itself (they mirror the polar)
-          if (ov.has('s')) seg.S = ov.get('s')!
-          if (ov.has('chord')) seg.chord = ov.get('chord')!
+          // Skip for flap segments — their S/chord are computed dynamically from brake input
+          if (!seg.name.startsWith('flap_')) {
+            if (ov.has('s')) seg.S = ov.get('s')!
+            if (ov.has('chord')) seg.chord = ov.get('chord')!
+          }
         } else {
           // Parasitic — override S, chord, and CD directly
           if (ov.has('s')) seg.S = ov.get('s')!
@@ -215,7 +303,7 @@ function updateVisualization(state: FlightState): void {
   if (state.polarKey !== prevPolarKeyForInertia) {
     prevPolarKeyForInertia = state.polarKey
     currentInertia = polar.massSegments
-      ? computeInertia(polar.massSegments, 1.875, polar.m)
+      ? computeInertia(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m)
       : ZERO_INERTIA
   }
 
@@ -275,6 +363,37 @@ function updateVisualization(state: FlightState): void {
 
   // Update force vectors
   const segControls = buildSegmentControls(state)
+
+  // Legacy comparison
+  const legacyPolar = legacyPolars[state.polarKey]
+  let legacyCoeffs: { cl: number, cd: number, cp: number } | undefined
+  if (state.showLegacy && legacyPolar) {
+    legacyCoeffs = getLegacyCoefficients(state.alpha_deg, legacyPolar)
+  }
+
+  // Update readout panel — use segment-summed data when segments exist
+  const segments = polar.aeroSegments
+  const hasSegments = segments && segments.length > 0
+
+  // Compute segment forces ONCE and share across readout, system view, and vectors
+  let cachedSegForces: import('./polar/aero-segment.ts').SegmentForceResult[] | undefined
+  if (hasSegments) {
+    cachedSegForces = segments!.map(seg =>
+      computeSegmentForce(seg, state.alpha_deg, state.beta_deg, segControls, state.rho, state.airspeed)
+    )
+
+    // Compute segment-summed coefficients for readout at current flight state
+    const segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
+    updateReadout(segReadout, polar, state.airspeed, state.rho, legacyCoeffs)
+    updateInertiaReadout(currentInertia, segReadout, polar, state.airspeed, state.rho)
+
+    // Update system summary view in debug panel
+    updateSystemViewData(segments!, polar, segControls, segReadout, state, cachedSegForces)
+  } else {
+    updateReadout(coeffs, polar, state.airspeed, state.rho, legacyCoeffs)
+    updateInertiaReadout(currentInertia, coeffs, polar, state.airspeed, state.rho)
+  }
+
   updateForceVectors(
     forceVectors,
     coeffs,
@@ -290,6 +409,7 @@ function updateVisualization(state: FlightState): void {
     currentModel?.pilotScale ?? 1.0,
     segControls,
     currentModel?.cgOffsetThree,
+    cachedSegForces,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
@@ -297,26 +417,6 @@ function updateVisualization(state: FlightState): void {
     applyAttitude(currentModel.group, state.frameMode === 'inertial' ? bodyQuat : null)
     // Orient bridle + pilot chute along relative wind
     updateBridleOrientation(currentModel, state.alpha_deg, state.beta_deg)
-  }
-
-  // Legacy comparison
-  const legacyPolar = legacyPolars[state.polarKey]
-  let legacyCoeffs: { cl: number, cd: number, cp: number } | undefined
-  if (state.showLegacy && legacyPolar) {
-    legacyCoeffs = getLegacyCoefficients(state.alpha_deg, legacyPolar)
-  }
-
-  // Update readout panel — use segment-summed data when segments exist
-  const segments = polar.aeroSegments
-  const hasSegments = segments && segments.length > 0
-  if (hasSegments) {
-    // Compute segment-summed coefficients for readout at current flight state
-    const segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed)
-    updateReadout(segReadout, polar, state.airspeed, state.rho, legacyCoeffs)
-    updateInertiaReadout(currentInertia, segReadout, polar, state.airspeed, state.rho)
-  } else {
-    updateReadout(coeffs, polar, state.airspeed, state.rho, legacyCoeffs)
-    updateInertiaReadout(currentInertia, coeffs, polar, state.airspeed, state.rho)
   }
 
   // Mass overlay — parented to model group so it rotates in body frame
@@ -335,7 +435,7 @@ function updateVisualization(state: FlightState): void {
     }
     massOverlay.setVisible(state.showMassOverlay)
     if (state.showMassOverlay && polar.massSegments) {
-      massOverlay.update(polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
+      massOverlay.update(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
     }
   }
 

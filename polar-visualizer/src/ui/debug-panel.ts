@@ -22,6 +22,7 @@
  */
 
 import type { ContinuousPolar, AeroSegment } from '../polar/continuous-polar.ts'
+import type { SegmentForceResult } from '../polar/aero-segment.ts'
 
 // ─── Parameter Definitions ───────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ let segmentSelectorRow: HTMLElement | null = null
 const sliderEls: Map<string, HTMLInputElement> = new Map()
 const valueEls: Map<string, HTMLSpanElement> = new Map()
 const rowEls: Map<string, HTMLElement> = new Map()
+let systemViewEl: HTMLElement | null = null
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -141,6 +143,12 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
   segmentSelectorRow.appendChild(segmentSelector)
 
   panelEl.appendChild(segmentSelectorRow)
+
+  // System summary view (shown when 'system' selected on segmented polars)
+  systemViewEl = document.createElement('div')
+  systemViewEl.id = 'debug-system-view'
+  systemViewEl.style.display = 'none'
+  panelEl.appendChild(systemViewEl)
 
   // Build slider groups
   buildSliders(panelEl)
@@ -186,7 +194,9 @@ export function syncDebugPanel(polar: ContinuousPolar): void {
         const opt = document.createElement('option')
         opt.value = seg.name
         // Nicer label: capitalize, show type
-        const segType = seg.polar ? (seg.pitchOffset_deg ? 'lifting body' : 'cell') : 'parasitic'
+        const segType = seg.polar
+          ? (seg.pitchOffset_deg ? 'lifting body' : (seg.name.startsWith('flap_') ? 'flap' : 'cell'))
+          : 'parasitic'
         opt.textContent = `${seg.name} (${segType})`
         segmentSelector.appendChild(opt)
       }
@@ -294,7 +304,7 @@ function dummyControls() {
     rearRiserLeft: 0, rearRiserRight: 0,
     weightShiftLR: 0,
     elevator: 0, rudder: 0, aileronLeft: 0, aileronRight: 0, flap: 0,
-    delta: 0, dirty: 0,
+    delta: 0, dirty: 0, unzip: 0,
   }
 }
 
@@ -312,14 +322,19 @@ function getActiveOverrides(): Map<string, number> {
 /** Which PARAM_DEFS keys are relevant for parasitic segments (no full polar) */
 const PARASITIC_KEYS: Set<string> = new Set(['s', 'cd_0', 'chord'])
 
+/** Keys to HIDE for flap segments (S/chord are computed dynamically from brake input) */
+const FLAP_HIDDEN_KEYS: Set<string> = new Set(['s', 'chord', 'm', 'cg', 'cp_lateral'])
+
 /**
  * Sync all slider positions and value labels to a given polar baseline.
  * Resets "modified" highlights based on current active overrides.
  */
 function syncSlidersToBaseline(polar: ContinuousPolar): void {
-  const isParasitic = selectedSegment !== 'system' &&
-    currentSegments?.find(s => s.name === selectedSegment) &&
-    !currentSegments.find(s => s.name === selectedSegment)!.polar
+  const selectedSeg = selectedSegment !== 'system'
+    ? currentSegments?.find(s => s.name === selectedSegment)
+    : undefined
+  const isParasitic = selectedSeg ? !selectedSeg.polar : false
+  const isFlap = selectedSegment.startsWith('flap_')
 
   // System selection on a segmented polar → hide all sliders
   // (system-level Kirchhoff model is not used when segments exist)
@@ -333,11 +348,14 @@ function syncSlidersToBaseline(polar: ContinuousPolar): void {
     const label = valueEls.get(def.key)
     const row = rowEls.get(def.key)
 
-    // Hide sliders: all for system+segments, non-parasitic-keys for parasitic
+    // Hide sliders: all for system+segments, non-parasitic-keys for parasitic,
+    // dynamic params for flap segments (S/chord computed from brake input)
     if (row) {
       if (isSystemWithSegments) {
         row.style.display = 'none'
       } else if (isParasitic && !PARASITIC_KEYS.has(def.key)) {
+        row.style.display = 'none'
+      } else if (isFlap && FLAP_HIDDEN_KEYS.has(def.key)) {
         row.style.display = 'none'
       } else {
         row.style.display = ''
@@ -377,6 +395,11 @@ function syncSlidersToBaseline(polar: ContinuousPolar): void {
     if (resetBtn) {
       resetBtn.style.display = isSystemWithSegments ? 'none' : ''
     }
+  }
+
+  // Show/hide system summary view
+  if (systemViewEl) {
+    systemViewEl.style.display = isSystemWithSegments ? '' : 'none'
   }
 }
 
@@ -495,4 +518,91 @@ function buildSliders(container: HTMLElement): void {
     row.appendChild(slider)
     container.appendChild(row)
   }
+}
+
+// ─── System Summary View ─────────────────────────────────────────────────────
+
+/**
+ * Data needed to render the system summary view.
+ */
+export interface SystemViewData {
+  // Mass breakdown
+  massBreakdown: {
+    name: string
+    mass_kg: number
+    isWeight: boolean     // contributes to gravitational force
+    isInertia: boolean    // contributes to rotational inertia
+  }[]
+  totalWeight_kg: number
+  totalInertia_kg: number
+
+  // System aero summary (pseudo-coefficients from segment sum)
+  cl: number
+  cd: number
+  cy: number
+  cm: number
+  ld: number
+  vxs: number
+  vys: number
+
+  // Per-segment force contributions
+  segmentForces: {
+    name: string
+    lift: number
+    drag: number
+    side: number
+  }[]
+  totalLift: number
+  totalDrag: number
+  totalSide: number
+}
+
+/**
+ * Update the system summary view with current flight state data.
+ * Called from the main render loop when segments exist and panel is visible.
+ */
+export function updateSystemView(data: SystemViewData): void {
+  if (!systemViewEl || systemViewEl.style.display === 'none') return
+
+  const html: string[] = []
+
+  // ── Mass breakdown ──
+  html.push('<h4 class="debug-group-header">Mass Breakdown</h4>')
+  html.push('<table class="debug-system-table">')
+  html.push('<tr><th>Component</th><th>Mass</th><th>Weight</th><th>Inertia</th></tr>')
+
+  for (const m of data.massBreakdown) {
+    const w = m.isWeight ? '✓' : '—'
+    const i = m.isInertia ? '✓' : '—'
+    html.push(`<tr><td>${m.name}</td><td>${m.mass_kg.toFixed(1)} kg</td><td>${w}</td><td>${i}</td></tr>`)
+  }
+
+  html.push(`<tr class="debug-total-row"><td>Weight total</td><td>${data.totalWeight_kg.toFixed(1)} kg</td><td>✓</td><td></td></tr>`)
+  html.push(`<tr class="debug-total-row"><td>Inertia total</td><td>${data.totalInertia_kg.toFixed(1)} kg</td><td></td><td>✓</td></tr>`)
+  html.push('</table>')
+
+  // ── Aero summary ──
+  html.push('<h4 class="debug-group-header">System Aero Summary</h4>')
+  html.push('<table class="debug-system-table">')
+  html.push(`<tr><td>CL</td><td>${data.cl.toFixed(3)}</td><td>CD</td><td>${data.cd.toFixed(3)}</td></tr>`)
+  html.push(`<tr><td>CY</td><td>${data.cy.toFixed(3)}</td><td>CM</td><td>${data.cm.toFixed(3)}</td></tr>`)
+  html.push(`<tr><td>L/D</td><td>${data.ld.toFixed(2)}</td><td></td><td></td></tr>`)
+  html.push(`<tr><td>Vxs</td><td>${data.vxs.toFixed(1)} m/s</td><td>Vys</td><td>${data.vys.toFixed(1)} m/s</td></tr>`)
+  html.push('</table>')
+
+  // ── Per-segment forces ──
+  html.push('<h4 class="debug-group-header">Segment Forces</h4>')
+  html.push('<table class="debug-system-table">')
+  html.push('<tr><th>Segment</th><th>Lift (N)</th><th>Drag (N)</th><th>Side (N)</th></tr>')
+
+  for (const sf of data.segmentForces) {
+    const liftPct = data.totalLift !== 0 ? ` (${(sf.lift / data.totalLift * 100).toFixed(0)}%)` : ''
+    const dragPct = data.totalDrag !== 0 ? ` (${(sf.drag / data.totalDrag * 100).toFixed(0)}%)` : ''
+    html.push(`<tr><td>${sf.name}</td><td>${sf.lift.toFixed(1)}${liftPct}</td><td>${sf.drag.toFixed(1)}${dragPct}</td><td>${sf.side.toFixed(1)}</td></tr>`)
+  }
+
+  html.push(`<tr class="debug-total-row"><td>Total</td><td>${data.totalLift.toFixed(1)}</td><td>${data.totalDrag.toFixed(1)}</td><td>${data.totalSide.toFixed(1)}</td></tr>`)
+  html.push('</table>')
+
+  systemViewEl.innerHTML = html.join('')
 }

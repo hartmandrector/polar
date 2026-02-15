@@ -123,8 +123,9 @@ export interface ContinuousPolar {
     dirty?: SymmetricControl      // Wingsuit: dirty flying (reduced efficiency)
   }
 
-  // Mass distribution (optional — point-mass model for inertia and overlay)
-  massSegments?: MassSegment[]
+  // Mass distribution (optional — point-mass models)
+  massSegments?: MassSegment[]         // Weight segments (contribute to gravitational force)
+  inertiaMassSegments?: MassSegment[]  // Inertia segments (contribute to rotational inertia, includes buoyant masses)
 
   // CG offset from bbox center as fraction of body length along flight axis.
   // Used by model-loader to shift the 3D mesh so CG sits at the scene origin.
@@ -269,4 +270,5 @@ export interface SegmentControls {
   // ── Universal ──
   delta: number           // Generic symmetric control (current δ slider — arch, brakes, etc.)
   dirty: number           // Wingsuit dirty-flying factor
+  unzip: number           // Wingsuit unzip factor: 0 = zipped (wingsuit), 1 = unzipped (slick)
 }
