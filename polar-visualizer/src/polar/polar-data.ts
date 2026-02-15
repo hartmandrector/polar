@@ -952,7 +952,7 @@ export const ibexulContinuous: ContinuousPolar = {
 
   s: 20.439,
   m: 77.5,
-  chord: 8.0,
+  chord: 2.5,
 
   massSegments: CANOPY_WEIGHT_SEGMENTS,
   inertiaMassSegments: CANOPY_INERTIA_SEGMENTS,

@@ -14,20 +14,30 @@ import { getAllCoefficients, lerpPolar } from './coefficients.ts'
 
 const DEG2RAD = Math.PI / 180
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-/** Maximum α change from full riser input [deg] */
-const ALPHA_MAX_RISER = 10
+// ─── Control Constants ───────────────────────────────────────────────────────
 
 /**
- * Brake → α cross-coupling [deg per unit brake × sensitivity].
- *
- * Pulling brakes physically tensions the rear of the canopy downward,
- * slightly increasing the effective angle of attack of the entire cell.
- * This is a secondary effect — the primary brake effect is the flap
- * segment (modeled separately by makeBrakeFlapSegment).
+ * Tunable constants that control how segments respond to brake/riser inputs.
+ * Exported so that the export system can serialize and override these values.
  */
-const BRAKE_ALPHA_COUPLING_DEG = 2.5
+export interface ControlConstants {
+  /** Maximum α change from full riser input [deg] */
+  ALPHA_MAX_RISER: number
+  /** Brake → α cross-coupling [deg per unit brake × sensitivity] */
+  BRAKE_ALPHA_COUPLING_DEG: number
+  /** Maximum trailing-edge deflection angle at full brake input [deg] */
+  MAX_FLAP_DEFLECTION_DEG: number
+  /** Maximum additional arc roll added to a flap segment at full brake [deg] */
+  MAX_FLAP_ROLL_INCREMENT_DEG: number
+}
+
+/** Default control constants — current Ibexul tuning. */
+export const DEFAULT_CONSTANTS: ControlConstants = {
+  ALPHA_MAX_RISER: 10,
+  BRAKE_ALPHA_COUPLING_DEG: 2.5,
+  MAX_FLAP_DEFLECTION_DEG: 50,
+  MAX_FLAP_ROLL_INCREMENT_DEG: 20,
+}
 
 // ─── Canopy Cell Segment ─────────────────────────────────────────────────────
 
@@ -59,7 +69,9 @@ export function makeCanopyCellSegment(
   brakeSensitivity: number,
   riserSensitivity: number,
   cellPolar: ContinuousPolar,
+  constants?: ControlConstants,
 ): AeroSegment {
+  const ctrl = constants ?? DEFAULT_CONSTANTS
   const theta = rollDeg * DEG2RAD
 
   return {
@@ -91,7 +103,7 @@ export function makeCanopyCellSegment(
         frontRiser = controls.frontRiserLeft
         rearRiser = controls.rearRiserLeft
       }
-      const deltaAlphaRiser = (-frontRiser + rearRiser) * ALPHA_MAX_RISER * riserSensitivity
+      const deltaAlphaRiser = (-frontRiser + rearRiser) * ctrl.ALPHA_MAX_RISER * riserSensitivity
       const alphaEffective = alphaLocal + deltaAlphaRiser
 
       // ── Brake → δ camber change ──
@@ -108,7 +120,7 @@ export function makeCanopyCellSegment(
       // ── Brake → α cross-coupling ──
       // Pulling brakes physically pulls the canopy TE down, slightly
       // increasing the effective AoA of the main cell body.
-      const deltaAlphaBrake = brakeInput * brakeSensitivity * BRAKE_ALPHA_COUPLING_DEG
+      const deltaAlphaBrake = brakeInput * brakeSensitivity * ctrl.BRAKE_ALPHA_COUPLING_DEG
 
       // ── Evaluate Kirchhoff model at (α_effective + brake α coupling, β_local, δ_effective) ──
       const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, polar)
@@ -230,33 +242,6 @@ export function makeUnzippablePilotSegment(
 // ─── Brake Flap Segment ─────────────────────────────────────────────────────
 
 /**
- * Maximum trailing-edge deflection angle at full brake input [deg].
- *
- * At full brake, the trailing edge rotates ~50° below the chord line.
- * This drives the flap's local α offset above the freestream α.
- */
-const MAX_FLAP_DEFLECTION_DEG = 50
-
-/**
- * Maximum additional arc roll added to a flap segment at full brake [deg].
- *
- * When brakes are pulled the trailing-edge fabric droops on the sides,
- * deepening the spanwise arc beyond the cell's resting geometry.
- * This induces side forces through the same mechanism as the canopy
- * cell arc — the flap's roll angle tilts its lift vector laterally.
- *
- * The increment scales with effectiveBrake (= rawBrake × sensitivity),
- * so outer flaps (sensitivity 1.0) get the full increment while inner
- * flaps (sensitivity 0.4) get only 40%.
- *
- * At full brake with sensitivity 1.0:
- *   flap_r3: base 36° + 20° = 56° total roll
- *   flap_r2: base 24° + 14° = 38° total (eff. brake 0.7)
- *   flap_r1: base 12° +  8° = 20° total (eff. brake 0.4)
- */
-const MAX_FLAP_ROLL_INCREMENT_DEG = 20
-
-/**
  * Reference height for position normalization [m].
  * Used to convert physical chord measurements to normalized position offsets.
  */
@@ -303,7 +288,9 @@ export function makeBrakeFlapSegment(
   parentCellS: number,
   parentCellChord: number,
   flapPolar: ContinuousPolar,
+  constants?: ControlConstants,
 ): AeroSegment {
+  const ctrl = constants ?? DEFAULT_CONSTANTS
   const theta = rollDeg * DEG2RAD
   const maxFlapS = flapChordFraction * parentCellS
   const maxFlapChord = flapChordFraction * parentCellChord
@@ -358,7 +345,7 @@ export function makeBrakeFlapSegment(
       // Pulling brakes deepens the arc of the trailing edge fabric.
       // The roll increment scales with effectiveBrake — outer flaps that
       // respond fully get the largest additional curl.
-      const rollIncrement = effectiveBrake * MAX_FLAP_ROLL_INCREMENT_DEG * rollSign
+      const rollIncrement = effectiveBrake * ctrl.MAX_FLAP_ROLL_INCREMENT_DEG * rollSign
       const effectiveTheta = theta + rollIncrement * DEG2RAD
 
       // ── Local flow angles from dynamic roll orientation ──
@@ -371,7 +358,7 @@ export function makeBrakeFlapSegment(
       // ── Flap deflection angle ──
       // The trailing edge rotates downward with brake input.
       // This increases the local α seen by the flap surface.
-      const flapDeflection = effectiveBrake * MAX_FLAP_DEFLECTION_DEG
+      const flapDeflection = effectiveBrake * ctrl.MAX_FLAP_DEFLECTION_DEG
       const alphaFlap = alphaLocal + flapDeflection
 
       // ── Evaluate Kirchhoff model at the flap's angle ──

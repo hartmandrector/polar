@@ -21,4 +21,5 @@ export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPosit
 export type { InertiaComponents } from './inertia.ts'
 export { computeSegmentForce, sumAllSegments, defaultControls, computeWindFrameNED } from './aero-segment.ts'
 export type { Vec3NED, SegmentForceResult, SystemForces, WindFrameNED } from './aero-segment.ts'
-export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment } from './segment-factories.ts'
+export type { ControlConstants } from './segment-factories.ts'
+export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEFAULT_CONSTANTS } from './segment-factories.ts'
