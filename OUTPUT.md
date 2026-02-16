@@ -38,8 +38,8 @@ The system uses **5 factory functions** to create aero segments:
 | `makeCanopyCellSegment()` | Canopy cell | 7 | Kirchhoff polar with local flow transform, brake→δ, riser→Δα |
 | `makeBrakeFlapSegment()` | Brake flap | 6 | Variable-area trailing edge with dynamic roll, lift-vector tilt |
 | `makeParasiticSegment()` | Parasitic body | 2 | Constant CD (lines, pilot chute) |
-| `makeLiftingBodySegment()` | Lifting body | 0–1 | Full Kirchhoff polar (slick pilot) |
-| `makeUnzippablePilotSegment()` | Unzippable pilot | 0–1 | Blends between two polars via `controls.unzip` |
+| `makeLiftingBodySegment()` | Lifting body | 0–1 | Full Kirchhoff polar (slick pilot), responds to `controls.pilotPitch` |
+| `makeUnzippablePilotSegment()` | Unzippable pilot | 0–1 | Blends between two polars via `controls.unzip`, responds to `controls.pilotPitch` |
 
 ### What Gets Computed at Runtime (NOT exported)
 
@@ -135,7 +135,7 @@ How UI inputs route to segment controls:
 ```typescript
 interface ControlMapping {
   // Which SegmentControls fields the system uses
-  activeControls: string[]   // e.g. ['brakeLeft', 'brakeRight', 'frontRiserLeft', ...]
+  activeControls: string[]   // e.g. ['brakeLeft', 'brakeRight', 'frontRiserLeft', ..., 'pilotPitch']
 
   // Constants that govern control routing
   constants: {
@@ -534,7 +534,7 @@ The export system must work for **any loaded polar**, not just the Ibex UL canop
 
 | Polar | Segments | Mass | Controls | Pilot Sub-polars | Complexity |
 |-------|----------|------|----------|-----------------|------------|
-| **Ibex UL (Canopy)** | 16 (7 cells + 6 flaps + 2 parasitic + 1 pilot) | Weight + Inertia arrays | Brakes, risers, unzip | `aurafiveContinuous` + `slicksinContinuous` | High |
+| **Ibex UL (Canopy)** | 16 (7 cells + 6 flaps + 2 parasitic + 1 pilot) | Weight + Inertia arrays | Brakes, risers, unzip, pilotPitch | `aurafiveContinuous` + `slicksinContinuous` | High |
 | **Aura 5 (Wingsuit)** | 0 (single body) | 14 body segments | δ (arch), dirty | None | Low |
 | **Slick Sin (Skydiver)** | 0 (single body) | None defined | δ only | None | Minimal |
 | **Caravan (Airplane)** | 0 (single body) | None defined | δ only | None | Minimal |

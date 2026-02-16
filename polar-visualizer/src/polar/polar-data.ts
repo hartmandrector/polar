@@ -611,6 +611,43 @@ const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
   ...CANOPY_AIR_SEGMENTS,
 ]
 
+/**
+ * Rotate pilot body mass segments by an incremental pitch angle about the
+ * riser attachment point (NED origin), then combine with fixed canopy masses.
+ *
+ * The base CANOPY_PILOT_SEGMENTS already include the 6° trim rotation.
+ * This function applies an additional rotation on top, representing the
+ * pilot swinging fore/aft under the canopy.
+ *
+ * @param pilotPitch_deg  Incremental pilot pitch [deg]. Positive = aft (feet forward).
+ * @returns `{ weight, inertia }` — complete mass segment arrays for CG and inertia.
+ */
+export function rotatePilotMass(pilotPitch_deg: number): { weight: MassSegment[], inertia: MassSegment[] } {
+  if (Math.abs(pilotPitch_deg) < 0.01) {
+    // No rotation — return the pre-computed arrays
+    return { weight: CANOPY_WEIGHT_SEGMENTS, inertia: CANOPY_INERTIA_SEGMENTS }
+  }
+
+  const delta = pilotPitch_deg * Math.PI / 180
+  const cos_d = Math.cos(delta)
+  const sin_d = Math.sin(delta)
+
+  const rotatedPilot: MassSegment[] = CANOPY_PILOT_SEGMENTS.map(seg => ({
+    name: seg.name,
+    massRatio: seg.massRatio,
+    normalizedPosition: {
+      x: seg.normalizedPosition.x * cos_d - seg.normalizedPosition.z * sin_d,
+      y: seg.normalizedPosition.y,
+      z: seg.normalizedPosition.x * sin_d + seg.normalizedPosition.z * cos_d,
+    }
+  }))
+
+  return {
+    weight: [...rotatedPilot, ...CANOPY_STRUCTURE_SEGMENTS],
+    inertia: [...rotatedPilot, ...CANOPY_STRUCTURE_SEGMENTS, ...CANOPY_AIR_SEGMENTS],
+  }
+}
+
 // ─── Canopy Aero Segments ────────────────────────────────────────────────────
 
 /**
@@ -783,12 +820,12 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // cell skin positions, because the canopy profile tapers to zero at the TE.
   // As brake is applied, position shifts forward toward cell center (quarter-chord of deployed flap).
   //                         name        TE position (NED norm)                       θ     side     brkSens chordFrac  cellS         cellChord  polar
-  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 2.5,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 2.5,  0.170, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 2.5,  0.170, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 2.5,  0.162, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 2.5,  0.162, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 2.5,  0.145, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 2.5,  0.145, BRAKE_FLAP_POLAR),
 
   // ── 2 parasitic bodies (lines + pilot chute — always the same) ──
   //                    name       position (NED norm)                   S      chord  CD

@@ -43,7 +43,7 @@ const PILOT_OFFSET = {
  * so a 1.5× scale brings the canopy to realistic proportions relative to
  * the pilot body.
  */
-const CANOPY_SCALE = 1.5
+export const CANOPY_SCALE = 1.5
 
 export interface LoadedModel {
   type: ModelType
@@ -57,6 +57,11 @@ export interface LoadedModel {
   pilotType?: PilotType
   /** Pivot group for bridle + pilot chute (only for canopy), rotatable per wind direction */
   bridleGroup?: THREE.Group
+  /** Pivot group for pilot body pitch rotation (only for canopy).
+   *  Origin sits at the riser attachment point; rotating about X pitches the pilot fore/aft. */
+  pilotPivot?: THREE.Group
+  /** The canopy GLB mesh (only for canopy). Used for deployment horizontal scaling. */
+  canopyModel?: THREE.Group
   /**
    * CG offset applied to center the model at the origin [Three.js scene units].
    * This is the vector subtracted from the model's position so the CG sits at (0,0,0).
@@ -64,6 +69,10 @@ export interface LoadedModel {
    * Only set for canopy models positioned via applyCgFromMassSegments.
    */
   cgOffsetThree?: THREE.Vector3
+  /** Base model position before any CG offset (captured on first CG call) */
+  baseModelPos?: THREE.Vector3
+  /** Base bridle position before any CG offset (captured on first CG call) */
+  baseBridlePos?: THREE.Vector3
 }
 
 const loader = new GLTFLoader()
@@ -125,9 +134,32 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     const pilotBox = new THREE.Box3().setFromObject(pilotModel)
     const pilotSize = pilotBox.getSize(new THREE.Vector3())
     pilotRawHeight = Math.max(pilotSize.x, pilotSize.y, pilotSize.z)  // longest axis = body length
-    pilotModel.position.copy(PILOT_OFFSET.position)
+
+    // Wrap pilot in a pivot group at the riser attachment point.
+    // Rotating this group about X pitches the hanging pilot fore/aft.
+    const pilotPivot = new THREE.Group()
+    pilotPivot.name = 'pilot-pitch-pivot'
+
+    // After the -π/2 X rotation the body hangs along Y: head at +Y, feet at -Y.
+    // Raw GLB body length along Z → becomes Y extent.
+    // The model origin is at the CG (belly button).  The riser attachment
+    // (shoulders) is slightly above that — roughly 10% of body extent.
+    // Shift the model DOWN within the pivot so shoulders sit at the pivot
+    // origin, and move the pivot UP by the same amount so the pilot's resting
+    // position stays at PILOT_OFFSET (net position unchanged, but rotation
+    // center is now at the shoulders).
+    const bodyExtentY = pilotSize.z  // raw body length along GLB Z
+    const shoulderOffset = 0.10 * bodyExtentY
+    pilotPivot.position.set(
+      PILOT_OFFSET.position.x,
+      PILOT_OFFSET.position.y + shoulderOffset,
+      PILOT_OFFSET.position.z,
+    )
+    pilotModel.position.set(0, -shoulderOffset, 0)
     pilotModel.rotation.copy(PILOT_OFFSET.rotation)
-    compositeRoot.add(pilotModel)
+    pilotPivot.add(pilotModel)
+    compositeRoot.add(pilotPivot)
+    ;(compositeRoot as any)._pilotPivot = pilotPivot
 
     // Use the standalone wingsuit/skydiver raw dimension as reference
     // so the pilot appears the same size as when viewed standalone.
@@ -214,7 +246,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     group.add(bridleGroup)
   }
 
-  return { type, group, model: compositeRoot, bodyLength, pilotScale, pilotType, bridleGroup }
+  return { type, group, model: compositeRoot, bodyLength, pilotScale, pilotType, bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot, canopyModel: type === 'canopy' ? mainModel : undefined }
 }
 
 /**
@@ -261,6 +293,14 @@ export function applyCgFromMassSegments(
   loadedModel: LoadedModel,
   cgNED: { x: number; y: number; z: number },
 ): void {
+  // Capture base positions on first call so subsequent calls are absolute, not cumulative
+  if (!loadedModel.baseModelPos) {
+    loadedModel.baseModelPos = loadedModel.model.position.clone()
+  }
+  if (!loadedModel.baseBridlePos && loadedModel.bridleGroup) {
+    loadedModel.baseBridlePos = loadedModel.bridleGroup.position.clone()
+  }
+
   // NED→Three.js: three.x = -ned.y, three.y = -ned.z, three.z = ned.x
   // Scale by pilotScale to get model units
   const ps = loadedModel.pilotScale
@@ -268,17 +308,21 @@ export function applyCgFromMassSegments(
   const cgThreeY = -cgNED.z * ps
   const cgThreeZ =  cgNED.x * ps
 
-  // Step 1: Shift model so CG is at origin
+  // Step 1: Set model position = base - cgOffset (absolute, not incremental)
   const cgOffsetThree = new THREE.Vector3(cgThreeX, cgThreeY, cgThreeZ)
-  loadedModel.model.position.x -= cgThreeX
-  loadedModel.model.position.y -= cgThreeY
-  loadedModel.model.position.z -= cgThreeZ
+  loadedModel.model.position.set(
+    loadedModel.baseModelPos.x - cgThreeX,
+    loadedModel.baseModelPos.y - cgThreeY,
+    loadedModel.baseModelPos.z - cgThreeZ,
+  )
 
   // Also shift bridle group if present (it's a sibling of model in the group)
-  if (loadedModel.bridleGroup) {
-    loadedModel.bridleGroup.position.x -= cgThreeX
-    loadedModel.bridleGroup.position.y -= cgThreeY
-    loadedModel.bridleGroup.position.z -= cgThreeZ
+  if (loadedModel.bridleGroup && loadedModel.baseBridlePos) {
+    loadedModel.bridleGroup.position.set(
+      loadedModel.baseBridlePos.x - cgThreeX,
+      loadedModel.baseBridlePos.y - cgThreeY,
+      loadedModel.baseBridlePos.z - cgThreeZ,
+    )
   }
 
   // Store offset for Steps 2 & 3 (vectors and mass overlay)

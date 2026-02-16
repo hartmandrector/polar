@@ -304,7 +304,7 @@ function dummyControls() {
     rearRiserLeft: 0, rearRiserRight: 0,
     weightShiftLR: 0,
     elevator: 0, rudder: 0, aileronLeft: 0, aileronRight: 0, flap: 0,
-    delta: 0, dirty: 0, unzip: 0,
+    delta: 0, dirty: 0, unzip: 0, pilotPitch: 0, deploy: 1,
   }
 }
 

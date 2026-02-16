@@ -444,6 +444,48 @@ The flap segments use their own Kirchhoff polar tuned for a thin, cambered fabri
 
 ---
 
+### Pilot Pitch
+
+<p align="center"><img src="polar-visualizer/docs/gifs/deploy-headup%20backslidefrontslide%20.gif" width="720" alt="Pilot pitch effect on canopy system aerodynamics" /></p>
+
+The **Pilot Pitch** slider rotates the pilot body about the riser attachment point, changing the angle of attack that the pilot's lifting-body segment sees relative to the freestream. This models real-world body position changes — from head-up (positive pitch) through neutral to head-down (negative pitch).
+
+Because the pilot segment is evaluated as a full Kirchhoff lifting body with its own polar, pitching the body shifts it through the entire CL–α curve independently of the canopy cells. The effect on the system polar is significant:
+
+- **Head-up** — The pilot's body presents more frontal area at high α, adding substantial drag. Combined with the canopy at normal flying angles, this increases total system drag and steepens the glide. At extreme head-up angles the pilot body can backslide, producing negative horizontal speed in the speed polar.
+- **Head-down** — The pilot body streamlines along the flight path, reducing its drag contribution. The system becomes more canopy-dominated, resulting in a flatter glide and higher forward speed.
+- **Neutral** — The pilot hangs at the default pitch angle, matching the baseline system polar.
+
+The pitch rotation is applied via a `pilotPivot` group in the Three.js scene graph, with the pivot origin at the riser/harness attachment point so the rotation looks physically correct. The aerodynamic effect flows through the pilot's `pitchOffset_deg` parameter in the lifting-body segment factory.
+
+---
+
+### Deployment
+
+<p align="center"><img src="polar-visualizer/docs/gifs/deployment.gif" width="720" alt="Canopy deployment sequence from line stretch to full flight" /></p>
+
+The **Deploy** slider (0–100%) models the canopy opening sequence from line stretch through full inflation. Deployment coordinates three systems simultaneously:
+
+**3D Model Scaling.** The canopy GLB mesh scales horizontally around its quarter-chord origin. Span compresses to 10% at deploy=0, chord to 30%, while height (line length) stays constant. This keeps the canopy visually centered over the pilot throughout the opening.
+
+**Segment Geometry.** Each cell and flap segment scales its reference area ($S = S_{full} \times chordScale \times spanScale$), chord length, and span-wise position to match the visual model. A tunable chord-wise offset (`DEPLOY_CHORD_OFFSET`) lerps the arrow positions to track the scaled GLB mesh, compensating for the different coordinate origins between the abstract aero model and the 3D scene.
+
+**Coefficient Morphing.** At low deployment the canopy is uninflated fabric, not an airfoil. The Kirchhoff polar parameters are morphed per-frame:
+
+| Parameter | Deploy = 0 | Deploy = 1 | Effect |
+|-----------|-----------|-----------|--------|
+| `cd_0` | 2× base | 1× base | Higher parasitic drag from flapping fabric |
+| `cl_alpha` | 30% of base | 100% | Poor lift — no airfoil shape |
+| `cd_n` | 1.5× base | 1× base | More frontal drag from bundled fabric |
+| `alpha_stall_fwd` | −17° offset | 0° offset | Stall onset drops to ~5° — fabric separates immediately |
+| `s1_fwd` | 4× base | 1× base | Very broad stall transition — no sharp separation |
+
+All morphing constants are exported from `segment-factories.ts` for easy tuning. The morphing is skipped entirely at deploy=1 (no performance cost in normal flight).
+
+The result is a smooth transition in the speed polar from a high-drag, low-lift bundle at line stretch through to the full performance envelope at open. At 0% deployment in head-down orientation, the system descends at roughly 60 mph — matching real-world deployment speeds.
+
+---
+
 ## Sustained Speed Polar
 
 Given CL and CD at a particular α, the model computes equilibrium glide speeds:

@@ -271,4 +271,6 @@ export interface SegmentControls {
   delta: number           // Generic symmetric control (current δ slider — arch, brakes, etc.)
   dirty: number           // Wingsuit dirty-flying factor
   unzip: number           // Wingsuit unzip factor: 0 = zipped (wingsuit), 1 = unzipped (slick)
+  pilotPitch: number      // Pilot body pitch relative to canopy [deg], 0 = hanging vertical
+  deploy: number          // Canopy deployment fraction: 0 = line stretch, 1 = fully deployed
 }

@@ -57,6 +57,8 @@ export function defaultControls(): SegmentControls {
     delta: 0,
     dirty: 0,
     unzip: 0,
+    pilotPitch: 0,
+    deploy: 1,
   }
 }
 

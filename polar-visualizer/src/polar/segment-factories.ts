@@ -39,6 +39,31 @@ export const DEFAULT_CONSTANTS: ControlConstants = {
   MAX_FLAP_ROLL_INCREMENT_DEG: 20,
 }
 
+// ─── Deployment Constants ────────────────────────────────────────────────────
+
+/**
+ * Tuning constants for how aerodynamic coefficients change during deployment.
+ * At deploy = 0 (line stretch), the canopy is an uninflated fabric bundle:
+ *   - Much higher parasitic drag (flapping fabric)
+ *   - Much lower lift slope (poor airfoil shape)
+ *   - More frontal/normal drag
+ * These multipliers are linearly interpolated: value = lerp(deploy0_value, 1.0, deploy)
+ */
+export const DEPLOY_CD0_MULTIPLIER = 2.0        // cd_0 at deploy=0 is 2× normal
+export const DEPLOY_CL_ALPHA_FRACTION = 0.3     // cl_alpha at deploy=0 is 30% of normal
+export const DEPLOY_CD_N_MULTIPLIER = 1.5       // cd_n (normal drag) at deploy=0 is 1.5× normal
+export const DEPLOY_STALL_FWD_OFFSET = -17      // alpha_stall_fwd shifts down 17° at deploy=0 (22→ 5°)
+export const DEPLOY_S1_FWD_MULTIPLIER = 4.0     // stall transition width 4× broader at deploy=0
+
+/**
+ * Chord-wise (NED +x = forward) position offset at deploy = 0.
+ * The GLB model and the NED-based segment positions use different coordinate
+ * origins, so they drift apart as the model scales during deployment.
+ * This offset is lerped to zero at deploy = 1 (where everything is calibrated).
+ * Tune visually until the arrows sit on the scaled canopy mesh at all deploy levels.
+ */
+export const DEPLOY_CHORD_OFFSET = 0.15
+
 // ─── Canopy Cell Segment ─────────────────────────────────────────────────────
 
 /**
@@ -74,9 +99,15 @@ export function makeCanopyCellSegment(
   const ctrl = constants ?? DEFAULT_CONSTANTS
   const theta = rollDeg * DEG2RAD
 
+  // Full-flight reference values (deploy = 1) — captured at factory time
+  const fullS = cellPolar.s
+  const fullChord = cellPolar.chord
+  const fullX = position.x
+  const fullY = position.y
+
   return {
     name,
-    position,
+    position: { ...position },
     orientation: { roll_deg: rollDeg },
     S: cellPolar.s,
     chord: cellPolar.chord,
@@ -85,6 +116,17 @@ export function makeCanopyCellSegment(
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       // Use this.polar so debug overrides applied to seg.polar take effect
       const polar = this.polar ?? cellPolar
+
+      // ── Deployment scaling ──
+      const d = Math.max(0, Math.min(1, controls.deploy))
+      const spanScale  = 0.1 + 0.9 * d         // min 10% span
+      const chordScale = 0.3 + 0.7 * d         // min 30% chord
+      const chordOffset = DEPLOY_CHORD_OFFSET * (1 - d)  // lerp to zero at full deploy
+      this.S = fullS * chordScale * spanScale   // area = chord × span
+      this.chord = fullChord * chordScale       // chord scales with chordScale
+      this.position.x = fullX + chordOffset     // shift forward to track scaled GLB
+      this.position.y = fullY * spanScale       // span collapses
+      // position.z (vertical) stays fixed — line length is constant
 
       // ── Local flow angles from cell orientation ──
       // Cell at arc angle θ sees a rotated projection of freestream
@@ -123,7 +165,16 @@ export function makeCanopyCellSegment(
       const deltaAlphaBrake = brakeInput * brakeSensitivity * ctrl.BRAKE_ALPHA_COUPLING_DEG
 
       // ── Evaluate Kirchhoff model at (α_effective + brake α coupling, β_local, δ_effective) ──
-      const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, polar)
+      // During deployment, morph polar coefficients to model uninflated fabric
+      const evalPolar = d < 1 ? {
+        ...polar,
+        cd_0: polar.cd_0 * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
+        cl_alpha: polar.cl_alpha * (DEPLOY_CL_ALPHA_FRACTION + (1 - DEPLOY_CL_ALPHA_FRACTION) * d),
+        cd_n: polar.cd_n * (DEPLOY_CD_N_MULTIPLIER + (1 - DEPLOY_CD_N_MULTIPLIER) * d),
+        alpha_stall_fwd: polar.alpha_stall_fwd + DEPLOY_STALL_FWD_OFFSET * (1 - d),
+        s1_fwd: polar.s1_fwd * (DEPLOY_S1_FWD_MULTIPLIER + (1 - DEPLOY_S1_FWD_MULTIPLIER) * d),
+      } : polar
+      const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, evalPolar)
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
     },
   }
@@ -163,7 +214,7 @@ export function makeLiftingBodySegment(
 ): AeroSegment {
   return {
     name,
-    position,
+    position: { ...position },
     orientation: { roll_deg: 0 },
     S: bodyPolar.s,
     chord: bodyPolar.chord,
@@ -174,11 +225,14 @@ export function makeLiftingBodySegment(
       // Use this.polar so debug overrides applied to seg.polar take effect
       const polar = this.polar ?? bodyPolar
 
+      // Dynamic pilot pitch — adds to the fixed pitch offset.
+      // Position stays fixed (consistent with no-mass-rotation decision);
+      // only the effective pitch changes for coefficient evaluation.
+      const effectivePitchOffset = pitchOffset_deg + controls.pilotPitch
+      this.pitchOffset_deg = effectivePitchOffset
+
       // Transform freestream α to the segment's local frame.
-      // A +90° pitch offset means the body is upright (hanging under canopy):
-      // the canopy's freestream α (≈10°) maps to the body seeing wind from
-      // the front/chest, which is deep post-stall in the wingsuit polar.
-      const localAlpha = alpha_deg - pitchOffset_deg
+      const localAlpha = alpha_deg - effectivePitchOffset
       const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, polar, controls.dirty)
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
     },
@@ -213,7 +267,7 @@ export function makeUnzippablePilotSegment(
 ): AeroSegment {
   return {
     name,
-    position,
+    position: { ...position },
     orientation: { roll_deg: 0 },
     S: zippedPolar.s,
     chord: zippedPolar.chord,
@@ -232,7 +286,13 @@ export function makeUnzippablePilotSegment(
       this.S = blended.s
       this.chord = blended.chord
 
-      const localAlpha = alpha_deg - pitchOffset_deg
+      // Dynamic pilot pitch — adds to the fixed pitch offset.
+      // Position stays fixed (consistent with no-mass-rotation decision);
+      // only the effective pitch changes for coefficient evaluation.
+      const effectivePitchOffset = pitchOffset_deg + controls.pilotPitch
+      this.pitchOffset_deg = effectivePitchOffset
+
+      const localAlpha = alpha_deg - effectivePitchOffset
       const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, blended, controls.dirty)
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
     },
@@ -287,25 +347,24 @@ export function makeBrakeFlapSegment(
   flapChordFraction: number,
   parentCellS: number,
   parentCellChord: number,
+  parentCellX: number,
   flapPolar: ContinuousPolar,
   constants?: ControlConstants,
 ): AeroSegment {
   const ctrl = constants ?? DEFAULT_CONSTANTS
   const theta = rollDeg * DEG2RAD
-  const maxFlapS = flapChordFraction * parentCellS
-  const maxFlapChord = flapChordFraction * parentCellChord
 
-  // Maximum forward shift of flap CP at full brake [normalized coords].
-  // = 0.25 × maxFlapChord / referenceHeight
-  // This is how far forward the position moves from the trailing edge
-  // when the flap is fully deployed (representing the quarter-chord of the flap).
-  const maxCpShift = 0.25 * maxFlapChord / REFERENCE_HEIGHT
+  // Full-flight flap geometry (deploy = 1) — captured at factory time
+  const fullMaxFlapS = flapChordFraction * parentCellS
+  const fullMaxFlapChord = flapChordFraction * parentCellChord
+  const fullMaxCpShift = 0.25 * fullMaxFlapChord / REFERENCE_HEIGHT
 
   // Roll increment sign — deepens the arc in the same direction as the base roll.
   const rollSign = rollDeg >= 0 ? 1 : -1
 
-  // Store trailing edge position (base position at zero brake)
-  const teX = trailingEdgePos.x
+  // Full-flight trailing edge position (deploy = 1)
+  const fullTeX = trailingEdgePos.x
+  const fullTeY = trailingEdgePos.y
   const teZ = trailingEdgePos.z
 
   return {
@@ -317,6 +376,17 @@ export function makeBrakeFlapSegment(
     polar: flapPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      // ── Deployment scaling ──
+      const d = Math.max(0, Math.min(1, controls.deploy))
+      const spanScale  = 0.1 + 0.9 * d                   // min 10% span
+      const chordScale = 0.3 + 0.7 * d                   // min 30% chord
+      const chordOffset = DEPLOY_CHORD_OFFSET * (1 - d)   // same forward shift as cells
+      const maxFlapS = fullMaxFlapS * chordScale * spanScale  // area = chord × span
+      const maxFlapChord = fullMaxFlapChord * chordScale   // chord scales with chordScale
+      const maxCpShift = fullMaxCpShift * chordScale       // CP shift scales with chord
+      const teX = parentCellX + chordOffset + (fullTeX - parentCellX) * chordScale  // TE toward quarter-chord + offset
+      this.position.y = fullTeY * spanScale                // trailing edge y collapses
+
       // ── Brake input from side routing ──
       const brakeInput = side === 'right' ? controls.brakeRight : controls.brakeLeft
       const effectiveBrake = brakeInput * brakeSensitivity
@@ -362,8 +432,17 @@ export function makeBrakeFlapSegment(
       const alphaFlap = alphaLocal + flapDeflection
 
       // ── Evaluate Kirchhoff model at the flap's angle ──
-      const polar = this.polar ?? flapPolar
-      const c = getAllCoefficients(alphaFlap, betaLocal, 0, polar)
+      // During deployment, morph polar coefficients (same as cell segments)
+      const basePolar = this.polar ?? flapPolar
+      const evalPolar = d < 1 ? {
+        ...basePolar,
+        cd_0: basePolar.cd_0 * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
+        cl_alpha: basePolar.cl_alpha * (DEPLOY_CL_ALPHA_FRACTION + (1 - DEPLOY_CL_ALPHA_FRACTION) * d),
+        cd_n: basePolar.cd_n * (DEPLOY_CD_N_MULTIPLIER + (1 - DEPLOY_CD_N_MULTIPLIER) * d),
+        alpha_stall_fwd: basePolar.alpha_stall_fwd + DEPLOY_STALL_FWD_OFFSET * (1 - d),
+        s1_fwd: basePolar.s1_fwd * (DEPLOY_S1_FWD_MULTIPLIER + (1 - DEPLOY_S1_FWD_MULTIPLIER) * d),
+      } : basePolar
+      const c = getAllCoefficients(alphaFlap, betaLocal, 0, evalPolar)
 
       // ── Lift-vector tilt decomposition ──
       // A panel rolled at angle θ produces lift perpendicular to its surface.

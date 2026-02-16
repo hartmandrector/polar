@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation } from './viewer/model-loader.ts'
+import { loadModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, CANOPY_SCALE } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -83,7 +83,7 @@ function sweepKey(s: FlightState): string {
   let key = `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}|${debugSweepKey()}`
   // Include canopy controls when segments exist (they affect the segment sweep)
   if (s.modelType === 'canopy') {
-    key += `|cc:${s.canopyControlMode}|lh:${s.canopyLeftHand}|rh:${s.canopyRightHand}|ws:${s.canopyWeightShift}`
+    key += `|cc:${s.canopyControlMode}|lh:${s.canopyLeftHand}|rh:${s.canopyRightHand}|ws:${s.canopyWeightShift}|pp:${s.pilotPitch}|dep:${s.deploy}`
   }
   return key
 }
@@ -124,6 +124,8 @@ function buildSegmentControls(state: FlightState): SegmentControls {
         break
     }
     ctrl.weightShiftLR = state.canopyWeightShift
+    ctrl.pilotPitch = state.pilotPitch
+    ctrl.deploy = state.deploy
   }
 
   return ctrl
@@ -417,6 +419,22 @@ function updateVisualization(state: FlightState): void {
     applyAttitude(currentModel.group, state.frameMode === 'inertial' ? bodyQuat : null)
     // Orient bridle + pilot chute along relative wind
     updateBridleOrientation(currentModel, state.alpha_deg, state.beta_deg)
+    // Pilot pitch — rotate pilot body about riser attachment point
+    if (currentModel.pilotPivot) {
+      currentModel.pilotPivot.rotation.x = state.pilotPitch * DEG2RAD
+    }
+    // Deployment — scale canopy mesh horizontally (X = lateral, Z = fore-aft)
+    // Span and chord use different minimums so the canopy doesn't get
+    // too thin chord-wise at low deployment.
+    if (currentModel.canopyModel) {
+      const spanScale  = 0.1 + 0.9 * state.deploy  // min 10% span
+      const chordScale = 0.3 + 0.7 * state.deploy  // min 30% chord
+      currentModel.canopyModel.scale.set(
+        CANOPY_SCALE * spanScale,   // X (lateral/span)
+        CANOPY_SCALE,               // Y (vertical) — always full height
+        CANOPY_SCALE * chordScale,  // Z (fore-aft/chord)
+      )
+    }
   }
 
   // Mass overlay — parented to model group so it rotates in body frame

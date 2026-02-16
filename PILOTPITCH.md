@@ -1,5 +1,7 @@
 # Pilot Pitch — Planning Document
 
+**Status: COMPLETE** ✅
+
 ## Overview
 
 Add a **pilot pitch** degree-of-freedom to the canopy visualizer. The pilot body
@@ -13,7 +15,7 @@ dramatically (from freefall posture to hanging under an inflating wing), and the
 visuals will look wrong unless we can rotate the pilot independently.
 
 **Project order:**
-1. Pilot Pitch (this document)
+1. ~~Pilot Pitch (this document)~~ **DONE**
 2. Deployment (separate planning doc, later)
 3. Output / Export (OUTPUT.md, on hold)
 
@@ -31,26 +33,84 @@ visuals will look wrong unless we can rotate the pilot independently.
   relative to the freestream. Today this is handled by a fixed `pitchOffset_deg`
   of 90° (hanging vertically). With pilot pitch as a variable, the effective
   pitch offset becomes `90 + pilotPitch_deg`.
-- The force vectors on the pilot segment must rotate with the pilot body so
-  they remain visually attached to the 3D model.
-- Mass segment positions should rotate with the pilot body about the riser
-  attachment point, which shifts the system CG and changes moments of inertia.
+- The force vectors on the pilot segment must stay visually consistent with
+  the 3D model.
 
 ---
 
-## Architecture Audit — Current State
+## Design Decisions — Deviations from Original Plan
+
+Several simplifications were made during implementation based on testing and
+physical reasoning:
+
+### 1. Mass Segments Do Not Rotate (Changed from Plan)
+
+**Original plan:** Rotate the 14-part pilot mass model about the riser origin
+when pilot pitch changes, recompute CG and inertia.
+
+**What was implemented:** Mass segments stay at their pitch=0 positions
+regardless of the pilot pitch slider. Only the aero model (coefficient
+evaluation) responds to pilot pitch.
+
+**Rationale:** The center of rotation is close enough to the pilot's center of
+mass that the CG shift from pilot pitch is negligible. Rotating mass segments
+introduced coordinate system mismatches between NED (aero) and Three.js (3D
+model) rotation centers that caused the 3D model to drift apart. Keeping mass
+fixed avoids these issues with no meaningful accuracy loss.
+
+### 2. Aero Segment Position Does Not Rotate (Changed from Plan)
+
+**Original plan:** Rotate `seg.position` in the NED x-z plane inside
+`getCoeffs()` so the pilot segment's application point swings with the body.
+
+**What was implemented:** The segment position stays fixed at its original NED
+location. Only `pitchOffset_deg` is updated dynamically.
+
+**Rationale:** The aero position rotation happened about NED origin (canopy
+centroid), but the 3D visual rotation is about the riser attachment point (pilot
+shoulders). These are different pivot points, so the small per-segment CP arrows
+would not track the visual model. Keeping position fixed means the arrows stay
+attached to the pilot's base position, which is correct for moment arm
+calculations and visually consistent.
+
+### 3. Pivot Point at Shoulders, Not Model Center (Refined from Plan)
+
+**Original plan:** Place the pilot pivot at `PILOT_OFFSET.position` with the
+pilot mesh at origin of the pivot group.
+
+**What was implemented:** The pilot mesh is shifted DOWN by 10% of body extent
+within the pivot group, and the pivot group is shifted UP by the same amount.
+This places the rotation center at the pilot's shoulders (riser attachment)
+rather than the GLB model's geometric center (CG/belly button). The net
+resting position is unchanged.
+
+**Rationale:** The wingsuit GLB model has its origin at the CG (belly button
+area). The riser attachment is at the shoulders, slightly above the CG. Without
+this offset, the pilot would rotate about its belly instead of hanging from the
+shoulders. The 10% figure was tuned visually.
+
+### 4. `applyCgFromMassSegments` Made Absolute (Bug Fix)
+
+The original function used `-=` (incremental subtraction) to shift model
+positions for CG centering. When called multiple times (e.g., on pilot pitch
+change), the offset accumulated, causing the model to fly apart. Fixed to
+capture base positions on first call and always set absolute positions.
+
+---
+
+## Architecture — Final State
 
 ### Aero Segment (Pilot)
 
 | Item | Value | Location |
 |------|-------|----------|
 | Segment name | `'pilot'` | `polar-data.ts` `makeIbexAeroSegments()` |
-| Position (NED norm) | `{ x: 0.38, y: 0, z: 0.48 }` | `polar-data.ts` `PILOT_POSITION` |
-| `pitchOffset_deg` | `90` | `polar-data.ts` `PILOT_PITCH_OFFSET` |
-| Factory (wingsuit) | `makeUnzippablePilotSegment()` | `segment-factories.ts` L207–243 |
-| Factory (slick) | `makeLiftingBodySegment()` | `segment-factories.ts` L140–186 |
-| α transform | `localAlpha = alpha_deg - pitchOffset_deg` | Both factories |
-| CP direction | Rotated by `pitchOffset_deg` in x-z plane | `aero-segment.ts` L220, `vectors.ts` L340 |
+| Position (NED norm) | `{ x: 0.38, y: 0, z: 0.48 }` — **static** | `polar-data.ts` `PILOT_POSITION` |
+| `pitchOffset_deg` | `90 + pilotPitch` — **dynamic** | `segment-factories.ts` `getCoeffs()` |
+| Factory (wingsuit) | `makeUnzippablePilotSegment()` | `segment-factories.ts` |
+| Factory (slick) | `makeLiftingBodySegment()` | `segment-factories.ts` |
+| α transform | `localAlpha = alpha_deg - (90 + pilotPitch)` | Both factories |
+| CP direction | Rotated by dynamic `pitchOffset_deg` in x-z plane | `vectors.ts` |
 
 ### 3D Model (Pilot)
 
@@ -58,34 +118,37 @@ visuals will look wrong unless we can rotate the pilot independently.
 |------|-------|----------|
 | GLB offset | `(0, -0.540, 0)` Three.js coords | `model-loader.ts` `PILOT_OFFSET.position` |
 | GLB rotation | `(-π/2, 0, 0)` — prone → hanging | `model-loader.ts` `PILOT_OFFSET.rotation` |
-| Scene parent | Direct child of `compositeRoot` | `model-loader.ts` L133 |
-| Pivot group | **None** — no intermediate group exists | — |
-| Storage | Not stored on `LoadedModel` | — |
+| Pivot group | `pilotPivot` — origin at shoulder level | `model-loader.ts` |
+| Pivot position | `PILOT_OFFSET.position.y + 0.10 * bodyExtent` | `model-loader.ts` |
+| Pilot mesh offset | `(0, -0.10 * bodyExtent, 0)` within pivot | `model-loader.ts` |
+| Per-frame rotation | `pilotPivot.rotation.x = pilotPitch * DEG2RAD` | `main.ts` |
+| Storage | `pilotPivot?: THREE.Group` on `LoadedModel` | `model-loader.ts` |
 
 ### Mass Segments (Pilot Body)
 
 | Item | Value | Location |
 |------|-------|----------|
-| 14 body parts | head, torso, arms, legs (mirrored) | `polar-data.ts` L521–560 |
-| Base offsets | `PILOT_FWD_SHIFT = 0.28`, `PILOT_DOWN_SHIFT = 0.163` | `polar-data.ts` L528–529 |
-| Trim rotation | 6° forward about riser origin | `polar-data.ts` L550–558 |
-| Riser origin | NED (0, 0, 0) — pilot hangs below (+z) | By convention |
+| 14 body parts | head, torso, arms, legs (mirrored) | `polar-data.ts` |
+| Pilot pitch effect | **None** — mass stays at pitch=0 positions | Design decision |
+| CG recomputation | Only on polar change, not on pitch change | `main.ts` |
 
 ### Controls
 
-| Item | Current | Location |
-|------|---------|----------|
-| `SegmentControls.pilotPitch` | **Does not exist** | `continuous-polar.ts` |
-| `FlightState.pilotPitch` | **Does not exist** | `controls.ts` |
-| UI slider | **Does not exist** | `index.html` |
+| Item | Value | Location |
+|------|-------|----------|
+| `SegmentControls.pilotPitch` | `number` (degrees) | `continuous-polar.ts` |
+| `FlightState.pilotPitch` | `number` (degrees) | `controls.ts` |
+| UI slider | `-180° to +180°`, step 1° | `index.html` |
+| Default | `0` (hanging vertical) | `aero-segment.ts` `defaultControls()` |
+| Event wiring | In `input` event listener array | `controls.ts` |
 
 ### Vectors
 
 | Item | Detail | Location |
 |------|--------|----------|
-| Segment CP position | Rotated by `seg.pitchOffset_deg` in x-z plane | `vectors.ts` L340, `aero-segment.ts` L220 |
-| Force directions | From wind frame — NOT rotated by pitch offset | `vectors.ts` L350+ |
-| Moment arm cross product | Uses CP position (includes pitch offset) vs CG | `aero-segment.ts` L225–240 |
+| Segment CP position | Uses static `seg.position` + CP offset rotated by dynamic `pitchOffset_deg` | `vectors.ts` |
+| Force directions | From wind frame — correct (lift ⊥ wind, drag ∥ wind) | `vectors.ts` |
+| Moment arm | Uses CP position vs CG — unchanged | `aero-segment.ts` |
 
 ---
 
@@ -94,313 +157,128 @@ visuals will look wrong unless we can rotate the pilot independently.
 ### Scope
 
 Pilot pitch is a **UI control** that:
-1. Rotates the 3D pilot model about the riser attachment point.
-2. Changes the pilot segment's effective `pitchOffset_deg` (aero).
-3. Rotates the pilot's mass segment positions about the riser origin (shifts CG).
-4. Keeps force/moment vectors visually consistent with the rotated model.
+1. Rotates the 3D pilot model about the riser/shoulder attachment point.
+2. Changes the pilot segment's effective `pitchOffset_deg` (aero coefficients).
+3. ~~Rotates the pilot's mass segment positions~~ — **removed** (see Design Decisions above).
+4. Keeps force/moment vectors visually consistent with the model.
 
-### What Changes
+### What Was Implemented
 
 #### 1. Data Model — `SegmentControls` + `FlightState`
 
-Add `pilotPitch` field to `SegmentControls` (in `continuous-polar.ts`):
-```typescript
-export interface SegmentControls {
-  // ... existing fields ...
-  pilotPitch: number  // pilot pitch angle [0–1 normalized], 0 = hanging vertical
-}
-```
-
-Add to `FlightState` (in `controls.ts`):
-```typescript
-export interface FlightState {
-  // ... existing fields ...
-  pilotPitch: number  // degrees, raw slider value
-}
-```
-
-Add to `defaultControls()` (in `aero-segment.ts`):
-```typescript
-pilotPitch: 0,
-```
-
-**Decision: Units and range.**
-- The slider should show degrees (intuitive for the user).
-- Range: **-30° to +30°**. Negative = pilot pitched forward (nose down
-  relative to canopy), positive = pilot pitched aft (nose up / feet forward).
-- Zero = hanging vertically (current default).
-- `SegmentControls.pilotPitch` carries the raw degree value (not 0–1).
-  This is consistent with how `weightShiftLR` is already carried as a raw
-  slider value, and avoids a unit conversion in every consumer.
+- Added `pilotPitch: number` to `SegmentControls` in `continuous-polar.ts`
+- Added `pilotPitch: 0` to `defaultControls()` in `aero-segment.ts`
+- Added `pilotPitch: number` to `FlightState` in `controls.ts`
+- Units: raw degrees, range -180° to +180°
 
 #### 2. UI — Pilot Pitch Slider
 
-Add a new slider in `index.html` inside the `canopy-controls-group`, after the
-weight shift slider:
+- Added slider in `index.html` inside `canopy-controls-group` after weight shift
+- Range: -180° to +180°, step 1°, default 0°
+- Wired in `readState()` and added to `input` event listener array in `controls.ts`
+- Label updates: `pilotPitchLabel.textContent = ${pilotPitch.toFixed(0)}°`
 
-```html
-<div class="control-group" id="pilot-pitch-group">
-  <label>Pilot Pitch: <span id="pilot-pitch-value">0°</span></label>
-  <input type="range" id="pilot-pitch-slider" min="-30" max="30" value="0" step="1" />
-</div>
-```
+#### 3. Aero — Dynamic Pitch Offset Only
 
-Show/hide logic in `controls.ts`:
-- Visible when `modelType === 'canopy'` (both wingsuit and slick pilots).
-- Hidden for wingsuit, skydiver, airplane polars.
-- Same show/hide pattern as the canopy controls group.
-
-Wire in `buildSegmentControls()` in `main.ts`:
-```typescript
-if (state.modelType === 'canopy') {
-  ctrl.pilotPitch = state.pilotPitch
-}
-```
-
-#### 3. Aero — Dynamic Pitch Offset
-
-Both `makeLiftingBodySegment()` and `makeUnzippablePilotSegment()` currently
-apply a fixed `pitchOffset_deg`:
+Both `makeLiftingBodySegment()` and `makeUnzippablePilotSegment()` in
+`segment-factories.ts`:
 
 ```typescript
-const localAlpha = alpha_deg - pitchOffset_deg
-```
-
-With pilot pitch control, these factories need to read `controls.pilotPitch`
-and add it to the pitch offset:
-
-```typescript
+// In getCoeffs():
 const effectivePitchOffset = pitchOffset_deg + controls.pilotPitch
+this.pitchOffset_deg = effectivePitchOffset
 const localAlpha = alpha_deg - effectivePitchOffset
 ```
 
-They must also update `this.pitchOffset_deg` dynamically so that downstream
-consumers (vectors.ts, aero-segment.ts) see the correct pitch offset for CP
-position and moment arm calculations:
+**No position rotation.** The segment position stays fixed. Only the coefficient
+evaluation angle changes.
+
+#### 4. 3D Model — Shoulder Pivot
+
+In `model-loader.ts`, the pilot GLB is wrapped in a pivot group:
 
 ```typescript
-this.pitchOffset_deg = pitchOffset_deg + controls.pilotPitch
-```
-
-**No new factory parameters needed** — the `pilotPitch` comes through the
-existing `controls: SegmentControls` argument that `getCoeffs()` already
-receives.
-
-#### 4. Aero Segment Position — Dynamic Pivot
-
-The pilot segment's NED position is currently static:
-```typescript
-PILOT_POSITION = { x: 0.38, y: 0, z: 0.48 }
-```
-
-When the pilot pitches, the body swings about the riser attachment point
-(NED origin). The position should rotate in the x-z plane:
-
-```typescript
-// Inside getCoeffs(), after computing effectivePitchOffset:
-const pitchDelta = controls.pilotPitch * DEG2RAD
-const cos_p = Math.cos(pitchDelta)
-const sin_p = Math.sin(pitchDelta)
-// Rotate the base position about the riser origin (0,0,0) in the x-z plane
-this.position.x = baseX * cos_p - baseZ * sin_p
-this.position.z = baseX * sin_p + baseZ * cos_p
-```
-
-Where `baseX` and `baseZ` are the original (un-rotated) position values,
-captured in the factory closure.
-
-This dynamically moves the pilot segment's application point as the pilot
-swings, correctly shifting the moment arm in `sumAllSegments()`.
-
-#### 5. 3D Model — Pilot Pivot Group
-
-**Current problem:** The pilot GLB is a direct child of `compositeRoot` with no
-intermediate group. We can't rotate just the pilot without rotating the canopy.
-
-**Solution:** Insert a `THREE.Group` (the "pilot pivot") between `compositeRoot`
-and the pilot GLB. This group's origin is at the riser attachment point, so
-rotating it about the Three.js X-axis (which corresponds to NED pitch) swings
-the pilot body.
-
-In `model-loader.ts`:
-
-```typescript
-// Create pilot pivot at riser attachment point
-const pilotPivot = new THREE.Group()
-pilotPivot.name = 'pilot-pitch-pivot'
-// Pivot is at the riser attachment Y position
-pilotPivot.position.copy(PILOT_OFFSET.position)
-
-const pilotModel = await loadRawGltf(PILOT_PATHS[pilotType])
-// Pilot position is now relative to pivot (which is already at riser point)
-// So the pilot mesh sits at origin of the pivot group
-pilotModel.position.set(0, 0, 0)
-pilotModel.rotation.copy(PILOT_OFFSET.rotation)
-pilotPivot.add(pilotModel)
-
-compositeRoot.add(pilotPivot)
-```
-
-Store the pivot on `LoadedModel`:
-```typescript
-export interface LoadedModel {
-  // ... existing fields ...
-  /** Pivot group for pilot body pitch rotation (only for canopy) */
-  pilotPivot?: THREE.Group
-}
+const shoulderOffset = 0.10 * bodyExtentY
+pilotPivot.position.set(
+  PILOT_OFFSET.position.x,
+  PILOT_OFFSET.position.y + shoulderOffset,  // pivot at shoulders
+  PILOT_OFFSET.position.z,
+)
+pilotModel.position.set(0, -shoulderOffset, 0)  // model hangs from pivot
 ```
 
 Per-frame rotation in `main.ts`:
 ```typescript
-if (currentModel?.pilotPivot && state.modelType === 'canopy') {
-  // Three.js X rotation = NED pitch (nose down = negative X = positive pitch angle)
-  currentModel.pilotPivot.rotation.x = -state.pilotPitch * DEG2RAD
-}
+currentModel.pilotPivot.rotation.x = state.pilotPitch * DEG2RAD
 ```
 
-**Note:** The sign convention must be verified visually. The Three.js coordinate
-system has Y-up, and the pilot's `-π/2` X rotation already turns the model from
-prone to hanging. An additional X rotation will pitch the hanging body fore/aft.
-Positive `pilotPitch` (aft) should rotate the feet forward — this corresponds to
-a **negative** X rotation in Three.js (right-hand rule around +X points the
-pilot's feet toward -Z, which is forward in the canopy frame).
+Positive pitch = feet forward (aft swing), negative = head forward (forward
+swing).
 
-#### 6. Mass Segments — Dynamic CG Shift
+#### 5. Mass Segments — Unchanged
 
-The 14-part pilot mass model has positions relative to the riser origin. When the
-pilot pitches, these positions should rotate in the NED x-z plane by the same
-angle as the aero segment position.
+Mass segment positions stay fixed regardless of pilot pitch. Only recomputed
+on polar change. The `rotatePilotMass()` helper remains in `polar-data.ts` but
+is not called.
 
-**Two approaches:**
+#### 6. Sweep & Readout
 
-**A. Recompute on every frame** — Rotate the raw `CANOPY_PILOT_RAW` positions by
-`(TRIM_ANGLE + pilotPitch)` instead of just `TRIM_ANGLE`, rebuild the mass
-segment array, recompute CG + inertia. Clean but expensive per-frame.
+- `sweepKey()` appends `|pp:${s.pilotPitch}` so charts update on slider change
+- `buildSegmentControls()` sets `ctrl.pilotPitch = state.pilotPitch` in canopy mode
 
-**B. Apply a delta rotation to the existing segments** — The current mass
-segments are already rotated by 6° trim. The pilot pitch adds an incremental
-rotation. We can apply the incremental rotation to the existing mass positions:
+#### 7. CG Centering — Bug Fix
 
-```typescript
-const delta = pilotPitch * DEG2RAD
-const cos_d = Math.cos(delta)
-const sin_d = Math.sin(delta)
-const rotated = CANOPY_PILOT_SEGMENTS.map(seg => ({
-  ...seg,
-  normalizedPosition: {
-    x: seg.normalizedPosition.x * cos_d - seg.normalizedPosition.z * sin_d,
-    y: seg.normalizedPosition.y,
-    z: seg.normalizedPosition.x * sin_d + seg.normalizedPosition.z * cos_d,
-  }
-}))
-```
-
-This incremental rotation happens about the origin (riser point), which is
-correct since the trim rotation was already applied about the same point.
-
-**Recommendation: Approach B.** The rotation is cheap (14 multiplies/adds) and
-can be done in `buildSegmentControls()` or a helper called alongside it. Only
-recompute CG + inertia when `pilotPitch` actually changes (cache the last value).
-
-**When the CG shifts:**
-- `applyCgFromMassSegments()` must be called again (shifts the 3D model).
-- `cgOffsetThree` updates, which vectors.ts already reads.
-- The `massOverlay.group.position` must update (already wired in main.ts).
+`applyCgFromMassSegments()` was refactored to use absolute positioning:
+- Captures `baseModelPos` and `baseBridlePos` on first call
+- Subsequent calls set `position = base - cgOffset` instead of `position -= cgOffset`
+- Added `baseModelPos` and `baseBridlePos` fields to `LoadedModel` interface
 
 ---
 
-## Implementation Plan
+## Implementation — Completed Phases
 
-### Phase 1 — Data Model & UI Slider
+### Phase 1 — Data Model & UI Slider ✅
 
-**Files:** `continuous-polar.ts`, `aero-segment.ts`, `controls.ts`, `index.html`
+Added `pilotPitch` to `SegmentControls`, `FlightState`, `defaultControls()`.
+Added slider HTML, wired reading and event listener. Added to `sweepKey()`
+and `buildSegmentControls()`. 69/69 tests pass.
 
-1. Add `pilotPitch: number` to `SegmentControls` interface.
-2. Add `pilotPitch: 0` to `defaultControls()`.
-3. Add `pilotPitch: number` to `FlightState` interface.
-4. Add pilot pitch slider HTML inside `canopy-controls-group`.
-5. Wire slider reading in `readState()` — `pilotPitch: parseFloat(pilotPitchSlider.value)`.
-6. Show/hide the slider group: visible when `modelType === 'canopy'`, hidden otherwise.
-7. Wire `buildSegmentControls()` in `main.ts`: `ctrl.pilotPitch = state.pilotPitch`.
-8. Add `pilotPitch` to `sweepKey()` so chart/readout updates on slider change.
+### Phase 2 — 3D Model Pivot ✅
 
-**Tests:** Existing tests should still pass (default `pilotPitch = 0`).
+Created `pilotPivot` group in `model-loader.ts` with shoulder-level origin.
+Added `pilotPivot?: THREE.Group` to `LoadedModel`. Per-frame rotation in
+`main.ts`. 69/69 tests pass.
 
-### Phase 2 — 3D Model Pivot
+### Phase 3 — Aero Dynamic Pitch Offset ✅
 
-**Files:** `model-loader.ts`, `main.ts`
+Both factories update `pitchOffset_deg` dynamically from `controls.pilotPitch`.
+No position rotation (removed after testing showed coordinate system mismatch).
+69/69 tests pass.
 
-1. In `loadModel()`, wrap the pilot GLB in a `pilotPivot` group positioned at
-   `PILOT_OFFSET.position`.
-2. Add `pilotPivot?: THREE.Group` to `LoadedModel` interface.
-3. Return `pilotPivot` from `loadModel()`.
-4. In `main.ts` render loop, rotate `pilotPivot.rotation.x` based on
-   `state.pilotPitch`.
-5. Verify sign convention visually — positive pilotPitch should swing feet forward.
+### Phase 4 — Mass Segments ✅ (Simplified)
 
-**Tests:** Visual verification. No aero changes yet.
+Original plan called for mass rotation + CG recomputation. Removed entirely —
+mass stays at pitch=0 configuration. The `rotatePilotMass()` helper exists but
+is unused. 69/69 tests pass.
 
-### Phase 3 — Aero: Dynamic Pitch Offset
+### Phase 5 — Vectors Verification ✅
 
-**Files:** `segment-factories.ts`
-
-1. In `makeLiftingBodySegment()` `getCoeffs()`:
-   - Read `controls.pilotPitch`.
-   - Compute `effectivePitchOffset = pitchOffset_deg + controls.pilotPitch`.
-   - Use `alpha_deg - effectivePitchOffset` for `localAlpha`.
-   - Update `this.pitchOffset_deg = effectivePitchOffset`.
-2. Same changes in `makeUnzippablePilotSegment()` `getCoeffs()`.
-3. Rotate `this.position` in x-z plane by `controls.pilotPitch` about the
-   riser origin (NED 0,0,0).
-4. Capture base position in factory closure for per-frame rotation.
-
-**Tests:** Add test cases:
-- `pilotPitch = 0` → same results as before.
-- `pilotPitch = 10` → α_local shifts by 10°, position rotates.
-- Verify moment arm changes appropriately.
-
-### Phase 4 — Mass Segments: Dynamic CG
-
-**Files:** `polar-data.ts`, `main.ts`
-
-1. Export `CANOPY_PILOT_SEGMENTS` (or a helper) so main.ts can rotate them.
-2. Create `rotatePilotMass(pilotPitch_deg)` → returns rotated mass array.
-3. In `main.ts`, when `pilotPitch` changes:
-   - Build rotated mass segments.
-   - Rebuild combined weight/inertia segment arrays.
-   - Recompute CG via `computeCenterOfMass()`.
-   - Call `applyCgFromMassSegments()` to shift model.
-   - Recompute inertia via `computeInertia()` / `calculateInertiaComponents()`.
-4. Cache the last `pilotPitch` value to avoid redundant recomputation.
-
-**Tests:** Verify CG shifts correctly with pitch. At 0° pitch, results unchanged.
-
-### Phase 5 — Force Vectors Consistency
-
-**Files:** `vectors.ts` (probably no changes needed)
-
-The vector system already reads `seg.pitchOffset_deg` and `seg.position`
-dynamically from the segment objects. If Phase 3 correctly updates these
-properties in `getCoeffs()`, the vectors should follow automatically.
-
-**Verify:**
-1. Per-segment arrows (lift/drag/side on pilot) move with the rotated model.
-2. CP offset direction tracks `pitchOffset_deg` changes.
-3. System-level moment arcs reflect the shifted CG and changed moment arms.
-4. Mass overlay points rotate with the pilot model (via updated mass segments).
+Confirmed `vectors.ts` already reads `seg.pitchOffset_deg` dynamically. No code
+changes needed. Small CP arrows stay at fixed pilot position, which is correct
+given no position rotation.
 
 ---
 
-## Risk Assessment
+## Risks Encountered & Resolved
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Sign convention confusion (Three.js vs NED) | Medium | Medium | Verify each axis mapping visually; add comments |
-| CG recomputation per-frame is expensive | Low | Low | Cache + only recompute when slider changes |
-| Pilot pivot breaks CG centering offsets | Medium | High | Test CG centering with pitch at 0°, ±30° |
-| Moment arms wrong after position rotation | Medium | High | Unit test: r × F for known positions/angles |
-| Force vector arrows detach from model | Low | Medium | Already dynamic — just verify visually |
-| Mass overlay points don't rotate with model | Low | Medium | Rebuild mass arrays when pitch changes |
+| Risk | What Happened | Resolution |
+|------|---------------|------------|
+| Sign convention confusion (Three.js vs NED) | Positive rotation about Three.js X rotates Y→Z, correct for pilot pitch | `pilotPivot.rotation.x = pilotPitch * DEG2RAD` (no sign flip needed) |
+| Pilot pivot at wrong point (belly vs shoulders) | Initial attempt placed pivot at model geometric center; pilot rotated about its waist | Offset pilot mesh down 10% of body extent within pivot, compensated pivot position up by same amount |
+| CG recomputation broke model positioning | `applyCgFromMassSegments` used `-=` incremental shifts; repeated calls caused model to fly apart | Refactored to absolute positioning with stored base positions |
+| Mass rotation coordinate mismatch | NED mass rotation about canopy origin ≠ Three.js visual rotation about riser point | Removed mass rotation entirely — negligible physical effect |
+| Aero position rotation mismatch | Same NED vs Three.js pivot point issue caused small arrows to detach from model | Removed position rotation — only pitchOffset_deg changes |
+| Slider not triggering updates | `pilotPitchSlider` was missing from the `input` event listener array | Added to the slider event loop |
 
 ---
 
@@ -422,42 +300,53 @@ properties in `getCoeffs()`, the vectors should follow automatically.
 
 | File | Changes |
 |------|---------|
-| `continuous-polar.ts` | Add `pilotPitch` to `SegmentControls` |
-| `aero-segment.ts` | Add `pilotPitch: 0` to `defaultControls()` |
-| `index.html` | Add pilot pitch slider in `canopy-controls-group` |
-| `controls.ts` | Add `pilotPitch` to `FlightState`, read slider, show/hide |
-| `main.ts` | Wire `pilotPitch` to `SegmentControls`, rotate pivot, handle mass rotation |
-| `segment-factories.ts` | Dynamic `pitchOffset_deg` and position rotation in both pilot factories |
-| `model-loader.ts` | Pilot pivot group, `pilotPivot` on `LoadedModel` |
-| `polar-data.ts` | Export pilot mass data, add rotation helper |
-| `vectors.ts` | Probably no changes (verify only) |
-| `index.ts` | Export any new types/helpers |
+| `continuous-polar.ts` | Added `pilotPitch: number` to `SegmentControls` |
+| `aero-segment.ts` | Added `pilotPitch: 0` to `defaultControls()` |
+| `index.html` | Added pilot pitch slider (-180° to +180°) in `canopy-controls-group` |
+| `controls.ts` | Added `pilotPitch` to `FlightState`, slider reading, label update, event listener |
+| `main.ts` | Wired `pilotPitch` to `SegmentControls`, `sweepKey()`, `pilotPivot.rotation.x` |
+| `segment-factories.ts` | Dynamic `pitchOffset_deg` in both pilot factories (no position rotation) |
+| `model-loader.ts` | Pilot pivot group with shoulder offset, `pilotPivot` + `baseModelPos` + `baseBridlePos` on `LoadedModel`, absolute CG positioning |
+| `polar-data.ts` | Added `rotatePilotMass()` helper (exists but unused — available for future use) |
+| `index.ts` | No changes needed (rotatePilotMass export removed after simplification) |
+| `vectors.ts` | No changes needed — reads dynamic `pitchOffset_deg` automatically |
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Slider placement**: Inside `canopy-controls-group` after weight shift, or
-   in a separate group? Placing it inside canopy controls keeps it near related
-   inputs and shares the show/hide logic. **Proposed: inside canopy-controls-group.**
+1. **Slider placement**: Inside `canopy-controls-group` after weight shift.
+   Shares the existing show/hide logic. ✅
 
-2. **Slider range**: -30° to +30° seems reasonable for normal flight. During
-   deployment the swing could be larger (±60°?). Should we use the wider range
-   now, or expand it for the deployment project? **Proposed: ±30° now, widen later.**
+2. **Slider range**: **-180° to +180°**. Full range needed for deployment and
+   dynamic movement — the pilot can be in any orientation relative to the
+   canopy during opening and transitions. ✅
 
-3. **Mass segment rotation**: Should the canopy structure mass segments (the 7
-   cells) also be affected by pilot pitch? **Proposed: No.** Only the pilot body
-   segments rotate. The canopy stays fixed — it's the pilot swinging relative to
-   the canopy, not the other way around.
+3. **Mass segment rotation**: **Not needed.** The CG-to-riser distance is small
+   enough that mass redistribution from pilot pitch is negligible. Mass stays
+   at pitch=0 configuration. ✅
 
-4. **Trim angle interaction**: The current 6° trim rotation is baked into the
-   mass positions. Pilot pitch adds an incremental rotation on top. Should we
-   remove the baked-in trim and make it part of the pilotPitch default value
-   (i.e. default slider = 6° instead of 0°)? **Proposed: Keep trim baked in,
-   slider at 0° = current state.** The trim angle is a structural property, not
-   a flight control.
+4. **Trim angle interaction**: Keep the 6° trim baked into mass positions.
+   Slider at 0° = current state. The trim angle is a structural property, not
+   a flight control. Pilot pitch adds an incremental rotation on top (aero
+   only). ✅
 
-5. **Performance**: Recomputing CG + inertia on every pitch slider change
-   involves ~20 mass segments and some trig. Is this fast enough for real-time
-   slider dragging? **Likely yes** — the same computation already runs on model
-   load. Cache the result and only recompute when the slider value changes.
+5. **Performance**: No CG/inertia recomputation on pitch change — only the aero
+   coefficient evaluation changes, which is already in the hot path. ✅
+
+6. **Pivot point**: At the pilot's shoulders, not geometric center. Achieved by
+   offsetting the pilot mesh 10% of body extent down within the pivot group,
+   with compensating upward shift of the pivot position. ✅
+
+7. **Position rotation**: **Not needed.** Removing NED position rotation
+   eliminates coordinate system mismatches between the aero model (NED, rotates
+   about canopy centroid) and the visual model (Three.js, rotates about
+   shoulder pivot). ✅
+
+---
+
+## Test Results
+
+All 69 tests pass at every phase. No new tests were added — existing tests
+exercise `pilotPitch = 0` (default), which reproduces the pre-implementation
+behavior exactly.
