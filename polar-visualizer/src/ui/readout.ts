@@ -87,3 +87,44 @@ export function updateInertiaReadout(
   setTextContent('r-yaw-accel', `${fmt(yawAccel * 180 / Math.PI, 1)}°/s²`)
   setTextContent('r-roll-accel', `${fmt(rollAccel * 180 / Math.PI, 1)}°/s²`)
 }
+
+/**
+ * Update the Rates readout section.
+ * Shows Euler rates (from UI), body rates (from inverse DKE), and
+ * angular acceleration (from rotational EOM).
+ */
+export function updateRatesReadout(
+  eulerRates: { phiDot: number; thetaDot: number; psiDot: number },
+  bodyRates: { p: number; q: number; r: number },
+  bodyAccel: { pDot: number; qDot: number; rDot: number } | null,
+): void {
+  const d = 180 / Math.PI
+  setTextContent('r-euler-rates',
+    `${fmt(eulerRates.phiDot * d, 1)}, ${fmt(eulerRates.thetaDot * d, 1)}, ${fmt(eulerRates.psiDot * d, 1)} °/s`)
+  setTextContent('r-body-rates',
+    `${fmt(bodyRates.p * d, 1)}, ${fmt(bodyRates.q * d, 1)}, ${fmt(bodyRates.r * d, 1)} °/s`)
+  if (bodyAccel) {
+    setTextContent('r-body-accel',
+      `${fmt(bodyAccel.pDot * d, 1)}, ${fmt(bodyAccel.qDot * d, 1)}, ${fmt(bodyAccel.rDot * d, 1)} °/s²`)
+  } else {
+    setTextContent('r-body-accel', '—')
+  }
+}
+
+/**
+ * Update the Positions readout section.
+ * Shows CG in body and inertial frames.
+ */
+export function updatePositionsReadout(
+  cgBody: { x: number; y: number; z: number },
+  cgInertial: { x: number; y: number; z: number } | null,
+): void {
+  setTextContent('r-cg-body',
+    `${fmt(cgBody.x, 3)}, ${fmt(cgBody.y, 3)}, ${fmt(cgBody.z, 3)} m`)
+  if (cgInertial) {
+    setTextContent('r-cg-inertial',
+      `${fmt(cgInertial.x, 3)}, ${fmt(cgInertial.y, 3)}, ${fmt(cgInertial.z, 3)} m`)
+  } else {
+    setTextContent('r-cg-inertial', '—')
+  }
+}

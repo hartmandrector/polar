@@ -24,7 +24,7 @@ import * as THREE from 'three'
 import type { FullCoefficients, ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import { coeffToForces } from '../polar/coefficients.ts'
 import { computeSegmentForce, sumAllSegments, defaultControls } from '../polar/aero-segment.ts'
-import type { SegmentForceResult } from '../polar/aero-segment.ts'
+import type { SegmentForceResult, SegmentAeroResult } from '../polar/aero-segment.ts'
 import { computeCenterOfMass } from '../polar/inertia.ts'
 import { ShadedArrow } from './shaded-arrow.ts'
 import { CurvedArrow } from './curved-arrow.ts'
@@ -74,6 +74,7 @@ export interface SegmentArrows {
   lift: THREE.ArrowHelper
   drag: THREE.ArrowHelper
   side: THREE.ArrowHelper
+  velocity: THREE.ArrowHelper
   group: THREE.Group
 }
 
@@ -131,6 +132,7 @@ function ensureSegmentArrows(
       sa.lift.dispose()
       sa.drag.dispose()
       sa.side.dispose()
+      sa.velocity.dispose()
       existing.delete(name)
     }
   }
@@ -146,11 +148,13 @@ function ensureSegmentArrows(
       const lift = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.lift, 0.06, 0.03)
       const drag = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.drag, 0.06, 0.03)
       const side = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.side, 0.06, 0.03)
+      const velocity = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, 0x00cccc, 0.06, 0.03)
+      velocity.visible = false
       const group = new THREE.Group()
       group.name = `seg-${seg.name}`
-      group.add(lift, drag, side)
+      group.add(lift, drag, side, velocity)
       vectors.group.add(group)
-      sa = { name: seg.name, lift, drag, side, group }
+      sa = { name: seg.name, lift, drag, side, velocity, group }
     }
     result.push(sa)
   }
@@ -171,6 +175,10 @@ export interface ForceVectors {
   pitchArc: CurvedArrow
   yawArc: CurvedArrow
   rollArc: CurvedArrow
+  /** Rate arcs (angular velocity) — pale colours, radius 1.4 */
+  pitchRateArc: CurvedArrow
+  yawRateArc: CurvedArrow
+  rollRateArc: CurvedArrow
   /** Per-segment ArrowHelper groups (empty when polar has no aeroSegments). */
   segmentArrows: SegmentArrows[]
   group: THREE.Group
@@ -199,16 +207,26 @@ export function createForceVectors(): ForceVectors {
   yawArc.visible = false
   rollArc.visible = false
 
+  // Rate arcs (angular velocity) — pale colours, larger radius
+  const pitchRateArc = new CurvedArrow('x', 0xffbb88, 'pitch-rate', { radius: 1.4 })
+  const yawRateArc = new CurvedArrow('y', 0x88ffbb, 'yaw-rate', { radius: 1.4 })
+  const rollRateArc = new CurvedArrow('z', 0xbb88ff, 'roll-rate', { radius: 1.4 })
+  pitchRateArc.visible = false
+  yawRateArc.visible = false
+  rollRateArc.visible = false
+
   group.add(
     windArrow, liftArrow, dragArrow, sideArrow,
     totalAeroArrow, weightArrow, netArrow,
-    pitchArc, yawArc, rollArc
+    pitchArc, yawArc, rollArc,
+    pitchRateArc, yawRateArc, rollRateArc
   )
 
   return {
     windArrow, liftArrow, dragArrow, sideArrow,
     totalAeroArrow, weightArrow, netArrow,
     pitchArc, yawArc, rollArc,
+    pitchRateArc, yawRateArc, rollRateArc,
     segmentArrows: [],
     group
   }
@@ -274,6 +292,9 @@ export function updateForceVectors(
   controls?: SegmentControls,
   cgOffsetThree?: THREE.Vector3,
   cachedSegForces?: SegmentForceResult[],
+  bodyRates?: { p: number; q: number; r: number },
+  bodyQuat?: THREE.Quaternion,
+  perSegmentData?: SegmentAeroResult[],
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -381,6 +402,30 @@ export function updateForceVectors(
         sa.side.visible = true
       } else {
         sa.side.visible = false
+      }
+
+      // Velocity arrow — per-segment local wind direction (§16.3)
+      const VEL_SCALE = 0.1
+      if (perSegmentData && perSegmentData[i]) {
+        const ps = perSegmentData[i]
+        const velNED = ps.localVelocity
+        // Convert NED velocity to Three.js — arrow points in flow direction
+        // (forward from segment, separating visually from drag vectors behind)
+        const velThree = nedToThreeJS(velNED)
+        const velMag = ps.localAirspeed
+        if (velMag > 0.1) {
+          sa.velocity.setDirection(applyFrame(velThree.normalize()).normalize())
+          sa.velocity.setLength(velMag * VEL_SCALE, 0.06, 0.03)
+          // Position at segment aero center (not CP)
+          const segPosNED = { x: seg.position.x, y: seg.position.y, z: seg.position.z }
+          const segPosThree = nedToThreeJS(segPosNED).multiplyScalar(pilotScale * 1.875)
+          sa.velocity.position.copy(applyFramePos(shiftPos(segPosThree)))
+          sa.velocity.visible = true
+        } else {
+          sa.velocity.visible = false
+        }
+      } else {
+        sa.velocity.visible = false
       }
     }
 
@@ -556,6 +601,43 @@ export function updateForceVectors(
     vectors.pitchArc.quaternion.identity()
     vectors.yawArc.quaternion.identity()
     vectors.rollArc.quaternion.identity()
+  }
+
+  // ── Rate arcs (angular velocity visualization — §15.5) ──
+  const RATE_SCALE = 0.3  // rad/s → arc sweep
+  if (bodyRates) {
+    const pArc = bodyRates.p * RATE_SCALE
+    const qArc = -bodyRates.q * RATE_SCALE  // pitch sign convention
+    const rArc = -bodyRates.r * RATE_SCALE
+
+    vectors.pitchRateArc.setAngle(qArc)
+    vectors.pitchRateArc.position.copy(cgOrigin)
+    vectors.pitchRateArc.visible = Math.abs(qArc) > 0.01
+
+    vectors.yawRateArc.setAngle(rArc)
+    vectors.yawRateArc.position.copy(cgOrigin)
+    vectors.yawRateArc.visible = Math.abs(rArc) > 0.01
+
+    vectors.rollRateArc.setAngle(pArc)
+    vectors.rollRateArc.position.copy(cgOrigin)
+    vectors.rollRateArc.visible = Math.abs(pArc) > 0.01
+
+    // Rate arcs rotate with body attitude (same as accel arcs)
+    if (rotationMatrix) {
+      const rotQ = new THREE.Quaternion()
+      rotQ.setFromRotationMatrix(rotationMatrix)
+      vectors.pitchRateArc.quaternion.copy(rotQ)
+      vectors.yawRateArc.quaternion.copy(rotQ)
+      vectors.rollRateArc.quaternion.copy(rotQ)
+    } else {
+      vectors.pitchRateArc.quaternion.identity()
+      vectors.yawRateArc.quaternion.identity()
+      vectors.rollRateArc.quaternion.identity()
+    }
+  } else {
+    vectors.pitchRateArc.visible = false
+    vectors.yawRateArc.visible = false
+    vectors.rollRateArc.visible = false
   }
 }
 

@@ -12,6 +12,7 @@ export interface SceneContext {
   controls: OrbitControls
   gridHelper: THREE.GridHelper
   compassLabels: THREE.Group
+  bodyAxisLabels: THREE.Group
 }
 
 export function createScene(canvas: HTMLCanvasElement): SceneContext {
@@ -55,12 +56,17 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   const axesHelper = new THREE.AxesHelper(1.5)
   scene.add(axesHelper)
 
-  // Compass labels (N/E) — visible only in inertial frame
+  // Compass labels (N/E/D) — inertial frame reference
   const compassLabels = createCompassLabels()
   compassLabels.visible = false
   scene.add(compassLabels)
 
-  return { scene, camera, renderer, controls, gridHelper, compassLabels }
+  // Body axis labels (x/y/z) — body frame reference
+  const bodyAxisLabels = createBodyAxisLabels()
+  bodyAxisLabels.visible = false
+  scene.add(bodyAxisLabels)
+
+  return { scene, camera, renderer, controls, gridHelper, compassLabels, bodyAxisLabels }
 }
 
 // ─── Compass Labels ──────────────────────────────────────────────────────────
@@ -132,6 +138,46 @@ function createCompassLabels(): THREE.Group {
   const eSprite = makeTextSprite('E', '#ffaa44')
   eSprite.position.set(-dist, height, 0)
   group.add(eSprite)
+
+  // Down — along -Y in Three.js (NED z → Three.js -Y)
+  const dSprite = makeTextSprite('D', '#44ff88')
+  dSprite.position.set(0, -dist, 0)
+  group.add(dSprite)
+
+  return group
+}
+
+/**
+ * Create body axis labels (x, y, z) at the ends of the AxesHelper.
+ *
+ * In Three.js body frame (NED mapping):
+ *   x_B (NED forward) → Three.js +Z
+ *   y_B (NED right)   → Three.js -X
+ *   z_B (NED down)    → Three.js -Y
+ *
+ * Labels positioned at radius ~1.8 (just beyond AxesHelper length 1.5).
+ */
+function createBodyAxisLabels(): THREE.Group {
+  const group = new THREE.Group()
+  const dist = 1.8
+
+  // x_B (forward = NED x) → Three.js +Z
+  const xSprite = makeTextSprite('x', '#ff4444')
+  xSprite.scale.set(0.6, 0.6, 1)
+  xSprite.position.set(0, 0, dist)
+  group.add(xSprite)
+
+  // y_B (right = NED y) → Three.js -X
+  const ySprite = makeTextSprite('y', '#44ff44')
+  ySprite.scale.set(0.6, 0.6, 1)
+  ySprite.position.set(-dist, 0, 0)
+  group.add(ySprite)
+
+  // z_B (down = NED z) → Three.js -Y
+  const zSprite = makeTextSprite('z', '#4444ff')
+  zSprite.scale.set(0.6, 0.6, 1)
+  zSprite.position.set(0, -dist, 0)
+  group.add(zSprite)
 
   return group
 }

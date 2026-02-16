@@ -113,6 +113,21 @@
           <label><span id="yaw-label">ψ (Yaw): </span><span id="yaw-value">0.0°</span></label>
           <input type="range" id="yaw-slider" min="-180" max="180" value="0" step="0.5" />
         </div>
+        <div id="euler-rate-group" class="euler-rate-subgroup">
+          <div class="control-group-header">Euler Rates (∂/∂t)</div>
+          <div class="control-group">
+            <label>φ̇ (Roll Rate): <span id="phi-dot-value">0°/s</span></label>
+            <input type="range" id="phi-dot-slider" min="-180" max="180" value="0" step="1" />
+          </div>
+          <div class="control-group">
+            <label>θ̇ (Pitch Rate): <span id="theta-dot-value">0°/s</span></label>
+            <input type="range" id="theta-dot-slider" min="-180" max="180" value="0" step="1" />
+          </div>
+          <div class="control-group">
+            <label>ψ̇ (Yaw Rate): <span id="psi-dot-value">0°/s</span></label>
+            <input type="range" id="psi-dot-slider" min="-180" max="180" value="0" step="1" />
+          </div>
+        </div>
       </div>
 
       <div class="control-group">
@@ -157,6 +172,17 @@
           <div class="readout-row"><span class="readout-label">α̈<sub>yaw</sub></span><span id="r-yaw-accel" class="readout-val">—</span></div>
           <div class="readout-row"><span class="readout-label">α̈<sub>roll</sub></span><span id="r-roll-accel" class="readout-val">—</span></div>
         </div>
+        <h3>Rates</h3>
+        <div class="readout-grid">
+          <div class="readout-row"><span class="readout-label">φ̇, θ̇, ψ̇</span><span id="r-euler-rates" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">p, q, r</span><span id="r-body-rates" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">ṗ, ṅ, ṙ</span><span id="r-body-accel" class="readout-val">—</span></div>
+        </div>
+        <h3>Positions</h3>
+        <div class="readout-grid">
+          <div class="readout-row"><span class="readout-label">CG (body)</span><span id="r-cg-body" class="readout-val">—</span></div>
+          <div class="readout-row"><span class="readout-label">CG (inertial)</span><span id="r-cg-inertial" class="readout-val">—</span></div>
+        </div>
         <h3>Legacy (table)</h3>
         <div class="readout-grid">
           <div class="readout-row"><span class="readout-label">CL<sub>leg</sub></span><span id="r-cl-leg" class="readout-val">—</span></div>
@@ -177,6 +203,10 @@
         <div class="legend-item"><span class="legend-color" style="background:#ff8844;"></span> Pitch Moment</div>
         <div class="legend-item"><span class="legend-color" style="background:#44ff88;"></span> Yaw Moment</div>
         <div class="legend-item"><span class="legend-color" style="background:#8844ff;"></span> Roll Moment</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ffbb88;"></span> Pitch Rate</div>
+        <div class="legend-item"><span class="legend-color" style="background:#88ffbb;"></span> Yaw Rate</div>
+        <div class="legend-item"><span class="legend-color" style="background:#bb88ff;"></span> Roll Rate</div>
+        <div class="legend-item"><span class="legend-color" style="background:#00cccc;"></span> Local Velocity</div>
       </div>
 
       <div id="debug-toggle" class="debug-toggle-btn">▶ Debug Overrides</div>

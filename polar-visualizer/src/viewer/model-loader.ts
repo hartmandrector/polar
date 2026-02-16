@@ -73,6 +73,13 @@ export interface LoadedModel {
   baseModelPos?: THREE.Vector3
   /** Base bridle position before any CG offset (captured on first CG call) */
   baseBridlePos?: THREE.Vector3
+  /**
+   * Pilot pitch pivot point in NED normalised coordinates, derived from
+   * the 3D model's pilotPivot position.  Used by rotatePilotMass() so the
+   * mass-overlay balls swing about the same point as the GLB pilot model.
+   * Computed once at load time; undefined for non-canopy models.
+   */
+  massPivotNED?: { x: number; z: number }
 }
 
 const loader = new GLTFLoader()

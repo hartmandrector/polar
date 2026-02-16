@@ -496,6 +496,22 @@ The slider is hidden for the slick pilot model (no wingsuit to unzip) and repurp
 
 ---
 
+### Euler Rate Controls & Per-Segment Velocity
+
+<p align="center"><img src="polar-visualizer/docs/gifs/effect-euler-roll-rate.gif" width="720" alt="Effect of Euler roll rate on per-segment velocity vectors" /></p>
+
+The **Euler rate sliders** (φ̇, θ̇, ψ̇) let you impose steady-state rotation on the body and observe how it changes the local airflow at each aerodynamic segment. When the system rotates, every segment away from the CG picks up an additional velocity component from $\boldsymbol{\omega} \times \mathbf{r}$, where $\mathbf{r}$ is the segment's position relative to the center of mass. Wingtip segments see the largest effect; segments near the CG see almost none.
+
+The math pipeline converts the UI Euler rates to body-axis angular velocity $(p, q, r)$ via the **inverse DKE** (Direction Kinematic Equation), then passes $\boldsymbol{\omega}$ into `evaluateAeroForcesDetailed()` which computes each segment's local velocity as:
+
+$$\mathbf{V}_{local,i} = \mathbf{V}_{body} + \boldsymbol{\omega} \times \mathbf{r}_i$$
+
+The cyan arrows in the 3D view show these per-segment velocity vectors. In the GIF above, a roll rate shifts the local velocity asymmetrically — the advancing wing sees higher airspeed and the retreating wing sees lower airspeed, producing differential lift and the associated rolling/yawing moments visible in the moment arcs.
+
+Full derivation and implementation checklist: [SIMULATION.md](SIMULATION.md) §15–§16.
+
+---
+
 ## Sustained Speed Polar
 
 Given CL and CD at a particular α, the model computes equilibrium glide speeds:

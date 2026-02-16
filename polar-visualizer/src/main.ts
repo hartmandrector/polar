@@ -16,14 +16,14 @@ import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/v
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
 import { initCharts, updateChartSweep, updateChartCursor } from './ui/polar-charts.ts'
-import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients, makeIbexAeroSegments } from './polar/index.ts'
-import type { ContinuousPolar, SegmentControls, FullCoefficients } from './polar/index.ts'
-import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED } from './polar/aero-segment.ts'
+import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients, makeIbexAeroSegments, rotatePilotMass, eulerRatesToBodyRates } from './polar/index.ts'
+import type { ContinuousPolar, SegmentControls, FullCoefficients, SegmentAeroResult } from './polar/index.ts'
+import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED, evaluateAeroForcesDetailed } from './polar/aero-segment.ts'
 import { coeffToSS } from './polar/coefficients.ts'
 import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView } from './ui/debug-panel.ts'
 import type { SystemViewData } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
-import { updateInertiaReadout } from './ui/readout.ts'
+import { updateInertiaReadout, updateRatesReadout, updatePositionsReadout } from './ui/readout.ts'
 import { computeInertia, ZERO_INERTIA, computeCenterOfMass } from './polar/inertia.ts'
 import type { InertiaComponents } from './polar/inertia.ts'
 import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
@@ -78,6 +78,8 @@ async function switchModel(modelType: ModelType, cgOffsetFraction: number = 0, p
 
 /** Track sweep-affecting params to detect when only α changes (cursor-only). */
 let prevSweepKey = ''
+let prevPilotPitch = 0
+let prevDeploy = 1
 
 function sweepKey(s: FlightState): string {
   let key = `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}|${debugSweepKey()}`
@@ -309,6 +311,23 @@ function updateVisualization(state: FlightState): void {
       : ZERO_INERTIA
   }
 
+  // Rotate pilot mass segments when pilot pitch or deploy changes (canopy only)
+  // Only update mass distribution and inertia — don't recenter the model.
+  // The mass overlay's CG marker (red ball) will show the true CG position.
+  if (state.modelType === 'canopy' && polar.massSegments) {
+    const pitchChanged = Math.abs(state.pilotPitch - prevPilotPitch) > 0.01
+    const deployChanged = Math.abs(state.deploy - prevDeploy) > 0.001
+    if (pitchChanged || deployChanged) {
+      prevPilotPitch = state.pilotPitch
+      prevDeploy = state.deploy
+      const rotated = rotatePilotMass(state.pilotPitch, currentModel?.massPivotNED ?? undefined, state.deploy)
+      polar.massSegments = rotated.weight
+      polar.inertiaMassSegments = rotated.inertia
+      // Recompute inertia with new mass distribution
+      currentInertia = computeInertia(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m)
+    }
+  }
+
   // Evaluate coefficients
   const coeffs = getAllCoefficients(state.alpha_deg, state.beta_deg, state.delta, polar, state.dirty)
 
@@ -343,11 +362,25 @@ function updateVisualization(state: FlightState): void {
   // (it rotates force arrows from body → world). null = body frame (no rotation).
   let bodyMatrix: THREE.Matrix4 | null = null
 
-  // Compass labels (N/E) only visible in inertial frame
-  sceneCtx.compassLabels.visible = state.frameMode === 'inertial'
+  // ── Persistent frame reference labels (§15.6) ──
+  // Both compass (N, E, D) and body axis (x, y, z) labels are always visible.
+  // The non-active frame's labels rotate to show their orientation relative
+  // to the active frame.
+  sceneCtx.compassLabels.visible = true
+  sceneCtx.bodyAxisLabels.visible = true
 
   if (state.frameMode === 'inertial') {
     bodyMatrix = new THREE.Matrix4().makeRotationFromQuaternion(bodyQuat)
+    // Compass labels fixed (identity) — they're the inertial reference
+    sceneCtx.compassLabels.quaternion.identity()
+    // Body axis labels rotate with body attitude
+    sceneCtx.bodyAxisLabels.quaternion.copy(bodyQuat)
+  } else {
+    // Body mode — compass labels rotate by inverse body quat
+    const invQuat = bodyQuat.clone().invert()
+    sceneCtx.compassLabels.quaternion.copy(invQuat)
+    // Body axis labels fixed (identity) — they're the body reference
+    sceneCtx.bodyAxisLabels.quaternion.identity()
   }
 
   // ── Gravity direction in current display frame ──
@@ -366,6 +399,15 @@ function updateVisualization(state: FlightState): void {
   // Update force vectors
   const segControls = buildSegmentControls(state)
 
+  // ── Euler rates → body rates (§15.3 math pipeline) ──
+  const phiDot_rad = state.phiDot_degps * DEG2RAD
+  const thetaDot_rad = state.thetaDot_degps * DEG2RAD
+  const psiDot_rad = state.psiDot_degps * DEG2RAD
+  const phi_rad = state.roll_deg * DEG2RAD
+  const theta_rad = state.pitch_deg * DEG2RAD
+  const bodyRates = eulerRatesToBodyRates(phiDot_rad, thetaDot_rad, psiDot_rad, phi_rad, theta_rad)
+  const hasRates = Math.abs(bodyRates.p) > 1e-6 || Math.abs(bodyRates.q) > 1e-6 || Math.abs(bodyRates.r) > 1e-6
+
   // Legacy comparison
   const legacyPolar = legacyPolars[state.polarKey]
   let legacyCoeffs: { cl: number, cd: number, cp: number } | undefined
@@ -379,10 +421,30 @@ function updateVisualization(state: FlightState): void {
 
   // Compute segment forces ONCE and share across readout, system view, and vectors
   let cachedSegForces: import('./polar/aero-segment.ts').SegmentForceResult[] | undefined
+  let cachedPerSegment: SegmentAeroResult[] | undefined
   if (hasSegments) {
-    cachedSegForces = segments!.map(seg =>
-      computeSegmentForce(seg, state.alpha_deg, state.beta_deg, segControls, state.rho, state.airspeed)
-    )
+    // Compute CG for evaluateAeroForcesDetailed
+    const cgNED = polar.massSegments && polar.massSegments.length > 0
+      ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+      : { x: 0, y: 0, z: 0 }
+
+    if (hasRates) {
+      // Use evaluateAeroForcesDetailed with ω×r velocity correction
+      const bodyVel = {
+        x: state.airspeed * Math.cos(state.alpha_deg * DEG2RAD) * Math.cos(state.beta_deg * DEG2RAD),
+        y: state.airspeed * Math.sin(state.beta_deg * DEG2RAD),
+        z: state.airspeed * Math.sin(state.alpha_deg * DEG2RAD) * Math.cos(state.beta_deg * DEG2RAD),
+      }
+      const omega = { p: bodyRates.p, q: bodyRates.q, r: bodyRates.r }
+      const detailed = evaluateAeroForcesDetailed(segments!, cgNED, 1.875, bodyVel, omega, segControls, state.rho)
+      cachedPerSegment = detailed.perSegment
+      cachedSegForces = detailed.perSegment.map(ps => ps.forces)
+    } else {
+      // Static: no rotation, use standard per-segment computation
+      cachedSegForces = segments!.map(seg =>
+        computeSegmentForce(seg, state.alpha_deg, state.beta_deg, segControls, state.rho, state.airspeed)
+      )
+    }
 
     // Compute segment-summed coefficients for readout at current flight state
     const segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
@@ -391,9 +453,37 @@ function updateVisualization(state: FlightState): void {
 
     // Update system summary view in debug panel
     updateSystemViewData(segments!, polar, segControls, segReadout, state, cachedSegForces)
+
+    // ── Rates readout (§15.4.1) ──
+    // Compute angular acceleration from rotational EOM if we have inertia
+    let bodyAccel: { pDot: number; qDot: number; rDot: number } | null = null
+    if (currentInertia.Ixx > 0.001 || currentInertia.Iyy > 0.001 || currentInertia.Izz > 0.001) {
+      const { windDir, liftDir, sideDir } = computeWindFrameNED(state.alpha_deg, state.beta_deg)
+      const system = sumAllSegments(segments!, cachedSegForces!, cgNED, 1.875, windDir, liftDir, sideDir)
+      // Simplified angular acceleration (diagonal inertia)
+      bodyAccel = {
+        pDot: currentInertia.Ixx > 0.001 ? system.moment.x / currentInertia.Ixx : 0,
+        qDot: currentInertia.Iyy > 0.001 ? system.moment.y / currentInertia.Iyy : 0,
+        rDot: currentInertia.Izz > 0.001 ? system.moment.z / currentInertia.Izz : 0,
+      }
+    }
+    updateRatesReadout(
+      { phiDot: phiDot_rad, thetaDot: thetaDot_rad, psiDot: psiDot_rad },
+      bodyRates,
+      bodyAccel,
+    )
+
+    // ── Positions readout (§15.4.2) ──
+    updatePositionsReadout(cgNED, null)
   } else {
     updateReadout(coeffs, polar, state.airspeed, state.rho, legacyCoeffs)
     updateInertiaReadout(currentInertia, coeffs, polar, state.airspeed, state.rho)
+    updateRatesReadout(
+      { phiDot: phiDot_rad, thetaDot: thetaDot_rad, psiDot: psiDot_rad },
+      bodyRates,
+      null,
+    )
+    updatePositionsReadout({ x: 0, y: 0, z: 0 }, null)
   }
 
   updateForceVectors(
@@ -412,6 +502,9 @@ function updateVisualization(state: FlightState): void {
     segControls,
     currentModel?.cgOffsetThree,
     cachedSegForces,
+    bodyRates,
+    bodyQuat,
+    cachedPerSegment,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
@@ -450,6 +543,21 @@ function updateVisualization(state: FlightState): void {
         -currentModel.cgOffsetThree.y,
         -currentModel.cgOffsetThree.z,
       )
+    }
+    // Compute mass pivot once: find where the 3D pilotPivot sits in
+    // mass-overlay local space, then convert to NED normalised coords.
+    if (currentModel.pilotPivot && !currentModel.massPivotNED) {
+      currentModel.group.updateWorldMatrix(true, true)
+      const pvtWorld = new THREE.Vector3()
+      currentModel.pilotPivot.getWorldPosition(pvtWorld)
+      const pvtLocal = massOverlay.group.worldToLocal(pvtWorld.clone())
+      // Three.js → NED normalised: ned.x = three.z, ned.z = -three.y
+      // Divide by (height × pilotScale) to go from model-units to normalised
+      const hs = 1.875 * currentModel.pilotScale
+      currentModel.massPivotNED = {
+        x: pvtLocal.z / hs,
+        z: -pvtLocal.y / hs,
+      }
     }
     massOverlay.setVisible(state.showMassOverlay)
     if (state.showMassOverlay && polar.massSegments) {

@@ -16,7 +16,7 @@ The polar visualizer's flight model is organized in four distinct layers. The ex
 |-------|------------------|---------------------|
 | **1. Polar definitions** | `ContinuousPolar` objects — aerodynamic coefficients, stall, drag, moment, CP parameters | `polar-data.ts` (top-level consts like `aurafiveContinuous`, `CANOPY_CELL_POLAR`, `BRAKE_FLAP_POLAR`) |
 | **2. Aero segments** | `AeroSegment[]` — per-panel positions, orientations, S, chord, polar reference, `getCoeffs()` closures | Built by factory functions in `segment-factories.ts`, assembled in `polar-data.ts` (`IBEX_CANOPY_SEGMENTS`, `makeIbexAeroSegments()`) |
-| **3. Mass segments** | `MassSegment[]` — point masses with normalized NED positions, mass ratios | `polar-data.ts` (`WINGSUIT_MASS_SEGMENTS`, `CANOPY_PILOT_SEGMENTS`, `CANOPY_STRUCTURE_SEGMENTS`, `CANOPY_AIR_SEGMENTS`) |
+| **3. Mass segments** | `MassSegment[]` — point masses with normalized NED positions, mass ratios. **Dynamic**: pilot segments rotate with `pilotPitch`, canopy segments scale with `deploy`. | `polar-data.ts` (`CANOPY_PILOT_SEGMENTS`, `CANOPY_STRUCTURE_SEGMENTS`, `CANOPY_AIR_SEGMENTS`), `rotatePilotMass()` |
 | **4. Controls** | `SegmentControls` interface + `SymmetricControl` derivatives on each polar, brake/riser routing logic in factories | `continuous-polar.ts` (types), `segment-factories.ts` (routing), `polar-data.ts` (derivative values) |
 
 ### Normalization Convention
@@ -46,8 +46,20 @@ The system uses **5 factory functions** to create aero segments:
 - `getCoeffs()` closures — these are **behavior**, created by factories from data
 - `getAllCoefficients()` — the Kirchhoff evaluation engine
 - `computeSegmentForce()` / `sumAllSegments()` — force summation
-- Wind frame computation, inertia tensor
+- Wind frame computation
 - UI state (`FlightState`)
+
+### What Is Now Dynamic (Must Be Exported as Functions)
+
+- **Mass segment positions** — change with `pilotPitch` and `deploy`
+- **Inertia tensor** — recomputed from the dynamic mass distribution
+- **CG position** — shifts when pilot swings or canopy deploys
+
+Previously, mass segments were static arrays and the inertia tensor was a
+fixed matrix in the body frame. Now `rotatePilotMass(pilotPitch_deg, pivot, deploy)`
+returns new `{ weight, inertia }` arrays each frame, and `computeInertia()`
+produces an updated tensor from those arrays. The export must capture this
+behavior, not just a snapshot.
 
 ---
 
@@ -120,13 +132,80 @@ interface AeroSegmentDescriptor {
 
 ### 4. Mass Segment Arrays
 
-Three mass arrays, each as `MassSegment[]`:
+Mass segments are now **dynamic** — their positions depend on `pilotPitch` and
+`deploy`. The export must capture both the base data and the transformation
+logic so the consumer can reconstruct any configuration.
+
+#### Base Mass Arrays (Static Data)
 
 | Array | Purpose | Segments |
 |-------|---------|----------|
-| **Weight segments** | Gravitational force (m·g) | Pilot body (14) + canopy structure (7) = 21 |
-| **Inertia segments** | Rotational inertia (I·α) | Weight segments + canopy air (7) = 28 |
-| **Pilot body only** | For standalone pilot export | 14 body segments |
+| **Pilot body segments** | 14-part articulated pilot model (pre-trim-rotated) | head, torso, 6×arm, 6×leg = 14 |
+| **Canopy structure segments** | 7 cells across the arc | `canopy_structure_c`, `_r1`…`_l3` |
+| **Canopy air segments** | Trapped air mass (same positions as structure) | `canopy_air_c`, `_r1`…`_l3` |
+
+#### Dynamic Transformations
+
+The function `rotatePilotMass(pilotPitch_deg, pivot?, deploy?)` applies two
+transformations to produce the runtime mass arrays:
+
+| Transform | What changes | Affected segments | Formula |
+|-----------|-------------|-------------------|---------|
+| **Pilot pitch rotation** | Pilot body x,z positions rotate about the riser pivot | 14 pilot segments | `dx·cos(θ) - dz·sin(θ) + pivotX`, `dx·sin(θ) + dz·cos(θ) + pivotZ` |
+| **Deploy span scaling** | Canopy y positions scale inward | 7 structure + 7 air | `y × (0.1 + 0.9 × deploy)` |
+| **Deploy chord offset** | Canopy x positions shift forward | 7 structure + 7 air | `x + DEPLOY_CHORD_OFFSET × (1 - deploy)` |
+
+The pivot point is derived from the 3D model's shoulder/riser attachment
+position, converted to NED normalised coordinates at load time. A fallback
+analytical pivot (`PILOT_PIVOT_X`, `PILOT_PIVOT_Z`) is used when no 3D model
+is available (e.g. in the consumer sim).
+
+#### Composed Arrays
+
+| Output | Contents |
+|--------|---------|
+| **Weight segments** | Rotated pilot (14) + deployed canopy structure (7) = 21 |
+| **Inertia segments** | Weight segments + deployed canopy air (7) = 28 |
+
+#### Inertia Tensor
+
+The inertia tensor `I = computeInertia(inertiaSegments, height, mass)` must be
+recomputed whenever mass positions change. It is a 3×3 symmetric matrix in the
+NED body frame. At `pilotPitch = 0, deploy = 1` it equals the pre-computed
+default tensor; at other values it reflects the shifted mass distribution.
+
+#### Export Strategy
+
+The export includes:
+
+1. **Base segment arrays** — the 14 pilot, 7 structure, 7 air segment arrays
+   as static data (positions at `pilotPitch = 0, deploy = 1`)
+2. **Pivot point** — the NED riser attachment point `{ x, z }` for rotation
+3. **`rotatePilotMass()` function** — exported as a pure function that the
+   consumer calls with `(pilotPitch_deg, pivot, deploy)` to get the current
+   weight/inertia arrays
+4. **`computeInertia()` function** — already part of the polar engine files;
+   the consumer passes the dynamic arrays to get the current tensor
+
+The consumer workflow:
+
+```typescript
+import { system, rotatePilotMass } from './ibex-ul-wingsuit.polar.ts'
+import { computeInertia } from './inertia.ts'
+
+// Each frame / timestep:
+const { weight, inertia } = rotatePilotMass(
+  currentPilotPitch,
+  system.massPivotNED,  // { x, z } riser pivot
+  currentDeploy,
+)
+const I = computeInertia(inertia, system.referenceHeight, system.systemMass)
+// Use weight array for CG, inertia array + tensor for dynamics
+```
+
+For simple consumers that don't need dynamic mass, the static arrays at
+`pilotPitch = 0, deploy = 1` are also exported as `defaultWeightSegments`
+and `defaultInertiaSegments`.
 
 ### 5. Control Mapping
 
@@ -225,8 +304,37 @@ export const aeroSegments: AeroSegmentDescriptor[] = [
 // 3. MASS SEGMENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const weightSegments: MassSegment[] = [ /* pilot body + canopy structure */ ]
-export const inertiaSegments: MassSegment[] = [ /* weight + canopy air */ ]
+// Base arrays (pilotPitch = 0, deploy = 1)
+export const pilotBodySegments: MassSegment[] = [ /* 14 pilot body segments (pre-trim-rotated) */ ]
+export const canopyStructureSegments: MassSegment[] = [ /* 7 canopy structure cells */ ]
+export const canopyAirSegments: MassSegment[] = [ /* 7 canopy trapped air cells */ ]
+
+// Default composed arrays (for consumers that don't need dynamic mass)
+export const defaultWeightSegments: MassSegment[] = [ /* pilot + structure */ ]
+export const defaultInertiaSegments: MassSegment[] = [ /* pilot + structure + air */ ]
+
+// Riser pivot point for pilot pitch rotation (NED normalised coords)
+export const massPivotNED = { x: 0.296, z: 0.133 }
+
+// Deploy chord offset for canopy mass position alignment
+const DEPLOY_CHORD_OFFSET = 0.15
+
+/**
+ * Compute dynamic mass distribution for a given pilot pitch and deployment.
+ *
+ * @param pilotPitch_deg  Pilot pitch relative to trim [deg]. 0 = hanging vertical.
+ * @param pivot           Riser pivot point in NED normalised coords (default: massPivotNED).
+ * @param deploy          Deployment fraction 0–1 (default: 1 = fully deployed).
+ * @returns { weight, inertia } — complete mass segment arrays.
+ */
+export function rotatePilotMass(
+  pilotPitch_deg: number,
+  pivot: { x: number; z: number } = massPivotNED,
+  deploy: number = 1,
+): { weight: MassSegment[], inertia: MassSegment[] } {
+  // ... rotate pilot segments about pivot, scale canopy span by deploy,
+  //     shift canopy x by DEPLOY_CHORD_OFFSET × (1 - deploy)
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. CONTROL CONSTANTS
@@ -259,8 +367,20 @@ export const system = {
   },
 
   aeroSegments,
-  weightSegments,
-  inertiaSegments,
+
+  // Static mass arrays (pilotPitch = 0, deploy = 1)
+  defaultWeightSegments,
+  defaultInertiaSegments,
+
+  // Base arrays for dynamic reconstruction
+  pilotBodySegments,
+  canopyStructureSegments,
+  canopyAirSegments,
+  massPivotNED,
+
+  // Dynamic mass function
+  rotatePilotMass,
+
   controlConstants,
 }
 ```
@@ -279,29 +399,33 @@ The consumer project needs the **factory functions** and the **Kirchhoff engine*
 | `kirchhoff.ts` | ~100 lines | Separation function, flat-plate models |
 | `coefficients.ts` | ~370 lines | `getAllCoefficients()`, delta morphing, `lerpPolar()` |
 | `aero-segment.ts` | ~250 lines | `computeSegmentForce()`, `sumAllSegments()`, wind frame |
-| `segment-factories.ts` | ~440 lines | Factory functions to rebuild `getCoeffs()` closures |
-| `inertia.ts` | ~120 lines | Inertia tensor, center of mass |
+| `segment-factories.ts` | ~550 lines | Factory functions to rebuild `getCoeffs()` closures, deployment morphing constants |
+| `inertia.ts` | ~120 lines | Inertia tensor, center of mass — **called per-frame** with dynamic mass arrays |
 
 These 6 files form the **polar engine** — already marked "UI-independent" in their headers.
 
 ### Reconstruction Flow
 
 ```
-Exported .ts file (pure data)
+Exported .ts file (pure data + rotatePilotMass function)
        │
        ▼
 Consumer imports `system` object
        │
-       ▼
-For each AeroSegmentDescriptor:
-  → Look up polarRef in system.polars
-  → Call appropriate factory (makeCanopyCellSegment, etc.)
-  → Returns live AeroSegment with getCoeffs() closure
+       ├─► For each AeroSegmentDescriptor:
+       │     → Look up polarRef in system.polars
+       │     → Call appropriate factory (makeCanopyCellSegment, etc.)
+       │     → Returns live AeroSegment with getCoeffs() closure
+       │            │
+       │            ▼
+       │   Pass AeroSegment[] to sumAllSegments()
+       │     → Full per-segment force computation
+       │     → System-level forces and moments at CG
        │
-       ▼
-Pass AeroSegment[] to sumAllSegments()
-  → Full per-segment force computation
-  → System-level forces and moments at CG
+       └─► Each frame: call system.rotatePilotMass(pitch, pivot, deploy)
+             → Returns { weight, inertia } mass arrays
+             → Pass inertia to computeInertia() → 3×3 tensor
+             → Pass weight to computeCenterOfMass() → CG position
 ```
 
 A helper function `rebuildSegments(system)` would automate this:
@@ -417,6 +541,8 @@ Examples:
 - [ ] Unit test: generated TS source is syntactically valid (parse with TS compiler API or regex check)
 - [ ] Round-trip test: export → `rebuildSegments()` → `sumAllSegments()` → compare forces with original
 - [ ] Verify mass segment totals: weight ratios sum correctly, positions match
+- [ ] Dynamic mass test: export → `rotatePilotMass(30, pivot, 0.5)` → verify output matches visualizer
+- [ ] Inertia tensor test: `computeInertia()` on rotated/deployed mass arrays produces expected changes
 
 ---
 
@@ -451,6 +577,31 @@ The generated `.ts` file includes an import statement for types from the polar e
 ### Q7: Debug overrides — YES, export effective values
 
 Export the **effective** (post-override) values, not the base values. The export is a snapshot of the active system state.
+
+### Q8: Dynamic mass distribution — FUNCTION EXPORT
+
+**Problem:** Mass segment positions now depend on `pilotPitch` and `deploy`.
+The inertia tensor is no longer a static matrix — it must be recomputed whenever
+the mass distribution changes.
+
+**Options considered:**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **A. Static snapshot** | Simple — export arrays at current pitch/deploy | Consumer can't change pitch/deploy; must re-export for every configuration |
+| **B. Lookup table** | Pre-compute arrays at grid of (pitch, deploy) values | Large export, interpolation artifacts, can't capture arbitrary pivot |
+| **C. Export the function** | Consumer calls `rotatePilotMass()` with any (pitch, pivot, deploy) | Requires exporting executable code, not just data |
+
+**Decision: Option C — export `rotatePilotMass()` as a pure function.**
+
+The function is small (~40 lines), has no dependencies beyond the base segment
+arrays and `DEPLOY_CHORD_OFFSET` constant, and is fully deterministic. It can
+be inlined in the export file alongside the static data. The consumer calls it
+per-frame with the current pilot pitch and deployment fraction, then passes the
+result to `computeInertia()` from the polar engine.
+
+This keeps the export self-contained while giving the consumer full dynamic
+control over the mass distribution.
 
 ---
 
@@ -551,10 +702,16 @@ function serializeSystem(polar: ContinuousPolar, pilotType?: string): ExportedSy
     systemMass: polar.m,
     referenceArea: polar.s,
     referenceChord: polar.chord,
+    referenceHeight: 1.875,
     polars: { systemPolar: polar },  // always include the main polar
     aeroSegments: [],
-    weightSegments: polar.massSegments ?? [],
-    inertiaSegments: polar.inertiaMassSegments ?? [],
+    defaultWeightSegments: polar.massSegments ?? [],
+    defaultInertiaSegments: polar.inertiaMassSegments ?? [],
+    pilotBodySegments: [],       // populated for canopy systems
+    canopyStructureSegments: [],
+    canopyAirSegments: [],
+    massPivotNED: undefined,     // populated for canopy systems
+    rotatePilotMass: undefined,  // populated for canopy systems
   }
 
   // If polar has aeroSegments, serialize them + extract sub-polars
@@ -683,7 +840,35 @@ Add a "Load System" feature to the visualizer that reads an exported `.polar.ts`
 | `massRatio` | number | ✅ |
 | `normalizedPosition` | `{x,y,z}` | ✅ |
 
-All mass data is fully serializable. No transformations needed.
+All mass data is fully serializable. The dynamic transformations
+(`rotatePilotMass`) are exported as a function alongside the base data.
+
+### Dynamic Mass System
+
+| Component | Type | Exported As |
+|-----------|------|------------|
+| `pilotBodySegments` | `MassSegment[]` | Static array (14 segments, pre-trim-rotated) |
+| `canopyStructureSegments` | `MassSegment[]` | Static array (7 segments) |
+| `canopyAirSegments` | `MassSegment[]` | Static array (7 segments) |
+| `massPivotNED` | `{ x, z }` | Static object (riser attachment in NED normalised) |
+| `DEPLOY_CHORD_OFFSET` | `number` | Constant (`0.15`) |
+| `rotatePilotMass()` | Function | Pure function: `(pitch, pivot?, deploy?) → { weight, inertia }` |
+| `computeInertia()` | Function | From `inertia.ts` engine file (not in export, consumer imports from engine) |
+| `computeCenterOfMass()` | Function | From `inertia.ts` engine file |
+
+### Inertia Tensor
+
+The 3×3 symmetric inertia tensor in the NED body frame is computed by
+`computeInertia(segments, height, mass)` from `inertia.ts`. It produces
+`{ Ixx, Iyy, Izz, Ixz }` (symmetric about the xz plane, so `Ixy = Iyz = 0`).
+
+**Before pilot pitch / deployment:** The tensor was a fixed value, computable
+once at startup. The export could have included it as a static matrix.
+
+**Now:** The tensor changes with `pilotPitch` and `deploy` because the mass
+positions change. The consumer must call `computeInertia()` each time the
+mass configuration changes. The function is part of the polar engine files
+(`inertia.ts`) that the consumer already imports.
 
 ---
 

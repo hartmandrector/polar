@@ -21,6 +21,10 @@ export interface FlightState {
   showMassOverlay: boolean
   showAccelArcs: boolean
   canopyPilotType: 'wingsuit' | 'slick'
+  // ── Euler rates (deg/s) ──
+  phiDot_degps: number    // φ̇ — roll Euler rate
+  thetaDot_degps: number  // θ̇ — pitch Euler rate
+  psiDot_degps: number    // ψ̇ — yaw Euler rate
   // ── Canopy asymmetric controls ──
   canopyControlMode: 'brakes' | 'fronts' | 'rears'
   canopyLeftHand: number    // 0–1
@@ -57,6 +61,14 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const attitudeModeCheck = document.getElementById('attitude-mode') as HTMLInputElement
   const showMassOverlayCheck = document.getElementById('show-mass-overlay') as HTMLInputElement
   const showAccelArcsCheck = document.getElementById('show-accel-arcs') as HTMLInputElement
+
+  // Euler rate sliders
+  const phiDotSlider = document.getElementById('phi-dot-slider') as HTMLInputElement
+  const thetaDotSlider = document.getElementById('theta-dot-slider') as HTMLInputElement
+  const psiDotSlider = document.getElementById('psi-dot-slider') as HTMLInputElement
+  const phiDotLabel = document.getElementById('phi-dot-value')!
+  const thetaDotLabel = document.getElementById('theta-dot-value')!
+  const psiDotLabel = document.getElementById('psi-dot-value')!
 
   // Canopy asymmetric controls
   const leftHandSlider = document.getElementById('left-hand-slider') as HTMLInputElement
@@ -109,6 +121,11 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const yaw = parseFloat(yawSlider.value)
     const attitudeMode = attitudeModeCheck.checked ? 'wind' as const : 'body' as const
 
+    // Euler rates (deg/s)
+    const phiDot = parseFloat(phiDotSlider.value)
+    const thetaDot = parseFloat(thetaDotSlider.value)
+    const psiDot = parseFloat(psiDotSlider.value)
+
     alphaLabel.textContent = `${alpha.toFixed(1)}°`
     betaLabel.textContent = `${beta.toFixed(1)}°`
     deltaLabel.textContent = delta.toFixed(2)
@@ -118,6 +135,11 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     rollLabel.textContent = `${roll.toFixed(1)}°`
     pitchLabel.textContent = `${pitch.toFixed(1)}°`
     yawLabel.textContent = `${yaw.toFixed(1)}°`
+
+    // Euler rate labels
+    phiDotLabel.textContent = `${phiDot}°/s`
+    thetaDotLabel.textContent = `${thetaDot}°/s`
+    psiDotLabel.textContent = `${psiDot}°/s`
 
     // Canopy control labels — update based on mode
     leftHandLabel.textContent = `${(canopyLeftHand * 100).toFixed(0)}%`
@@ -208,6 +230,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       showMassOverlay: showMassOverlayCheck.checked,
       showAccelArcs: showAccelArcsCheck.checked,
       canopyPilotType,
+      phiDot_degps: phiDot,
+      thetaDot_degps: thetaDot,
+      psiDot_degps: psiDot,
       canopyControlMode,
       canopyLeftHand,
       canopyRightHand,
@@ -229,7 +254,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, deploySlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider]) {
     el.addEventListener('input', onInput)
   }
 

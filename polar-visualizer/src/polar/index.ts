@@ -14,12 +14,21 @@ export {
   continuousPolars, legacyPolars,
   aurafivepolar, ibexulpolar, slicksinpolar, caravanpolar,
   aurafiveContinuous, ibexulContinuous, slicksinContinuous, caravanContinuous,
-  getLegacyCoefficients, makeIbexAeroSegments
+  getLegacyCoefficients, makeIbexAeroSegments, rotatePilotMass,
+  PILOT_PIVOT_X, PILOT_PIVOT_Z, CANOPY_PILOT_SEGMENTS
 } from './polar-data.ts'
 export type { WSEQPolar } from './polar-data.ts'
 export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPositions, calculateInertiaComponents } from './inertia.ts'
 export type { InertiaComponents } from './inertia.ts'
-export { computeSegmentForce, sumAllSegments, defaultControls, computeWindFrameNED } from './aero-segment.ts'
-export type { Vec3NED, SegmentForceResult, SystemForces, WindFrameNED } from './aero-segment.ts'
+export { computeSegmentForce, sumAllSegments, defaultControls, computeWindFrameNED, evaluateAeroForces, evaluateAeroForcesDetailed } from './aero-segment.ts'
+export type { Vec3NED, SegmentForceResult, SystemForces, WindFrameNED, SegmentAeroResult } from './aero-segment.ts'
 export type { ControlConstants } from './segment-factories.ts'
 export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEFAULT_CONSTANTS } from './segment-factories.ts'
+export { gravityBody, translationalEOM, translationalEOMAnisotropic, rotationalEOM, eulerRates, eulerRatesToBodyRates, bodyToInertialVelocity, computePilotPendulumParams, pilotPendulumEOM, pilotSwingDampingTorque } from './eom.ts'
+export type { AngularVelocity, AngularAcceleration, TranslationalAcceleration, EulerRates, PilotPendulumParams } from './eom.ts'
+export type { SimState, SimStateExtended, SimDerivatives, SimConfig } from './sim-state.ts'
+export { computeDerivatives, forwardEuler, rk4Step, simulate } from './sim.ts'
+export { computeApparentMass, computeApparentInertia, computeApparentMassResult, canopyGeometryFromPolar, apparentMassAtDeploy, effectiveMass, effectiveInertia } from './apparent-mass.ts'
+export type { ApparentMass, ApparentInertia, ApparentMassResult, CanopyGeometry } from './apparent-mass.ts'
+export { buildCompositeFrame, frameNeedsRebuild, frameToSimConfig } from './composite-frame.ts'
+export type { CompositeFrame, CompositeFrameConfig } from './composite-frame.ts'

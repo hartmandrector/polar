@@ -11,7 +11,7 @@
  */
 
 import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
-import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment } from './segment-factories.ts'
+import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEPLOY_CHORD_OFFSET } from './segment-factories.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -546,8 +546,13 @@ const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: n
   { name: 'left_foot',       massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y: -0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
 ]
 
+// Riser attachment point in NED body frame (post-trim rotation).
+// This is the pivot the pilot swings around when pitching fore/aft.
+export const PILOT_PIVOT_X = +(PILOT_FWD_SHIFT * COS_TRIM + PILOT_DOWN_SHIFT * SIN_TRIM).toFixed(4)
+export const PILOT_PIVOT_Z = +(-PILOT_FWD_SHIFT * SIN_TRIM + PILOT_DOWN_SHIFT * COS_TRIM).toFixed(4)
+
 // Pilot body segments rotated by trim angle (shared between weight and inertia)
-const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
+export const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
   name: p.name,
   massRatio: p.massRatio,
   normalizedPosition: {
@@ -612,19 +617,28 @@ const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
 ]
 
 /**
- * Rotate pilot body mass segments by an incremental pitch angle about the
- * riser attachment point (NED origin), then combine with fixed canopy masses.
+ * Rotate pilot body mass segments by a pitch increment, swinging about the
+ * riser attachment point (shoulder pivot), then combine with fixed canopy masses.
  *
  * The base CANOPY_PILOT_SEGMENTS already include the 6° trim rotation.
  * This function applies an additional rotation on top, representing the
  * pilot swinging fore/aft under the canopy.
  *
  * @param pilotPitch_deg  Incremental pilot pitch [deg]. Positive = aft (feet forward).
+ * @param pivot  Optional NED pivot point for rotation (from 3D model alignment).
+ * @param deploy  Deployment fraction 0–1. Scales canopy segment span positions.
  * @returns `{ weight, inertia }` — complete mass segment arrays for CG and inertia.
  */
-export function rotatePilotMass(pilotPitch_deg: number): { weight: MassSegment[], inertia: MassSegment[] } {
-  if (Math.abs(pilotPitch_deg) < 0.01) {
-    // No rotation — return the pre-computed arrays
+export function rotatePilotMass(
+  pilotPitch_deg: number,
+  pivot?: { x: number; z: number },
+  deploy: number = 1,
+): { weight: MassSegment[], inertia: MassSegment[] } {
+  const noPitch = Math.abs(pilotPitch_deg) < 0.01
+  const fullDeploy = Math.abs(deploy - 1) < 0.001
+
+  if (noPitch && fullDeploy) {
+    // No rotation, full deploy — return the pre-computed arrays
     return { weight: CANOPY_WEIGHT_SEGMENTS, inertia: CANOPY_INERTIA_SEGMENTS }
   }
 
@@ -632,19 +646,53 @@ export function rotatePilotMass(pilotPitch_deg: number): { weight: MassSegment[]
   const cos_d = Math.cos(delta)
   const sin_d = Math.sin(delta)
 
-  const rotatedPilot: MassSegment[] = CANOPY_PILOT_SEGMENTS.map(seg => ({
-    name: seg.name,
-    massRatio: seg.massRatio,
-    normalizedPosition: {
-      x: seg.normalizedPosition.x * cos_d - seg.normalizedPosition.z * sin_d,
-      y: seg.normalizedPosition.y,
-      z: seg.normalizedPosition.x * sin_d + seg.normalizedPosition.z * cos_d,
-    }
-  }))
+  // Use the provided pivot (from 3D model alignment) or fall back to
+  // the analytically-computed riser attachment point.
+  const pivotX = pivot?.x ?? PILOT_PIVOT_X
+  const pivotZ = pivot?.z ?? PILOT_PIVOT_Z
+
+  // Pilot segments: rotate about pivot (only when pitch != 0)
+  let rotatedPilot: MassSegment[]
+  if (noPitch) {
+    rotatedPilot = CANOPY_PILOT_SEGMENTS
+  } else {
+    const delta = pilotPitch_deg * Math.PI / 180
+    const cos_d = Math.cos(delta)
+    const sin_d = Math.sin(delta)
+    rotatedPilot = CANOPY_PILOT_SEGMENTS.map(seg => {
+      const dx = seg.normalizedPosition.x - pivotX
+      const dz = seg.normalizedPosition.z - pivotZ
+      return {
+        name: seg.name,
+        massRatio: seg.massRatio,
+        normalizedPosition: {
+          x: dx * cos_d - dz * sin_d + pivotX,
+          y: seg.normalizedPosition.y,
+          z: dx * sin_d + dz * cos_d + pivotZ,
+        }
+      }
+    })
+  }
+
+  // Canopy segments: scale span (y) and shift x forward by deploy offset
+  const spanScale = 0.1 + 0.9 * deploy
+  const chordOffset = DEPLOY_CHORD_OFFSET * (1 - deploy)  // lerp to zero at full deploy
+  const scaleCanopyDeploy = (segs: MassSegment[]): MassSegment[] =>
+    fullDeploy ? segs : segs.map(seg => ({
+      ...seg,
+      normalizedPosition: {
+        ...seg.normalizedPosition,
+        x: seg.normalizedPosition.x + chordOffset,
+        y: seg.normalizedPosition.y * spanScale,
+      }
+    }))
+
+  const deployedStructure = scaleCanopyDeploy(CANOPY_STRUCTURE_SEGMENTS)
+  const deployedAir = scaleCanopyDeploy(CANOPY_AIR_SEGMENTS)
 
   return {
-    weight: [...rotatedPilot, ...CANOPY_STRUCTURE_SEGMENTS],
-    inertia: [...rotatedPilot, ...CANOPY_STRUCTURE_SEGMENTS, ...CANOPY_AIR_SEGMENTS],
+    weight: [...rotatedPilot, ...deployedStructure],
+    inertia: [...rotatedPilot, ...deployedStructure, ...deployedAir],
   }
 }
 
