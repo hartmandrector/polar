@@ -486,6 +486,16 @@ The result is a smooth transition in the speed polar from a high-drag, low-lift 
 
 ---
 
+### Unzip (Wingsuit → Slick Transition)
+
+The **Unzip** slider (visible only in canopy + wingsuit pilot mode) continuously morphs the pilot segment between its wingsuit polar and its slick (unzipped) polar. At unzip = 0, the pilot uses the full wingsuit aerodynamics — large reference area, high lift slope, low parasitic drag. At unzip = 1, it switches to the slick skydiver polar — smaller area, lower lift, higher parasitic drag.
+
+Intermediate values linearly interpolate (`lerpPolar`) every parameter between the two polars, including `S`, `chord`, `cl_alpha`, `cd_0`, `k`, stall angles, and all moment derivatives. This is implemented by `makeUnzippablePilotSegment()` in `segment-factories.ts`, which stores both polars at factory time and blends them per-frame based on `controls.unzip`.
+
+The slider is hidden for the slick pilot model (no wingsuit to unzip) and repurposes the δ (control) slider position in the UI — the label changes to "Unzip" automatically when the canopy + wingsuit configuration is selected.
+
+---
+
 ## Sustained Speed Polar
 
 Given CL and CD at a particular α, the model computes equilibrium glide speeds:
