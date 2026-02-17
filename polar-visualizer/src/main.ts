@@ -16,7 +16,7 @@ import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/v
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
 import { initCharts, updateChartSweep, updateChartCursor } from './ui/polar-charts.ts'
-import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients, makeIbexAeroSegments, rotatePilotMass, eulerRatesToBodyRates } from './polar/index.ts'
+import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficients, makeIbexAeroSegments, makeA5SegmentsAeroSegments, rotatePilotMass, eulerRatesToBodyRates } from './polar/index.ts'
 import type { ContinuousPolar, SegmentControls, FullCoefficients, SegmentAeroResult } from './polar/index.ts'
 import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED, evaluateAeroForcesDetailed } from './polar/aero-segment.ts'
 import { coeffToSS } from './polar/coefficients.ts'
@@ -128,6 +128,13 @@ function buildSegmentControls(state: FlightState): SegmentControls {
     ctrl.weightShiftLR = state.canopyWeightShift
     ctrl.pilotPitch = state.pilotPitch
     ctrl.deploy = state.deploy
+  }
+
+  if (state.modelType === 'wingsuit') {
+    ctrl.pitchThrottle = state.pitchThrottle
+    ctrl.yawThrottle = state.yawThrottle
+    ctrl.rollThrottle = state.rollThrottle
+    ctrl.dihedral = state.wsDihedral
   }
 
   return ctrl
@@ -265,11 +272,19 @@ function updateVisualization(state: FlightState): void {
   const basePolar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
   const polar: ContinuousPolar = getOverriddenPolar(basePolar)
 
-  // Swap pilot segment when canopy pilot type changes
+  // Rebuild segments when canopy pilot type changes (ibex only)
   if (state.modelType === 'canopy' && polar.aeroSegments) {
     polar.aeroSegments = makeIbexAeroSegments(state.canopyPilotType as 'wingsuit' | 'slick')
+  }
 
-    // Apply per-segment debug overrides to individual segment polars
+  // For wingsuit segment polars, clone segments from the base polar so
+  // debug overrides don't mutate the canonical segment objects
+  if (state.modelType === 'wingsuit' && basePolar.aeroSegments) {
+    polar.aeroSegments = makeA5SegmentsAeroSegments()
+  }
+
+  // Apply per-segment debug overrides to individual segment polars
+  if (polar.aeroSegments && polar.aeroSegments.length > 0) {
     const segOvMap = getSegmentPolarOverrides()
     if (segOvMap.size > 0) {
       for (const seg of polar.aeroSegments) {
@@ -277,7 +292,7 @@ function updateVisualization(state: FlightState): void {
         if (!ov || ov.size === 0) continue
 
         if (seg.polar) {
-          // Cell, lifting body, or flap — override the segment's ContinuousPolar params
+          // Cell, lifting body, flap, or wingsuit segment — override the segment's ContinuousPolar params
           const p: any = { ...seg.polar }
           for (const [key, val] of ov) {
             p[key] = val

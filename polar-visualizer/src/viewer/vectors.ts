@@ -355,11 +355,12 @@ export function updateForceVectors(
 
       // Segment CP position: segment position + CP offset along chord (NED x-axis).
       // CP fraction is relative to leading edge; AC at 0.25c.
+      // cp > 0.25 → aft of AC → toward trailing edge → −x in NED.
       // cpOffsetNorm is in normalized (÷height) NED coordinates.
       // The chord direction rotates with pitchOffset_deg in the x-z plane:
       //   0° → chord along x (canopy cell, prone body)
       //  90° → chord along z (upright pilot hanging under canopy)
-      const cpOffsetNorm = (sf.cp - 0.25) * seg.chord / 1.875
+      const cpOffsetNorm = -(sf.cp - 0.25) * seg.chord / 1.875
       const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
       const cpNED = {
         x: seg.position.x + cpOffsetNorm * Math.cos(pitchRad),

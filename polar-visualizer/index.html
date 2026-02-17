@@ -15,6 +15,7 @@
         <label>Polar</label>
         <select id="polar-select">
           <option value="aurafive">Aura 5 (Wingsuit)</option>
+          <option value="a5segments">A5 Segments (Wingsuit 6-seg)</option>
           <option value="ibexul">Ibex UL (Canopy)</option>
           <option value="slicksin">Slick Sin (Skydiver)</option>
           <option value="caravan">Caravan (Airplane)</option>
@@ -76,6 +77,26 @@
       <div class="control-group" id="dirty-group">
         <label>Dirty: <span id="dirty-value">0.00</span></label>
         <input type="range" id="dirty-slider" min="0" max="100" value="0" step="1" />
+      </div>
+
+      <div id="wingsuit-controls-group" class="attitude-group" style="display:none;">
+        <div class="control-group-header">Wingsuit Controls</div>
+        <div class="control-group">
+          <label>Pitch Throttle: <span id="ws-pitch-value">0</span></label>
+          <input type="range" id="ws-pitch-slider" min="-100" max="100" value="0" step="1" />
+        </div>
+        <div class="control-group">
+          <label>Yaw Throttle: <span id="ws-yaw-value">0</span></label>
+          <input type="range" id="ws-yaw-slider" min="-100" max="100" value="0" step="1" />
+        </div>
+        <div class="control-group">
+          <label>Roll Throttle: <span id="ws-roll-value">0</span></label>
+          <input type="range" id="ws-roll-slider" min="-100" max="100" value="0" step="1" />
+        </div>
+        <div class="control-group">
+          <label>Dihedral: <span id="ws-dihedral-value">50%</span></label>
+          <input type="range" id="ws-dihedral-slider" min="0" max="100" value="50" step="1" />
+        </div>
       </div>
 
       <div class="control-group">

@@ -507,3 +507,232 @@ export function makeParasiticSegment(
     },
   }
 }
+
+// ─── Wingsuit Segment Constants ──────────────────────────────────────────────
+
+/**
+ * Tunable constants for wingsuit throttle control response.
+ * These map pitchThrottle / yawThrottle / rollThrottle to per-segment
+ * aerodynamic parameter changes (α offset, CP shift, dirty coupling, etc.).
+ */
+export interface WingsuitControlConstants {
+  // ── Pitch throttle ──
+  /** Max LE α change at full pitch input [deg] */
+  PITCH_ALPHA_MAX_DEG: number
+  /** Max CP shift at full pitch input [chord fraction] */
+  PITCH_CP_SHIFT: number
+  /** Max cl_alpha change at full pitch input [1/rad] */
+  PITCH_CL_ALPHA_DELTA: number
+  /** Max cd_0 increase at pitch extremes */
+  PITCH_CD0_DELTA: number
+
+  // ── Yaw throttle ──
+  /** Lateral CP shift for body segment at full yaw [NED y, normalized] */
+  YAW_BODY_Y_SHIFT: number
+  /** Lateral head shift at full yaw [NED y, normalized] */
+  YAW_HEAD_Y_SHIFT: number
+  /** Differential α from body twist at full yaw [deg] */
+  YAW_ROLL_COUPLING_DEG: number
+  /** Differential dirty coupling from yaw throttle */
+  YAW_DIRTY_COUPLING: number
+
+  // ── Roll throttle ──
+  /** Differential α at full roll input [deg] — outer wings see more */
+  ROLL_ALPHA_MAX_DEG: number
+  /** Differential cl_alpha change at full roll [1/rad] */
+  ROLL_CL_ALPHA_DELTA: number
+  /** Differential cd_0 from adverse yaw at full roll */
+  ROLL_CD0_DELTA: number
+  /** Differential dirty coupling from roll throttle */
+  ROLL_DIRTY_COUPLING: number
+
+  // ── Dihedral ──
+  /** Max inner wing dihedral at slider=1 [deg] */
+  DIHEDRAL_INNER_MAX_DEG: number
+  /** Max outer wing dihedral at slider=1 [deg] */
+  DIHEDRAL_OUTER_MAX_DEG: number
+}
+
+/** Default wingsuit control constants — conservative starting point. */
+export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
+  PITCH_ALPHA_MAX_DEG: 1.5,
+  PITCH_CP_SHIFT: 0.05,
+  PITCH_CL_ALPHA_DELTA: 0.1,
+  PITCH_CD0_DELTA: 0.005,
+
+  YAW_BODY_Y_SHIFT: 0.03,
+  YAW_HEAD_Y_SHIFT: 0.02,
+  YAW_ROLL_COUPLING_DEG: 0.3,
+  YAW_DIRTY_COUPLING: 0.15,
+
+  ROLL_ALPHA_MAX_DEG: 0.8,
+  ROLL_CL_ALPHA_DELTA: 0.15,
+  ROLL_CD0_DELTA: 0.005,
+  ROLL_DIRTY_COUPLING: 0.10,
+
+  DIHEDRAL_INNER_MAX_DEG: 16,
+  DIHEDRAL_OUTER_MAX_DEG: 30,
+}
+
+// ─── Wingsuit Head Segment ───────────────────────────────────────────────────
+
+/**
+ * Build the wingsuit head (parasitic bluff body / rudder).
+ *
+ * Primarily drag. Acts as a rudder in sideslip because it sits far forward
+ * of the CG. Responds to yawThrottle via lateral position shift.
+ *
+ * @param name       Segment name (e.g. 'head')
+ * @param position   NED body-frame position (normalized)
+ * @param S          Reference area [m²]
+ * @param chord      Reference chord [m]
+ * @param cd         Base drag coefficient (~0.47 sphere)
+ * @param constants  Wingsuit control constants
+ */
+export function makeWingsuitHeadSegment(
+  name: string,
+  position: { x: number; y: number; z: number },
+  S: number,
+  chord: number,
+  cd: number,
+  constants?: WingsuitControlConstants,
+): AeroSegment {
+  const ctrl = constants ?? DEFAULT_WINGSUIT_CONSTANTS
+  const baseY = position.y
+
+  // Minimal polar so debug overrides can set cd_0 via the standard seg.polar pipeline
+  const headPolar = { cd_0: cd } as ContinuousPolar
+
+  return {
+    name,
+    position: { ...position },
+    orientation: { roll_deg: 0 },
+    S,
+    chord,
+    polar: headPolar,
+
+    getCoeffs(_alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      // Head shifts laterally with yaw throttle
+      this.position.y = baseY + controls.yawThrottle * ctrl.YAW_HEAD_Y_SHIFT
+
+      // Read cd_0 from this.polar so debug overrides take effect
+      const cdEff = this.polar?.cd_0 ?? cd
+
+      // In sideslip the sphere generates a side force (rudder effect)
+      const beta_rad = beta_deg * DEG2RAD
+      const cy = -0.5 * Math.sin(beta_rad)  // sphere side force ~ sin(β)
+
+      return { cl: 0, cd: cdEff, cy, cm: 0, cp: 0.5 }
+    },
+  }
+}
+
+// ─── Wingsuit Body/Wing Segment ──────────────────────────────────────────────
+
+/**
+ * Build a wingsuit lifting body segment (center body or wing panel).
+ *
+ * Evaluates the full Kirchhoff model at freestream α/β with throttle
+ * modifications. Each segment responds to:
+ * - pitchThrottle: α offset + CP shift (all lifting segments)
+ * - yawThrottle: lateral CP shift (body), differential dirty (wings)
+ * - rollThrottle: differential α/camber across L/R wings
+ * - dihedral: sets wing roll angle (wing segments only)
+ * - dirty: per-segment tension loss
+ *
+ * @param name              Segment name (e.g. 'center', 'r1', 'l1')
+ * @param position          NED body-frame position (normalized)
+ * @param baseRollDeg       Base roll angle at dihedral=0 [deg] (0 for body, used as sign for wings)
+ * @param side              Which side: 'center', 'right', or 'left'
+ * @param segmentPolar      This segment's ContinuousPolar
+ * @param rollSensitivity   Roll throttle sensitivity (0.6 inner, 1.0 outer)
+ * @param wingType          'body' | 'inner' | 'outer' — determines dihedral scaling
+ * @param constants         Wingsuit control constants
+ */
+export function makeWingsuitLiftingSegment(
+  name: string,
+  position: { x: number; y: number; z: number },
+  baseRollDeg: number,
+  side: 'center' | 'right' | 'left',
+  segmentPolar: ContinuousPolar,
+  rollSensitivity: number,
+  wingType: 'body' | 'inner' | 'outer',
+  constants?: WingsuitControlConstants,
+): AeroSegment {
+  const ctrl = constants ?? DEFAULT_WINGSUIT_CONSTANTS
+  const baseY = position.y
+  const sideSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
+
+  return {
+    name,
+    position: { ...position },
+    orientation: { roll_deg: baseRollDeg },
+    S: segmentPolar.s,
+    chord: segmentPolar.chord,
+    polar: segmentPolar,
+
+    getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
+      const polar = this.polar ?? segmentPolar
+
+      // ── Dihedral → roll angle ──
+      const dihedral = Math.max(0, Math.min(1, controls.dihedral))
+      let rollDeg = 0
+      if (wingType === 'inner') {
+        rollDeg = sideSign * ctrl.DIHEDRAL_INNER_MAX_DEG * dihedral
+      } else if (wingType === 'outer') {
+        rollDeg = sideSign * ctrl.DIHEDRAL_OUTER_MAX_DEG * dihedral
+      }
+      this.orientation = { roll_deg: rollDeg }
+      const theta = rollDeg * DEG2RAD
+
+      // ── Local flow angles from dihedral roll ──
+      const alphaLocal = alpha_deg * Math.cos(theta) + beta_deg * Math.sin(theta)
+      const betaLocal = -alpha_deg * Math.sin(theta) + beta_deg * Math.cos(theta)
+
+      // ── Pitch throttle → α offset + CP shift ──
+      const pitchT = Math.max(-1, Math.min(1, controls.pitchThrottle))
+      const deltaAlphaPitch = pitchT * ctrl.PITCH_ALPHA_MAX_DEG
+
+      // ── Roll throttle → differential α ──
+      const rollT = Math.max(-1, Math.min(1, controls.rollThrottle))
+      // Positive rollThrottle → right side gets +α, left gets -α
+      const deltaAlphaRoll = rollT * ctrl.ROLL_ALPHA_MAX_DEG * rollSensitivity * sideSign
+
+      // ── Yaw throttle → differential α coupling (body twist) ──
+      const yawT = Math.max(-1, Math.min(1, controls.yawThrottle))
+      const deltaAlphaYaw = yawT * ctrl.YAW_ROLL_COUPLING_DEG * sideSign
+
+      // ── Total α offset ──
+      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw
+
+      // ── Yaw throttle → lateral body shift (body segment only) ──
+      if (wingType === 'body') {
+        this.position.y = baseY + yawT * ctrl.YAW_BODY_Y_SHIFT
+      }
+
+      // ── Dirty coupling from throttle inputs ──
+      // Yaw throttle loosens one side, tightens the other
+      // Roll throttle changes tension differentially
+      const dirtyBase = Math.max(0, Math.min(1, controls.dirty))
+      const dirtyYaw = yawT * ctrl.YAW_DIRTY_COUPLING * sideSign
+      const dirtyRoll = Math.abs(rollT) * ctrl.ROLL_DIRTY_COUPLING
+      const dirtyEff = Math.max(0, Math.min(1, dirtyBase + dirtyYaw + dirtyRoll))
+
+      // ── Evaluate Kirchhoff model ──
+      const c = getAllCoefficients(alphaEffective, betaLocal, controls.delta, polar, dirtyEff)
+
+      // ── Pitch throttle CP shift ──
+      const cpShift = pitchT * ctrl.PITCH_CP_SHIFT
+      const cp = c.cp + cpShift
+
+      // ── Lift-vector tilt from dihedral ──
+      // A rolled panel's lift decomposes into vertical (CL) and lateral (CY) components
+      const cosT = Math.cos(theta)
+      const sinT = Math.sin(theta)
+      const cl = c.cl * cosT
+      const cy = c.cy + c.cl * sinT
+
+      return { cl, cd: c.cd, cy, cm: c.cm, cp }
+    },
+  }
+}

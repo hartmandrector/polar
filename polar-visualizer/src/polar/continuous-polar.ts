@@ -267,6 +267,13 @@ export interface SegmentControls {
   aileronRight: number    // -1 to +1, right aileron
   flap: number            // 0–1, flap deflection (symmetric)
 
+  // ── Wingsuit throttle inputs ──
+  pitchThrottle: number   // [-1, +1] symmetric pitch — LE angle + weight shift fore/aft
+  yawThrottle: number     // [-1, +1] lateral spine/head shift → yaw (+ coupled roll)
+  rollThrottle: number    // [-1, +1] differential shoulder height → roll (+ coupled yaw)
+  dihedral: number        // [0, 1] wing dihedral angle (0 = flat, 1 = max ~20°)
+  wingsuitDeploy: number  // [0, 1] wingsuit deployment phase (0 = flight, 1 = line stretch)
+
   // ── Universal ──
   delta: number           // Generic symmetric control (current δ slider — arch, brakes, etc.)
   dirty: number           // Wingsuit dirty-flying factor

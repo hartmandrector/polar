@@ -12,6 +12,7 @@
 
 import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
 import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEPLOY_CHORD_OFFSET } from './segment-factories.ts'
+import { makeWingsuitHeadSegment, makeWingsuitLiftingSegment } from './segment-factories.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -960,7 +961,7 @@ export const aurafiveContinuous: ContinuousPolar = {
   cp_0: 0.40,
   cp_alpha: -0.05,
 
-  cg: 0.45,
+  cg: 0.40,
   cp_lateral: 0.50,
 
   s: 2,
@@ -982,7 +983,7 @@ export const aurafiveContinuous: ContinuousPolar = {
       d_cl_alpha:        -0.3,    // Less efficient lift generation
       d_k:                0.08,   // More induced drag (worse span efficiency)
       d_alpha_stall_fwd: -3.0,    // Stalls 3° earlier (less tension = earlier separation)
-      d_cp_0:             0.03,   // CP moves toward CG (0.40 → 0.43, CG=0.45)
+      d_cp_0:             0.03,   // CP moves toward CG (0.40 → 0.43, CG=0.40)
       d_cp_alpha:         0.02,   // CP travel reduced (stays closer to CG)
     }
   }
@@ -1155,6 +1156,310 @@ export const caravanContinuous: ContinuousPolar = {
   chord: 11.0
 }
 
+// ─── A5 Segments — 6-Segment Wingsuit ────────────────────────────────────────
+
+/**
+ * Segment position system — chord-fraction based.
+ *
+ * The 3D model is centered at the CG (center of gravity), which is at (0,0,0)
+ * in Three.js / NED. All positions are measured FROM the CG.
+ *
+ * To place a point on the chord at fraction x/c:
+ *   position_x = (cg_xc - target_xc) × chord / height
+ *
+ * Examples (cg_xc = 0.40, chord = 1.8m, height = 1.875m):
+ *   x/c = 0.00 (LE/head):  (0.40 − 0.00) × 0.96 = +0.384  (forward of CG)
+ *   x/c = 0.25 (QC):       (0.40 − 0.25) × 0.96 = +0.144  (forward of CG)
+ *   x/c = 0.40 (CG):       (0.40 − 0.40) × 0.96 =  0.000  (at origin)
+ *   x/c = 0.70 (aft):      (0.40 − 0.70) × 0.96 = −0.288  (behind CG)
+ *
+ * Span (y) positions still use GLB_TO_NED scaling from the 3D model.
+ */
+const A5_SYS_CHORD = 1.8     // system chord [m]
+const A5_CG_XC    = 0.40     // CG location as chord fraction (x/c)
+const A5_HEIGHT   = 1.875    // pilot height [m] (normalization divisor)
+const GLB_TO_NED  = 0.2962   // GLB → NED scale for span (y-axis) positions
+
+/** Convert a system-chord fraction to NED normalized x-position. */
+function a5xc(xc: number): number {
+  return (A5_CG_XC - xc) * A5_SYS_CHORD / A5_HEIGHT
+}
+
+/**
+ * Per-segment x/c positions (aerodynamic center = quarter-chord of each panel).
+ *
+ * Derived by matching arrow positions to the GLB model panel meshes.
+ * Model bbox (raw GLB): center.z = −0.698, size.z = 3.550.
+ * Conversion: NED_x = GLB_z × (s / bodyLength) + model_pos_z / bodyLength
+ *           = GLB_z × 0.2817 + 0.0597
+ * Then x/c  = A5_CG_XC − NED_x × height / chord
+ *
+ * Panel QC positions (GLB z of mesh + 0.25 × GLB chord toward LE):
+ *   head:       GLB z = +0.88  → NED +0.308 → x/c ≈ 0.13
+ *   center QC:  GLB z = −0.25  → NED −0.011 → x/c ≈ 0.46
+ *   inner QC:   GLB z = −0.354 → NED −0.040 → x/c ≈ 0.49
+ *   outer QC:   GLB z = +0.076 → NED +0.081 → x/c ≈ 0.37
+ */
+
+/** Head — parasitic bluff body (sphere), rudder in sideslip. */
+const A5_HEAD_S = 0.07          // ~25 cm diameter sphere equivalent
+const A5_HEAD_CHORD = 0.13     // head dimension
+const A5_HEAD_CD = 0.42         // helmeted head, streamlined sphere
+const A5_HEAD_POS = {           // x/c = 0.13
+  x: a5xc(0.13),               //  +0.307 (forward of CG)
+  y: 0,
+  z: 0,
+}
+
+/** Center body — fuselage + tail wing, primary lifting surface. */
+const A5_CENTER_POLAR: ContinuousPolar = {
+  name: 'A5 Center',
+  type: 'Wingsuit',
+  cl_alpha: 3.2,              // slightly higher than system (2.9) — wings dilute avg
+  alpha_0: -2,
+  cd_0: 0.08,                // torso frontal area (tuned for L/D ≈ 2.87)
+  k: 0.35,                   // shorter AR than full span
+  cd_n: 1.2,                 // torso broadside
+  cd_n_lateral: 1.0,
+  alpha_stall_fwd: 31.5,
+  s1_fwd: 3.7,
+  alpha_stall_back: -34.5,
+  s1_back: 7,
+  cy_beta: -0.3,
+  cn_beta: 0.08,
+  cl_beta: -0.04,            // body only — less dihedral effect than system
+  cm_0: -0.02,
+  cm_alpha: -0.10,
+  cp_0: 0.25,                // quarter-chord (segment LE reference, not head)
+  cp_alpha: -0.05,
+  cg: 0.40,
+  cp_lateral: 0.50,
+  s: 0.85,                   // 42.5% of 2.0 m²
+  m: 77.5,
+  chord: 1.93,               // GLB 3.0 × k × 1.875
+  controls: {
+    dirty: {
+      d_cd_0: 0.015,
+      d_cl_alpha: -0.15,
+      d_alpha_stall_fwd: -2,
+    }
+  }
+}
+const A5_CENTER_POS = {       // x/c = 0.46 (center panel QC, slightly aft of CG)
+  x: a5xc(0.46),             // −0.010 (just behind CG)
+  y: 0,
+  z: 0,
+}
+
+/** Inner wing — shoulder→knee fabric panels, tapered trailing edge.
+ *
+ * Shape: The center body segment flares out at the hips, creating a notch in
+ * the inner wing's trailing edge. This means:
+ *   - Less surface area in the aft portion → effective AC/CP shifts forward
+ *   - The panel chord extends full length, but the wing tapers to very little
+ *     area near the trailing edge (below the knee it barely contributes)
+ *
+ * Twist / outboard deflection: The pilot's leg joins the chord near the
+ * trailing edge, creating a cambered section with ~30° of effective twist
+ * (0° at LE, 30° at TE). This deflects airflow outboard (left wing pushes
+ * air left, right wing pushes air right).
+ *
+ * This outboard deflection behind the CG is the primary source of
+ * weathervane (directional) stability: in sideslip, the cambered aft panels
+ * generate a side force that, through the lever arm behind CG, creates a
+ * restoring yaw moment (strong positive cn_beta).
+ */
+const A5_INNER_WING_POLAR: ContinuousPolar = {
+  name: 'A5 Inner Wing',
+  type: 'Wingsuit',
+  cl_alpha: 2.8,              // reduced — tapered TE has less effective lifting area
+  alpha_0: -1,
+  cd_0: 0.05,                // fabric drag (tuned for L/D ≈ 2.87)
+  k: 0.30,                   // better span efficiency than body
+  cd_n: 1.0,                 // fabric broadside
+  cd_n_lateral: 0.8,
+  alpha_stall_fwd: 31.5,
+  s1_fwd: 3.7,
+  alpha_stall_back: -34.5,
+  s1_back: 7,
+  cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
+  cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
+  cl_beta: -0.08,            // dihedral effect
+  cm_0: 0,
+  cm_alpha: -0.05,
+  cp_0: 0.23,                // slightly forward of QC — tapered TE means less aft area
+  cp_alpha: -0.03,
+  cg: 0.40,
+  cp_lateral: 0.50,
+  s: 0.39,                   // 19.5% of 2.0 m² (each side)
+  m: 77.5,
+  chord: 1.74,               // GLB 2.7 × k × 1.875
+  controls: {
+    dirty: {
+      d_cd_0: 0.03,
+      d_cl_alpha: -0.4,
+      d_alpha_stall_fwd: -4,
+    }
+  }
+}
+const A5_R1_POS = {           // x/c = 0.48 (slightly forward of geometric QC due to tapered TE)
+  x: a5xc(0.48),             //  −0.077 (slightly behind CG)
+  y: 0.72 * GLB_TO_NED,      //  0.213 (span)
+  z: 0,
+}
+const A5_L1_POS = {           // mirror
+  x: a5xc(0.48),
+  y: -0.72 * GLB_TO_NED,
+  z: 0,
+}
+
+/** Outer wing — hand area only, small wingtip control surfaces. */
+const A5_OUTER_WING_POLAR: ContinuousPolar = {
+  name: 'A5 Outer Wing',
+  type: 'Wingsuit',
+  cl_alpha: 2.6,              // lower AR, tip losses
+  alpha_0: -1,
+  cd_0: 0.07,                // exposed edge — slightly higher
+  k: 0.35,
+  cd_n: 1.0,
+  cd_n_lateral: 0.8,
+  alpha_stall_fwd: 31.5,
+  s1_fwd: 3.7,
+  alpha_stall_back: -34.5,
+  s1_back: 7,
+  cy_beta: -0.15,
+  cn_beta: 0.02,
+  cl_beta: -0.10,            // strong dihedral effect (far outboard)
+  cm_0: 0,
+  cm_alpha: -0.05,
+  cp_0: 0.25,                // quarter-chord (segment LE reference)
+  cp_alpha: -0.03,
+  cg: 0.40,
+  cp_lateral: 0.50,
+  s: 0.15,                   // 7.5% of 2.0 m² (each side)
+  m: 77.5,
+  chord: 0.39,               // GLB 0.6 × k × 1.875
+  controls: {
+    dirty: {
+      d_cd_0: 0.04,
+      d_cl_alpha: -0.5,
+      d_alpha_stall_fwd: -5,
+    }
+  }
+}
+const A5_R2_POS = {           // x/c = 0.37 (outer wing panel QC)
+  x: a5xc(0.37),             //  +0.077 (forward of CG)
+  y: 1.10 * GLB_TO_NED,      //  0.326 (span)
+  z: 0,
+}
+const A5_L2_POS = {           // mirror
+  x: a5xc(0.37),
+  y: -1.10 * GLB_TO_NED,
+  z: 0,
+}
+
+/**
+ * Build the 6 aero segments for the A5 Segments wingsuit.
+ *
+ * Segments:
+ *   1. head    — parasitic sphere (rudder in sideslip)
+ *   2. center  — fuselage + tail wing (primary lift)
+ *   3. r1      — right inner wing (shoulder→elbow + hip→feet)
+ *   4. l1      — left inner wing (mirror)
+ *   5. r2      — right outer wing (hand/wingtip)
+ *   6. l2      — left outer wing (mirror)
+ *
+ * Each segment responds to pitchThrottle, yawThrottle, rollThrottle,
+ * dihedral, and dirty via the makeWingsuitLiftingSegment / makeWingsuitHeadSegment
+ * factory closures.
+ */
+export function makeA5SegmentsAeroSegments(): AeroSegment[] {
+  return [
+    // Head — parasitic bluff body, responds to yawThrottle (lateral shift)
+    makeWingsuitHeadSegment('head', A5_HEAD_POS, A5_HEAD_S, A5_HEAD_CHORD, A5_HEAD_CD),
+
+    // Center body — primary lift, responds to pitchThrottle + yawThrottle (body shift)
+    makeWingsuitLiftingSegment('center', A5_CENTER_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body'),
+
+    // Inner wings — respond to all throttles + dihedral
+    //   rollSensitivity = 0.6 (constrained by body)
+    makeWingsuitLiftingSegment('r1', A5_R1_POS, 0, 'right', A5_INNER_WING_POLAR, 0.6, 'inner'),
+    makeWingsuitLiftingSegment('l1', A5_L1_POS, 0, 'left',  A5_INNER_WING_POLAR, 0.6, 'inner'),
+
+    // Outer wings (wingtips) — highest roll authority, strongest dihedral
+    //   rollSensitivity = 1.0 (hands/wrists have most freedom)
+    makeWingsuitLiftingSegment('r2', A5_R2_POS, 0, 'right', A5_OUTER_WING_POLAR, 1.0, 'outer'),
+    makeWingsuitLiftingSegment('l2', A5_L2_POS, 0, 'left',  A5_OUTER_WING_POLAR, 1.0, 'outer'),
+  ]
+}
+
+/**
+ * A5 Segments — 6-segment wingsuit continuous polar.
+ *
+ * System-level ContinuousPolar that matches aurafiveContinuous at symmetric
+ * conditions. The segment model (aeroSegments) distributes forces across
+ * the 6 segments for asymmetric flight, turning, and throttle control.
+ *
+ * Uses the same base parameters as aurafiveContinuous. The new capability
+ * is entirely in the per-segment aero model, not the system-level polar.
+ */
+export const a5segmentsContinuous: ContinuousPolar = {
+  name: 'A5 Segments',
+  type: 'Wingsuit',
+
+  cl_alpha: 2.9,
+  alpha_0: -2,
+
+  cd_0: 0.097,
+  k: 0.360,
+
+  cd_n: 1.1,
+  cd_n_lateral: 1.0,
+
+  alpha_stall_fwd: 31.5,
+  s1_fwd: 3.7,
+
+  alpha_stall_back: -34.5,
+  s1_back: 7,
+
+  cy_beta: -0.3,
+  cn_beta: 0.08,
+  cl_beta: -0.08,
+
+  cm_0: -0.02,
+  cm_alpha: -0.08,
+
+  cp_0: 0.40,
+  cp_alpha: -0.05,
+
+  cg: 0.40,
+  cp_lateral: 0.50,
+
+  s: 2,
+  m: 77.5,
+  chord: 1.8,
+
+  massSegments: WINGSUIT_MASS_SEGMENTS,
+  cgOffsetFraction: 0.137,
+
+  controls: {
+    brake: {
+      d_cp_0:             0.03,
+      d_alpha_0:         -0.5,
+      d_cd_0:             0.005,
+      d_alpha_stall_fwd: -1.0,
+    },
+    dirty: {
+      d_cd_0:             0.025,
+      d_cl_alpha:        -0.3,
+      d_k:                0.08,
+      d_alpha_stall_fwd: -3.0,
+      d_cp_0:             0.03,
+      d_cp_alpha:         0.02,
+    }
+  }
+}
+
 // ─── Initialize aeroSegments (after all polars are defined) ──────────────────
 
 // Set default aero segments for Ibex UL (wingsuit pilot).
@@ -1162,10 +1467,14 @@ export const caravanContinuous: ContinuousPolar = {
 // segment delegates to it for coefficient evaluation.
 ibexulContinuous.aeroSegments = makeIbexAeroSegments('wingsuit')
 
+// Set default aero segments for A5 Segments wingsuit.
+a5segmentsContinuous.aeroSegments = makeA5SegmentsAeroSegments()
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 export const continuousPolars: Record<string, ContinuousPolar> = {
   aurafive: aurafiveContinuous,
+  a5segments: a5segmentsContinuous,
   ibexul: ibexulContinuous,
   slicksin: slicksinContinuous,
   caravan: caravanContinuous
@@ -1173,6 +1482,7 @@ export const continuousPolars: Record<string, ContinuousPolar> = {
 
 export const legacyPolars: Record<string, WSEQPolar> = {
   aurafive: aurafivepolar,
+  a5segments: aurafivepolar,
   ibexul: ibexulpolar,
   slicksin: slicksinpolar,
   caravan: caravanpolar

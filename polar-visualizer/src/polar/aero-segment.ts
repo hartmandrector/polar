@@ -72,6 +72,11 @@ export function defaultControls(): SegmentControls {
     aileronLeft: 0,
     aileronRight: 0,
     flap: 0,
+    pitchThrottle: 0,
+    yawThrottle: 0,
+    rollThrottle: 0,
+    dihedral: 0.5,
+    wingsuitDeploy: 0,
     delta: 0,
     dirty: 0,
     unzip: 0,
@@ -234,7 +239,8 @@ export function sumAllSegments(
     totalFz += fz
 
     // CP position in meters: segment AC + CP offset along chord direction.
-    // CP is a chord fraction — offset from quarter-chord (AC assumed at 0.25c).
+    // CP is a chord fraction from LE — offset from quarter-chord (AC at 0.25c).
+    // Positive offset = aft of AC in NED (toward trailing edge).
     // The chord direction rotates with pitchOffset_deg in the x-z plane:
     //   0° → chord along x (canopy cell, prone body)
     //  90° → chord along z (upright pilot hanging under canopy)

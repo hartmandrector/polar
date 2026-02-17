@@ -14,6 +14,7 @@ export {
   continuousPolars, legacyPolars,
   aurafivepolar, ibexulpolar, slicksinpolar, caravanpolar,
   aurafiveContinuous, ibexulContinuous, slicksinContinuous, caravanContinuous,
+  a5segmentsContinuous, makeA5SegmentsAeroSegments,
   getLegacyCoefficients, makeIbexAeroSegments, rotatePilotMass,
   PILOT_PIVOT_X, PILOT_PIVOT_Z, CANOPY_PILOT_SEGMENTS
 } from './polar-data.ts'
@@ -22,8 +23,8 @@ export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPosit
 export type { InertiaComponents } from './inertia.ts'
 export { computeSegmentForce, sumAllSegments, defaultControls, computeWindFrameNED, evaluateAeroForces, evaluateAeroForcesDetailed } from './aero-segment.ts'
 export type { Vec3NED, SegmentForceResult, SystemForces, WindFrameNED, SegmentAeroResult } from './aero-segment.ts'
-export type { ControlConstants } from './segment-factories.ts'
-export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEFAULT_CONSTANTS } from './segment-factories.ts'
+export type { ControlConstants, WingsuitControlConstants } from './segment-factories.ts'
+export { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEFAULT_CONSTANTS, makeWingsuitHeadSegment, makeWingsuitLiftingSegment, DEFAULT_WINGSUIT_CONSTANTS } from './segment-factories.ts'
 export { gravityBody, translationalEOM, translationalEOMAnisotropic, rotationalEOM, eulerRates, eulerRatesToBodyRates, bodyToInertialVelocity, computePilotPendulumParams, pilotPendulumEOM, pilotSwingDampingTorque } from './eom.ts'
 export type { AngularVelocity, AngularAcceleration, TranslationalAcceleration, EulerRates, PilotPendulumParams } from './eom.ts'
 export type { SimState, SimStateExtended, SimDerivatives, SimConfig } from './sim-state.ts'

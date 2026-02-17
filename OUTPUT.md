@@ -18,6 +18,9 @@ The polar visualizer's flight model is organized in four distinct layers. The ex
 | **2. Aero segments** | `AeroSegment[]` — per-panel positions, orientations, S, chord, polar reference, `getCoeffs()` closures | Built by factory functions in `segment-factories.ts`, assembled in `polar-data.ts` (`IBEX_CANOPY_SEGMENTS`, `makeIbexAeroSegments()`) |
 | **3. Mass segments** | `MassSegment[]` — point masses with normalized NED positions, mass ratios. **Dynamic**: pilot segments rotate with `pilotPitch`, canopy segments scale with `deploy`. | `polar-data.ts` (`CANOPY_PILOT_SEGMENTS`, `CANOPY_STRUCTURE_SEGMENTS`, `CANOPY_AIR_SEGMENTS`), `rotatePilotMass()` |
 | **4. Controls** | `SegmentControls` interface + `SymmetricControl` derivatives on each polar, brake/riser routing logic in factories | `continuous-polar.ts` (types), `segment-factories.ts` (routing), `polar-data.ts` (derivative values) |
+| **5. 6DOF Dynamics** | Equations of motion (translational + rotational), Euler angle kinematics, pilot pendulum, gravity projection, integrators (Forward Euler, RK4) | `eom.ts` (pure functions), `sim-state.ts` (state types), `sim.ts` (derivative evaluation + integration) |
+| **6. Apparent mass** | Virtual inertia from entrained air — per-axis translational mass and rotational inertia, deployment scaling | `apparent-mass.ts` |
+| **7. Composite frame** | Cached vehicle snapshot assembling aero segments, mass distribution, CG, inertia tensor, and apparent mass into a single `SimConfig` | `composite-frame.ts` |
 
 ### Normalization Convention
 
@@ -46,7 +49,13 @@ The system uses **5 factory functions** to create aero segments:
 - `getCoeffs()` closures — these are **behavior**, created by factories from data
 - `getAllCoefficients()` — the Kirchhoff evaluation engine
 - `computeSegmentForce()` / `sumAllSegments()` — force summation
-- Wind frame computation
+- `evaluateAeroForcesDetailed()` — per-segment force + local velocity with ω×r correction
+- `computeWindFrameNED()` — wind frame unit vectors from α, β
+- `gravityBody()`, `translationalEOM()`, `rotationalEOM()` — 6DOF equations of motion
+- `eulerRates()` / `eulerRatesToBodyRates()` — Euler angle kinematics (DKE / inverse DKE)
+- `computeDerivatives()`, `rk4Step()`, `simulate()` — full sim loop
+- `computeApparentMass()` / `effectiveMass()` — virtual inertia from entrained air
+- `buildCompositeFrame()` — cached vehicle assembly from segments + mass + inertia
 - UI state (`FlightState`)
 
 ### What Is Now Dynamic (Must Be Exported as Functions)
@@ -54,12 +63,21 @@ The system uses **5 factory functions** to create aero segments:
 - **Mass segment positions** — change with `pilotPitch` and `deploy`
 - **Inertia tensor** — recomputed from the dynamic mass distribution
 - **CG position** — shifts when pilot swings or canopy deploys
+- **Per-segment local velocity** — changes with body angular velocity (ω×r correction)
+- **Apparent mass** — scales with deployment fraction
 
 Previously, mass segments were static arrays and the inertia tensor was a
 fixed matrix in the body frame. Now `rotatePilotMass(pilotPitch_deg, pivot, deploy)`
 returns new `{ weight, inertia }` arrays each frame, and `computeInertia()`
 produces an updated tensor from those arrays. The export must capture this
 behavior, not just a snapshot.
+
+The `evaluateAeroForcesDetailed()` function now computes per-segment local
+velocity as $\mathbf{V}_{local,i} = \mathbf{V}_{body} + \boldsymbol{\omega} \times \mathbf{r}_i$,
+where $\mathbf{r}_i$ is the segment's position relative to CG. This produces
+differential airspeed across the span during rotation, generating damping
+moments. The consumer calls this function each timestep with the current
+body rates — no additional export data is needed beyond the segment descriptors.
 
 ---
 
@@ -115,6 +133,7 @@ interface AeroSegmentDescriptor {
   flapChordFraction?: number
   parentCellS?: number
   parentCellChord?: number
+  parentCellX?: number        // parent cell x position for deployment offset
 
   // parasitic:
   S?: number
@@ -393,16 +412,21 @@ The consumer project needs the **factory functions** and the **Kirchhoff engine*
 
 ### Files to Copy into Consumer Project
 
-| File | Size | Purpose |
-|------|------|---------|
-| `continuous-polar.ts` | ~275 lines | Type definitions (`ContinuousPolar`, `AeroSegment`, `SegmentControls`, `MassSegment`) |
-| `kirchhoff.ts` | ~100 lines | Separation function, flat-plate models |
-| `coefficients.ts` | ~370 lines | `getAllCoefficients()`, delta morphing, `lerpPolar()` |
-| `aero-segment.ts` | ~250 lines | `computeSegmentForce()`, `sumAllSegments()`, wind frame |
-| `segment-factories.ts` | ~550 lines | Factory functions to rebuild `getCoeffs()` closures, deployment morphing constants |
-| `inertia.ts` | ~120 lines | Inertia tensor, center of mass — **called per-frame** with dynamic mass arrays |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `continuous-polar.ts` | ~277 | Type definitions (`ContinuousPolar`, `AeroSegment`, `SegmentControls`, `MassSegment`) |
+| `kirchhoff.ts` | ~100 | Separation function, flat-plate models |
+| `coefficients.ts` | ~370 | `getAllCoefficients()`, delta morphing, `lerpPolar()` |
+| `aero-segment.ts` | ~421 | `computeSegmentForce()`, `sumAllSegments()`, `evaluateAeroForcesDetailed()` with ω×r, wind frame |
+| `segment-factories.ts` | ~510 | Factory functions to rebuild `getCoeffs()` closures, `ControlConstants`, deployment morphing |
+| `inertia.ts` | ~117 | Inertia tensor, center of mass — **called per-frame** with dynamic mass arrays |
+| `eom.ts` | ~491 | 6DOF equations of motion: gravity, translational/rotational EOM, Euler kinematics, pilot pendulum |
+| `sim-state.ts` | ~92 | State vector types (`SimState`, `SimDerivatives`, `SimConfig`) |
+| `sim.ts` | ~180 | Derivative evaluation, Forward Euler + RK4 integrators, multi-step runner |
+| `apparent-mass.ts` | ~281 | Virtual inertia from entrained air: translational + rotational, deployment scaling |
+| `composite-frame.ts` | ~222 | Cached vehicle assembly: segments + mass + inertia + apparent mass → `SimConfig` |
 
-These 6 files form the **polar engine** — already marked "UI-independent" in their headers.
+These 11 files form the **polar engine** — all are UI-independent and designed for portability.
 
 ### Reconstruction Flow
 
@@ -432,13 +456,14 @@ A helper function `rebuildSegments(system)` would automate this:
 
 ```typescript
 function rebuildSegments(system: ExportedSystem): AeroSegment[] {
+  const c = system.controlConstants  // pass to factories that accept ControlConstants
   return system.aeroSegments.map(desc => {
     const polar = system.polars[desc.polarRef!]
     switch (desc.type) {
       case 'canopy-cell':
-        return makeCanopyCellSegment(desc.name, desc.position, desc.rollDeg!, desc.side!, desc.brakeSensitivity!, desc.riserSensitivity!, polar)
+        return makeCanopyCellSegment(desc.name, desc.position, desc.rollDeg!, desc.side!, desc.brakeSensitivity!, desc.riserSensitivity!, polar, c)
       case 'brake-flap':
-        return makeBrakeFlapSegment(desc.name, desc.position, desc.rollDeg!, desc.side! as 'left'|'right', desc.brakeSensitivity!, desc.flapChordFraction!, desc.parentCellS!, desc.parentCellChord!, polar)
+        return makeBrakeFlapSegment(desc.name, desc.position, desc.rollDeg!, desc.side! as 'left'|'right', desc.brakeSensitivity!, desc.flapChordFraction!, desc.parentCellS!, desc.parentCellChord!, desc.parentCellX!, polar, c)
       case 'parasitic':
         return makeParasiticSegment(desc.name, desc.position, desc.S!, desc.chord!, desc.cd!, desc.cl, desc.cy)
       case 'lifting-body':
@@ -449,6 +474,34 @@ function rebuildSegments(system: ExportedSystem): AeroSegment[] {
   })
 }
 ```
+
+### Full Dynamics Workflow
+
+With the 6DOF engine files, the consumer can run a complete simulation:
+
+```typescript
+import { system, rotatePilotMass } from './ibex-ul-wingsuit.polar.ts'
+import {
+  buildCompositeFrame, frameToSimConfig,
+  rk4Step, computeApparentMassResult, canopyGeometryFromPolar,
+  computeInertia, computeCenterOfMass,
+} from './polar-engine'
+
+// 1. Build the composite frame (cached, rebuild on deploy/pitch change)
+const frame = buildCompositeFrame(config, deploy, pilotPitch)
+const simConfig = frameToSimConfig(frame, controls, useApparentMass)
+
+// 2. Step the sim (RK4)
+const nextState = rk4Step(state, simConfig, dt)
+
+// 3. Or run N steps at once
+const trajectory = simulate(state, simConfig, dt, 1000)
+```
+
+The `buildCompositeFrame()` function internally calls `rotatePilotMass()`,
+`computeInertia()`, `computeCenterOfMass()`, and `computeApparentMassResult()`,
+assembling everything the integrator needs. The consumer need only provide
+the exported segment data and current control inputs.
 
 ---
 
@@ -605,9 +658,13 @@ control over the mass distribution.
 
 ---
 
-## Q4 Code Changes — Factory Parameter Refactor
+## Q4 Code Changes — Factory Parameter Refactor ✅ COMPLETED
 
-Currently 4 constants are hardcoded as module-level `const` values in `segment-factories.ts`:
+This refactor is **done**. The `ControlConstants` interface and `DEFAULT_CONSTANTS` object exist in `segment-factories.ts`. Both `makeCanopyCellSegment()` and `makeBrakeFlapSegment()` accept an optional `constants?: ControlConstants` parameter, falling back to `DEFAULT_CONSTANTS`. Existing call sites in `polar-data.ts` are unchanged — zero breaking changes.
+
+The original plan (preserved below for reference):
+
+Previously, 4 constants were hardcoded as module-level `const` values in `segment-factories.ts`:
 
 ```typescript
 // segment-factories.ts — CURRENT (module-level constants)
@@ -785,6 +842,34 @@ Add a "Load System" feature to the visualizer that reads an exported `.polar.ts`
 
 ## Appendix: Complete Field Inventory
 
+### New Types (Post-Original Document)
+
+| Type | File | Serializable | Export role |
+|------|------|:---:|------------|
+| `ControlConstants` | `segment-factories.ts` | ✅ | Exported in system bundle under `controlConstants` |
+| `SegmentAeroResult` | `aero-segment.ts` | N/A | Runtime only — per-segment force + velocity output |
+| `WindFrameNED` | `aero-segment.ts` | N/A | Runtime only — wind frame unit vectors |
+| `Vec3NED` | `aero-segment.ts` | ✅ | Used throughout for NED positions/velocities |
+| `AngularVelocity` | `eom.ts` | N/A | Runtime only — `{ p, q, r }` |
+| `AngularAcceleration` | `eom.ts` | N/A | Runtime only — `{ p_dot, q_dot, r_dot }` |
+| `TranslationalAcceleration` | `eom.ts` | N/A | Runtime only — `{ ax, ay, az }` |
+| `EulerRates` | `eom.ts` | N/A | Runtime only — `{ phi_dot, theta_dot, psi_dot }` |
+| `PilotPendulumParams` | `eom.ts` | N/A | Runtime only — pendulum inertia |
+| `SimState` | `sim-state.ts` | N/A | Runtime only — 12-state vector |
+| `SimStateExtended` | `sim-state.ts` | N/A | Runtime only — adds pilot pendulum state |
+| `SimDerivatives` | `sim-state.ts` | N/A | Runtime only — 12-state derivatives |
+| `SimConfig` | `sim-state.ts` | N/A | Runtime only — assembled per-timestep config |
+| `ApparentMass` | `apparent-mass.ts` | N/A | Runtime only — per-axis virtual mass |
+| `ApparentInertia` | `apparent-mass.ts` | N/A | Runtime only — per-axis virtual inertia |
+| `ApparentMassResult` | `apparent-mass.ts` | N/A | Runtime only — combined mass + inertia |
+| `CanopyGeometry` | `apparent-mass.ts` | ✅ | Derivable from polar params — not exported |
+| `CompositeFrame` | `composite-frame.ts` | N/A | Runtime only — cached vehicle snapshot |
+| `CompositeFrameConfig` | `composite-frame.ts` | N/A | Runtime only — config for frame builder |
+| `InertiaComponents` | `inertia.ts` | ✅ | Runtime only — `{ Ixx, Iyy, Izz, Ixy, Ixz, Iyz }` |
+
+All "Runtime only" types are produced by engine functions on the consumer side —
+they do not appear in the exported `.polar.ts` file.
+
 ### ContinuousPolar (30 fields)
 
 | Field | Type | Serializable | Notes |
@@ -818,6 +903,37 @@ Add a "Load System" feature to the visualizer that reads an exported `.polar.ts`
 | `inertiaMassSegments` | array | ✅ | Exported separately at system level |
 | `cgOffsetFraction` | number | ✅ | 3D model alignment — maybe exclude from flight model export |
 | `aeroSegments` | array | ❌ | Contains closures — exported as descriptors instead |
+
+### SegmentControls (17 fields — expanded since original doc)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `alpha_deg` | number | Angle of attack |
+| `beta_deg` | number | Sideslip |
+| `delta` | number | Generic control / arch |
+| `dirty` | number | Dirty flying |
+| `airspeed` | number | m/s |
+| `rho` | number | Air density |
+| `brakeLeft` | number | Left brake (0–1) |
+| `brakeRight` | number | Right brake (0–1) |
+| `frontRiserLeft` | number | Left front riser |
+| `frontRiserRight` | number | Right front riser |
+| `rearRiserLeft` | number | Left rear riser |
+| `rearRiserRight` | number | Right rear riser |
+| `weightShift` | number | Lateral weight shift |
+| `unzip` | number | Wingsuit → slick morph |
+| `pilotPitch` | number | Pilot body pitch |
+| `deploy` | number | Deployment fraction (0–1) |
+| `togglePressure` | number | Toggle pressure |
+
+### ControlConstants (4 fields) ✅ IMPLEMENTED
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `ALPHA_MAX_RISER` | number | 10 | Max α change from full riser [deg] |
+| `BRAKE_ALPHA_COUPLING_DEG` | number | 2.5 | Brake → α cross-coupling [deg/unit] |
+| `MAX_FLAP_DEFLECTION_DEG` | number | 50 | Max TE deflection at full brake [deg] |
+| `MAX_FLAP_ROLL_INCREMENT_DEG` | number | 20 | Max arc roll at full brake [deg] |
 
 ### AeroSegment → AeroSegmentDescriptor Mapping
 
@@ -856,6 +972,37 @@ All mass data is fully serializable. The dynamic transformations
 | `computeInertia()` | Function | From `inertia.ts` engine file (not in export, consumer imports from engine) |
 | `computeCenterOfMass()` | Function | From `inertia.ts` engine file |
 
+### Engine Functions (Consumer-Side, Not Exported)
+
+These functions live in the 11 engine files the consumer copies. They are
+not serialized — listed here for completeness.
+
+| Function | File | Purpose |
+|----------|------|---------|
+| `getAllCoefficients()` | `coefficients.ts` | Kirchhoff coefficient evaluation |
+| `computeSegmentForce()` | `aero-segment.ts` | Per-segment force in NED |
+| `sumAllSegments()` | `aero-segment.ts` | Aggregate system forces + moments |
+| `evaluateAeroForcesDetailed()` | `aero-segment.ts` | Per-segment force + velocity with ω×r |
+| `evaluateAeroForces()` | `aero-segment.ts` | Thin wrapper (system forces only) |
+| `computeWindFrameNED()` | `aero-segment.ts` | Wind frame unit vectors from α, β |
+| `gravityBody()` | `eom.ts` | Gravity projected into body frame |
+| `translationalEOM()` | `eom.ts` | Newton's 2nd law in rotating frame |
+| `translationalEOMAnisotropic()` | `eom.ts` | Lamb/Kirchhoff with per-axis mass |
+| `rotationalEOM()` | `eom.ts` | Euler's equation with Ixz coupling |
+| `eulerRates()` | `eom.ts` | Body rates → Euler rates (DKE) |
+| `eulerRatesToBodyRates()` | `eom.ts` | Euler rates → body rates (inverse DKE) |
+| `bodyToInertialVelocity()` | `eom.ts` | DCM body → inertial velocity |
+| `pilotPendulumEOM()` | `eom.ts` | Pilot swing angular acceleration |
+| `computeDerivatives()` | `sim.ts` | Full 12-state derivative evaluation |
+| `rk4Step()` | `sim.ts` | Single RK4 integration step |
+| `simulate()` | `sim.ts` | Multi-step simulation runner |
+| `computeApparentMass()` | `apparent-mass.ts` | Translational virtual mass from geometry |
+| `computeApparentInertia()` | `apparent-mass.ts` | Rotational virtual inertia |
+| `apparentMassAtDeploy()` | `apparent-mass.ts` | Deployment-scaled apparent mass |
+| `effectiveMass()` | `apparent-mass.ts` | Physical + apparent mass |
+| `buildCompositeFrame()` | `composite-frame.ts` | Cached vehicle snapshot assembly |
+| `frameToSimConfig()` | `composite-frame.ts` | CompositeFrame → SimConfig conversion |
+
 ### Inertia Tensor
 
 The 3×3 symmetric inertia tensor in the NED body frame is computed by
@@ -869,6 +1016,77 @@ once at startup. The export could have included it as a static matrix.
 positions change. The consumer must call `computeInertia()` each time the
 mass configuration changes. The function is part of the polar engine files
 (`inertia.ts`) that the consumer already imports.
+
+---
+
+## New: 6DOF Dynamics & Apparent Mass — Export Implications
+
+Since OUTPUT.md was originally written, five new engine files have been added:
+`eom.ts`, `sim-state.ts`, `sim.ts`, `apparent-mass.ts`, and `composite-frame.ts`.
+These are all **consumer-side engine files** — they contain pure functions with
+no state, so they are copied into the consumer project alongside the existing
+engine files (kirchhoff, coefficients, etc.).
+
+### What changes for the export data?
+
+Almost nothing. The 6DOF engine operates on the **same segment descriptors,
+mass arrays, and polars** that the export already serializes. The only new
+data the consumer might need is:
+
+| Data | Source | Export strategy |
+|------|--------|----------------|
+| Canopy geometry (span, chord, thickness) | Derived from `polar.s` and `polar.chord` via `canopyGeometryFromPolar()` | **Not exported** — consumer calls the derivation function |
+| Apparent mass coefficients | Computed from geometry + ρ via `computeApparentMass()` | **Not exported** — consumer computes per-frame (ρ may vary with altitude) |
+| `CompositeFrameConfig` | Assembled from exported polars + segments + mass | **Not exported** — consumer builds via `buildCompositeFrame()` |
+| `SimConfig` | Converted from `CompositeFrame` + controls | **Not exported** — consumer calls `frameToSimConfig()` |
+
+**Conclusion:** The export file format does not need new sections for dynamics.
+The existing polar + segment + mass data is sufficient. The consumer imports
+the 11 engine files and uses them to build the full simulation pipeline.
+
+### New resolved question
+
+**Q9: Dynamics engine — CONSUMER-SIDE ONLY**
+
+The 6DOF pipeline (`eom.ts`, `sim.ts`, `apparent-mass.ts`, `composite-frame.ts`,
+`sim-state.ts`) runs entirely on the consumer side. The export file provides
+pure data; the engine files provide pure functions. This keeps the export
+format simple and the engine independently versionable.
+
+---
+
+## New: `evaluateAeroForcesDetailed()` — Consumer API
+
+The new `evaluateAeroForcesDetailed()` function in `aero-segment.ts` is the
+primary force-evaluation entry point for consumers that need per-segment data.
+It returns both system-level forces and a `SegmentAeroResult[]` with per-segment
+local velocity, airspeed, α, β, and position.
+
+```typescript
+interface SegmentAeroResult {
+  name: string
+  forces: SegmentForceResult
+  localVelocity: Vec3NED       // body-frame velocity at segment (with ω×r)
+  localAirspeed: number        // |localVelocity|
+  localAlpha: number           // local angle of attack [rad]
+  localBeta: number            // local sideslip [rad]
+  positionMeters: Vec3NED      // segment position in meters
+}
+
+function evaluateAeroForcesDetailed(
+  segments: AeroSegment[],
+  cgMeters: Vec3NED,
+  height: number,
+  bodyVel: Vec3NED,
+  omega: Vec3NED,
+  controls: SegmentControls,
+  rho: number,
+): { system: SystemForces; perSegment: SegmentAeroResult[] }
+```
+
+The lighter `evaluateAeroForces()` is a thin wrapper returning only `system`.
+Consumers needing per-segment telemetry (e.g. for visualization or debugging)
+should use the detailed variant.
 
 ---
 
