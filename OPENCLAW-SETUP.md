@@ -14,11 +14,12 @@ OpenClaw is our AI operations layer. It gives Polar Claw (the agent) autonomous 
 | Component | Details |
 |---|---|
 | Host | Windows 11 laptop + WSL2 (Ubuntu) |
-| Gateway | `127.0.0.1:18789` (loopback), systemd user service |
+| Gateway | `127.0.0.1:18789` (loopback), run manually via WSL |
 | Model | `github-copilot/claude-opus-4.6` via GitHub Copilot subscription |
 | Workspace | `/mnt/c/dev/polar` (Windows: `C:\dev\polar`) |
-| Access | VS Code + WebChat dashboard (`http://127.0.0.1:18789/`) |
+| Access | VS Code Simple Browser with token param |
 | Logs | `/tmp/openclaw/openclaw-YYYY-MM-DD.log` |
+| Config | `~/.openclaw/openclaw.json` (Linux FS) |
 
 ### Filesystem Layout
 
@@ -32,27 +33,76 @@ OpenClaw is our AI operations layer. It gives Polar Claw (the agent) autonomous 
 
 ---
 
+## Starting the Gateway (do this every session)
+
+The gateway does **not** auto-start. The systemd user service is unreliable (port fails to bind). Instead, start the gateway manually each session with a single command.
+
+### Step 1 — Start gateway in a background terminal
+
+From VS Code Copilot or a PowerShell terminal, run:
+
+```powershell
+wsl -d Ubuntu -- bash -lc "/usr/bin/node /home/hartmanr/openclaw/dist/index.js gateway --port 18789"
+```
+
+Run this as a **background** terminal (in Copilot: `isBackground: true`) so it stays alive. The gateway process must keep running — if the terminal dies, the gateway dies.
+
+Wait for the log line:
+```
+[gateway] listening on ws://127.0.0.1:18789 (PID xxx)
+```
+
+### Step 2 — Open the dashboard with token
+
+The gateway requires an auth token. Open the Simple Browser at:
+
+```
+http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877
+```
+
+**Do not** open `http://127.0.0.1:18789/` without the token — it will fail with "unauthorized: gateway token missing".
+
+### That's it — two steps
+
+No systemd, no multiple terminals, no retries. One background command + one URL.
+
+---
+
+## Copilot Agent Instructions
+
+When the user asks to "start OpenClaw" or "connect to OpenClaw", do exactly this:
+
+1. Run the gateway command in a **background** terminal (`isBackground: true`):
+   ```
+   wsl -d Ubuntu -- bash -lc "/usr/bin/node /home/hartmanr/openclaw/dist/index.js gateway --port 18789"
+   ```
+2. Wait a few seconds, then check the terminal output for `[gateway] listening on ws://127.0.0.1:18789`.
+3. Open Simple Browser at `http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877`
+4. Done.
+
+**Do not:**
+- Use `systemctl` (the systemd service doesn't bind the port reliably)
+- Background with `&` inside the bash command (the process dies when bash exits)
+- Open the dashboard without the `?token=` query parameter
+- Spawn multiple terminals to "test" the connection
+
+---
+
 ## Daily Use
 
-### WebChat Dashboard (primary)
+### Dashboard URL (bookmark this)
 
-Open in any browser:
 ```
-http://127.0.0.1:18789/
+http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877
 ```
-
-The gateway runs as a systemd service in WSL2. After a Windows reboot, just open any WSL terminal — systemd auto-starts the gateway.
 
 ### Useful Commands (WSL terminal)
 
 | Command | What it does |
 |---|---|
-| `openclaw gateway status` | Check if gateway is running |
-| `systemctl --user restart openclaw-gateway` | Restart gateway |
+| `openclaw status` | Full system status + sessions |
 | `openclaw models list` | Show current model |
 | `openclaw models set <model>` | Switch model |
-| `openclaw dashboard` | Open WebChat in browser |
-| `openclaw status` | Full system status + sessions |
 
 ---
 
@@ -80,25 +130,23 @@ Both use the same GitHub Copilot subscription for model access.
 
 ---
 
-## Emergency Shutdown
+## Stopping the Gateway
+
+The gateway is just a foreground Node.js process in a VS Code terminal. To stop it:
+
+- **Kill the terminal** in VS Code, or
+- **Ctrl+C** in the terminal, or:
 
 ```bash
-# Stop the gateway immediately
-systemctl --user stop openclaw-gateway
-
-# Prevent auto-start on next WSL boot
-systemctl --user disable openclaw-gateway
-
-# Nuclear option — kill the process directly
-kill $(pgrep -f openclaw-gatewa)
+# From WSL
+kill $(pgrep -f "openclaw.*gateway")
 ```
 
-### Restart When Ready
+To restart: just run the startup command again (Step 1 above).
 
-```bash
-systemctl --user enable openclaw-gateway
-systemctl --user start openclaw-gateway
-```
+### Token Reference
+
+The gateway token lives in `~/.openclaw/openclaw.json` under `gateway.auth.token`. If the token changes, update the dashboard URL accordingly.
 
 ---
 
