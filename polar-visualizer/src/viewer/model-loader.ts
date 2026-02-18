@@ -45,6 +45,26 @@ const PILOT_OFFSET = {
  */
 export const CANOPY_SCALE = 1.5
 
+/**
+ * Wingsuit deployment visualization group.
+ * Contains the PC, snivel, bridle, and lines — all pre-loaded and hidden.
+ * Positions and visibility are driven by the wingsuitDeploy slider in main.ts.
+ */
+export interface WingsuitDeployGroup {
+  /** Container group parented to the outer model group */
+  group: THREE.Group
+  /** Pilot chute GLB mesh */
+  pc: THREE.Group
+  /** Snivel (canopy in bag) GLB mesh */
+  snivel: THREE.Group
+  /** Bridle line: container → PC */
+  bridleLine: THREE.Line
+  /** Left shoulder → snivel line */
+  lineLeft: THREE.Line
+  /** Right shoulder → snivel line */
+  lineRight: THREE.Line
+}
+
 export interface LoadedModel {
   type: ModelType
   group: THREE.Group  // The container group we rotate for attitude
@@ -80,6 +100,8 @@ export interface LoadedModel {
    * Computed once at load time; undefined for non-canopy models.
    */
   massPivotNED?: { x: number; z: number }
+  /** Wingsuit deployment visualization (only for wingsuit) */
+  deployGroup?: WingsuitDeployGroup
 }
 
 const loader = new GLTFLoader()
@@ -253,7 +275,68 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     group.add(bridleGroup)
   }
 
-  return { type, group, model: compositeRoot, bodyLength, pilotScale, pilotType, bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot, canopyModel: type === 'canopy' ? mainModel : undefined }
+  // ── Wingsuit deployment visualization ──
+  // Load PC and snivel GLBs, create bridle/line geometry.
+  // Everything starts hidden; main.ts drives visibility + positions from wsDeploy slider.
+  let deployGroup: WingsuitDeployGroup | undefined
+  if (type === 'wingsuit') {
+    const s = compositeRoot.scale.x  // normalization scale
+    const dGroup = new THREE.Group()
+    dGroup.name = 'ws-deploy-group'
+    dGroup.visible = false  // hidden at deploy = 0
+
+    // Load PC model (pilot chute)
+    const pcModel = await loadRawGltf('/models/pc.glb')
+    pcModel.scale.setScalar(0.4 * s)  // PC is small (~0.5m diameter)
+    pcModel.visible = false
+    dGroup.add(pcModel)
+
+    // Load snivel model (canopy in bag)
+    const snivelModel = await loadRawGltf('/models/snivel.glb')
+    snivelModel.scale.setScalar(0.6 * s)  // snivel bag is slightly bigger than PC
+    snivelModel.visible = false
+    dGroup.add(snivelModel)
+
+    // Bridle line: container → PC (orange/red line)
+    const bridleLineMat = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 })
+    const bridleLineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+    ])
+    const bridleLine = new THREE.Line(bridleLineGeo, bridleLineMat)
+    bridleLine.visible = false
+    dGroup.add(bridleLine)
+
+    // Shoulder-to-snivel lines (dark grey, one per shoulder)
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x444444, linewidth: 1 })
+    const lineGeoL = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+    ])
+    const lineGeoR = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+    ])
+    const lineLeft = new THREE.Line(lineGeoL, lineMat)
+    const lineRight = new THREE.Line(lineGeoR, lineMat)
+    lineLeft.visible = false
+    lineRight.visible = false
+    dGroup.add(lineLeft)
+    dGroup.add(lineRight)
+
+    group.add(dGroup)
+
+    deployGroup = {
+      group: dGroup,
+      pc: pcModel,
+      snivel: snivelModel,
+      bridleLine,
+      lineLeft,
+      lineRight,
+    }
+  }
+
+  return { type, group, model: compositeRoot, bodyLength, pilotScale, pilotType, bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot, canopyModel: type === 'canopy' ? mainModel : undefined, deployGroup }
 }
 
 /**
@@ -375,5 +458,122 @@ export function applyAttitude(
     group.quaternion.identity()
   } else {
     group.quaternion.copy(rotation)
+  }
+}
+
+/**
+ * Update wingsuit deployment visualization based on wsDeploy fraction [0, 1].
+ *
+ * Kinematic sequence (all objects travel aft along -Z in Three.js = +X in NED):
+ *
+ * | deploy   | PC                      | Bridle            | Snivel              | Lines              |
+ * |----------|-------------------------|-------------------|---------------------|--------------------|
+ * | 0.0      | hidden                  | hidden            | hidden              | hidden             |
+ * | >0.0     | appears at container    | container → PC    | hidden              | hidden             |
+ * | 0.0→0.5  | moves aft to bridle len | grows with PC     | hidden              | hidden             |
+ * | 0.5      | at max bridle distance  | full length       | appears at container| shoulders → snivel |
+ * | 0.5→1.0  | continues aft           | continues growing | moves aft           | grow with snivel   |
+ * | 1.0      | at full line extension  | full              | at line-stretch     | full length        |
+ *
+ * @param model       The wingsuit loaded model with deployGroup
+ * @param deploy      Deployment fraction [0, 1]
+ * @param alpha_deg   AoA in degrees (for wind direction)
+ * @param beta_deg    Sideslip in degrees
+ */
+export function updateWingsuitDeploy(
+  model: LoadedModel,
+  deploy: number,
+  alpha_deg: number,
+  beta_deg: number,
+): void {
+  const dg = model.deployGroup
+  if (!dg) return
+
+  // Nothing to show at deploy = 0
+  if (deploy < 0.001) {
+    dg.group.visible = false
+    return
+  }
+  dg.group.visible = true
+
+  // ── Reference positions in Three.js model coordinates ──
+  // Three.js: +Z = forward (NED +X), -Z = aft (NED -X)
+  // Container (mid-back) is slightly behind CG, at about -0.15 bodyLength in Z
+  // Shoulders are slightly lateral (±X) and slightly forward (+Z)
+  const bl = model.bodyLength
+  const containerZ = -0.15 * bl   // mid-back, slightly aft of CG
+  const containerY = 0.05 * bl    // slightly above center (back surface)
+  const shoulderX = 0.20 * bl     // lateral offset for shoulders
+  const shoulderZ = 0.10 * bl     // shoulders are slightly forward of CG
+
+  // Maximum distances (in model units, scaled to body)
+  const maxBridleLen = 0.8 * bl   // ~1.5m real bridle → 80% of body length
+  const maxLineLen = 1.5 * bl     // ~2.8m real lines → 150% of body length
+
+  // Wind direction in Three.js body coords (deployment hardware trails aft along wind)
+  const windBody = windDirectionBody(alpha_deg, beta_deg)
+  // windBody points where wind comes FROM in Three.js coords
+  // Deployment objects trail downwind = opposite direction
+  const trailDir = windBody.clone().negate()
+
+  // ── PC position ──
+  // deploy 0→0.5: PC moves from container to bridle-length distance
+  // deploy 0.5→1.0: PC continues to max bridle + line distance
+  const pcDist = deploy < 0.5
+    ? (deploy / 0.5) * maxBridleLen
+    : maxBridleLen + ((deploy - 0.5) / 0.5) * maxLineLen
+  const pcPos = new THREE.Vector3(0, containerY, containerZ)
+    .addScaledVector(trailDir, pcDist)
+  dg.pc.position.copy(pcPos)
+  dg.pc.visible = true
+
+  // Orient PC to face the wind direction
+  const pcLookTarget = pcPos.clone().add(windBody)
+  dg.pc.lookAt(pcLookTarget)
+
+  // ── Bridle line: container → PC ──
+  const containerPos = new THREE.Vector3(0, containerY, containerZ)
+  const bridleGeo = dg.bridleLine.geometry as THREE.BufferGeometry
+  const bridlePositions = bridleGeo.getAttribute('position') as THREE.BufferAttribute
+  bridlePositions.setXYZ(0, containerPos.x, containerPos.y, containerPos.z)
+  bridlePositions.setXYZ(1, pcPos.x, pcPos.y, pcPos.z)
+  bridlePositions.needsUpdate = true
+  dg.bridleLine.visible = true
+
+  // ── Snivel ──
+  // Appears at deploy ≈ 0.5, moves aft from container to line-length distance
+  if (deploy >= 0.45) {
+    const snivelFrac = Math.min(1, (deploy - 0.45) / 0.55)  // 0 at 0.45, 1 at 1.0
+    const snivelDist = snivelFrac * maxLineLen * 0.7  // snivel doesn't go as far as PC
+    const snivelPos = new THREE.Vector3(0, containerY, containerZ)
+      .addScaledVector(trailDir, snivelDist)
+    dg.snivel.position.copy(snivelPos)
+    dg.snivel.visible = true
+
+    // Orient snivel to trail in wind
+    const snivelLookTarget = snivelPos.clone().add(windBody)
+    dg.snivel.lookAt(snivelLookTarget)
+
+    // ── Lines: shoulders → snivel ──
+    const shoulderL = new THREE.Vector3(-shoulderX, containerY, shoulderZ)
+    const shoulderR = new THREE.Vector3(shoulderX, containerY, shoulderZ)
+
+    const lineGeoL = dg.lineLeft.geometry as THREE.BufferGeometry
+    const linePosL = lineGeoL.getAttribute('position') as THREE.BufferAttribute
+    linePosL.setXYZ(0, shoulderL.x, shoulderL.y, shoulderL.z)
+    linePosL.setXYZ(1, snivelPos.x, snivelPos.y, snivelPos.z)
+    linePosL.needsUpdate = true
+    dg.lineLeft.visible = true
+
+    const lineGeoR = dg.lineRight.geometry as THREE.BufferGeometry
+    const linePosR = lineGeoR.getAttribute('position') as THREE.BufferAttribute
+    linePosR.setXYZ(0, shoulderR.x, shoulderR.y, shoulderR.z)
+    linePosR.setXYZ(1, snivelPos.x, snivelPos.y, snivelPos.z)
+    linePosR.needsUpdate = true
+    dg.lineRight.visible = true
+  } else {
+    dg.snivel.visible = false
+    dg.lineLeft.visible = false
+    dg.lineRight.visible = false
   }
 }

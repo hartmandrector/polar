@@ -1186,6 +1186,38 @@ function a5xc(xc: number): number {
 }
 
 /**
+ * Triangular Planform Refinement (Phase 3.5)
+ *
+ * The body and inner wing segments are not pure rectangles. The actual shapes:
+ *   Body:       rectangle (hips→tail) + trapezoid (hips→shoulders, narrows slightly)
+ *   Inner wing: rectangle (shoulder→hip) + trapezoid (hip→tail, span retreats)
+ *
+ * The body widens where the inner wing narrows (complementary shapes),
+ * so the combined planform has consistent total chord across the span.
+ *
+ * Hip line at x/c = 0.445 (from CloudBASE body station data: 863.6mm / 1940mm).
+ *
+ * Inner wing composite geometry (GLB coordinates):
+ *   LE at GLB_z = +0.321, hip at −0.62, TE at −2.379
+ *   Rectangle (LE→hip):  L₁ = 0.941 GLB, full span
+ *   Trapezoid (hip→TE):  L₂ = 1.759 GLB, span tapers to 30% at tail
+ *     (tail_fraction = 0.30, estimated from shin width 42cm vs hip width 43cm)
+ *
+ *   Area ratio = (L₁ + L₂ × (1 + 0.30)/2) / (L₁ + L₂)
+ *              = (0.941 + 1.759 × 0.65) / 2.700 = 0.772
+ *
+ *   Inner wing S:     0.39 × 0.772 = 0.30 m²  (per side)
+ *   Inner wing chord: 1.74 × 0.772 = 1.34 m    (mean chord of composite)
+ *   Body S:           2.00 − 0.07 − 2×0.30 − 2×0.15 = 1.03 m²
+ *
+ * Inner wing QC shift (forward, due to more area in LE rectangle):
+ *   Effective QC = LE − 0.25 × mean_chord
+ *   GLB: 0.321 − 0.25 × 2.084 = −0.200  (was −0.354 for rectangle)
+ *   Shift ≈ +0.04 in x/c → from 0.48 to 0.44
+ */
+const A5_HIP_XC = 0.445        // hip line as chord fraction (CloudBASE: 863.6mm/1940mm)
+
+/**
  * Per-segment x/c positions (aerodynamic center = quarter-chord of each panel).
  *
  * Derived by matching arrow positions to the GLB model panel meshes.
@@ -1194,11 +1226,11 @@ function a5xc(xc: number): number {
  *           = GLB_z × 0.2817 + 0.0597
  * Then x/c  = A5_CG_XC − NED_x × height / chord
  *
- * Panel QC positions (GLB z of mesh + 0.25 × GLB chord toward LE):
- *   head:       GLB z = +0.88  → NED +0.308 → x/c ≈ 0.13
- *   center QC:  GLB z = −0.25  → NED −0.011 → x/c ≈ 0.46
- *   inner QC:   GLB z = −0.354 → NED −0.040 → x/c ≈ 0.49
- *   outer QC:   GLB z = +0.076 → NED +0.081 → x/c ≈ 0.37
+ * Panel QC positions (with triangular planform + 27° LE sweep):
+ *   head:       GLB z = +0.88  → x/c ≈ 0.13  (unchanged)
+ *   center QC:  extended LE    → x/c ≈ 0.42  (forward from 0.46 — 27° sweep correction)
+ *   inner QC:   composite mean  → x/c ≈ 0.44  (unchanged from Phase 3.5)
+ *   outer QC:   GLB z = +0.076 → x/c ≈ 0.37  (unchanged)
  */
 
 /** Head — parasitic bluff body (sphere), rudder in sideslip. */
@@ -1234,19 +1266,21 @@ const A5_CENTER_POLAR: ContinuousPolar = {
   cp_alpha: -0.05,
   cg: 0.40,
   cp_lateral: 0.50,
-  s: 0.85,                   // 42.5% of 2.0 m²
+  s: 1.03,                   // 51.5% of 2.0 m² (increased from 0.85 via triangular planform)
   m: 77.5,
   chord: 1.93,               // GLB 3.0 × k × 1.875
   controls: {
     dirty: {
-      d_cd_0: 0.015,
-      d_cl_alpha: -0.15,
+      d_cd_0: 0.035,            // loose torso fabric catches more air
+      d_cl_alpha: -0.15,        // reduced lift efficiency
+      d_k: 0.10,               // loose suit disrupts span efficiency → more induced drag
+      d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -2,
     }
   }
 }
-const A5_CENTER_POS = {       // x/c = 0.46 (center panel QC, slightly aft of CG)
-  x: a5xc(0.46),             // −0.010 (just behind CG)
+const A5_CENTER_POS = {       // x/c = 0.42 (center panel QC, forward of hip line)
+  x: a5xc(0.42),             //  −0.019 (just behind CG — 27° LE sweep correction)
   y: 0,
   z: 0,
 }
@@ -1287,28 +1321,30 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   cl_beta: -0.08,            // dihedral effect
   cm_0: 0,
   cm_alpha: -0.05,
-  cp_0: 0.23,                // slightly forward of QC — tapered TE means less aft area
+  cp_0: 0.25,                // standard QC — taper now captured in reduced chord/area
   cp_alpha: -0.03,
   cg: 0.40,
   cp_lateral: 0.50,
-  s: 0.39,                   // 19.5% of 2.0 m² (each side)
+  s: 0.30,                   // 15.0% of 2.0 m² (reduced from 0.39 via triangular planform)
   m: 77.5,
-  chord: 1.74,               // GLB 2.7 × k × 1.875
+  chord: 1.34,               // mean chord of rect+trap composite (1.74 × 0.772)
   controls: {
     dirty: {
-      d_cd_0: 0.03,
-      d_cl_alpha: -0.4,
+      d_cd_0: 0.06,             // loose arm/leg wing fabric flutters
+      d_cl_alpha: -0.4,         // significant lift loss from loose panels
+      d_k: 0.12,               // inner wing most affected by fabric tension loss
+      d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -4,
     }
   }
 }
-const A5_R1_POS = {           // x/c = 0.48 (slightly forward of geometric QC due to tapered TE)
-  x: a5xc(0.48),             //  −0.077 (slightly behind CG)
+const A5_R1_POS = {           // x/c = 0.44 (triangular planform QC — forward of rectangular 0.49)
+  x: a5xc(0.44),             //  −0.038 (slightly behind CG)
   y: 0.72 * GLB_TO_NED,      //  0.213 (span)
   z: 0,
 }
 const A5_L1_POS = {           // mirror
-  x: a5xc(0.48),
+  x: a5xc(0.44),
   y: -0.72 * GLB_TO_NED,
   z: 0,
 }
@@ -1341,8 +1377,10 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   chord: 0.39,               // GLB 0.6 × k × 1.875
   controls: {
     dirty: {
-      d_cd_0: 0.04,
-      d_cl_alpha: -0.5,
+      d_cd_0: 0.08,             // hand area most exposed, flutters first
+      d_cl_alpha: -0.5,         // small panels lose efficiency fastest
+      d_k: 0.15,               // worst span efficiency loss at tips
+      d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -5,
     }
   }

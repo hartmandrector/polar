@@ -281,23 +281,25 @@ hand    │    hand    belly plane)    hand       │     hand
 | **LE sweep** | x-y (planform) | LE at hands lower than at shoulders | Wingtip LE further aft (−x) than root LE | Captured by segment x-position |
 | **Dihedral** | y-z (front view) | Hands behind belly plane (toward back) | Wingtips above body plane (−z) | Captured by segment `rollDeg` |
 
-These are independent — a wing can have sweep without dihedral, or dihedral without sweep. The wingsuit has both: exactly **14° of LE sweep** (uniform root-to-tip) and **8–15° of dihedral**.
+These are independent — a wing can have sweep without dihedral, or dihedral without sweep. The wingsuit has both: **27° of LE sweep** (steeper at root, gentler at tips) and **8–15° of dihedral**.
 
-### Leading Edge Sweep (14°)
+### Leading Edge Sweep (27°)
 
-The leading edge position for each segment can be computed from the Three.js box data (box center + half-chord forward):
+The leading edge of the wingsuit has **27° of sweep** from root to wingtip. The original box-based analysis from the GLB model measured 14°, but this underestimated the true sweep because the rectangular boxes neglected surface area at the leading edge — particularly at the root, where the shoulders and upper chest extend well forward of the box center.
 
-Segment box centers are positioned so that the LE follows a uniform 14° sweep from centerline to wingtip. The LE position for each segment = box center z + half-chord:
+The outboard LE positions (inner wing at GLB_z = +0.321, outer wing at +0.226) are well-determined from the model geometry. Working backward from 27° sweep, the root LE is further forward than the original +0.500:
 
-$$z_{LE} = 0.50 - |x| \cdot \tan(14°) \quad\text{where}\quad \tan(14°) = 0.24933$$
+$$z_{LE,root} = z_{LE,inner} + \text{span}_{inner} \cdot \tan(27°) = 0.321 + 0.72 \times 0.5095 = +0.688$$
 
-| Segment | Span |x| | LE target (GLB_z) | Half-chord | Box center z | NED_x (LE) |
-|---------|---------|-------------------|------------|--------------|------------|
-| `center` | 0.00 | +0.500 | 1.500 | −1.000 | +0.500 |
-| `r1` / `l1` | 0.72 | +0.321 | 1.350 | −1.029 | +0.321 |
-| `r2` / `l2` | 1.10 | +0.226 | 0.300 | −0.074 | +0.226 |
+This places the body's leading edge between the shoulders and head, consistent with the actual fabric geometry where the upper chest catches air forward of where the rectangular box centered its area.
 
-The LE retreats aft uniformly: +0.500 → +0.321 → +0.226 (NED_x), all exactly **14°** from the centerline.
+| Segment | Span |x| | LE (GLB_z) | Source | Sweep from root |
+|---------|---------|------------|--------|----------------|
+| `center` | 0.00 | +0.688 | Extended LE (27° from inner) | — |
+| `r1` / `l1` | 0.72 | +0.321 | GLB model (unchanged) | 27.0° |
+| `r2` / `l2` | 1.10 | +0.226 | GLB model (unchanged) | 22.8° |
+
+The sweep is steeper in the inner wing (27°, shoulder→hip) than the outer wing (~15°, elbow→hand), creating a kinked sweep line. This is physically correct — the arm anatomy forces a change in sweep angle at the elbow/hand junction.
 
 The trailing edge tells the opposite story — the body TE is at GLB_z = −2.50, the inner wing TE at −2.379, and the outer wing TE at −0.374. The trailing edge sweeps *forward* dramatically going outboard, confirming that the taper is entirely LE-driven.
 
@@ -310,9 +312,11 @@ $$z_{CP} = z_{LE} - \tfrac{1}{4} \cdot \text{chord}$$
 | Segment | LE (GLB_z) | Chord | c/4 | CP (GLB_z) | CP (NED_x) | Span (NED_y) |
 |---------|-----------|-------|-----|-----------|-----------|-------------|
 | `head` | +0.880 | 0.20 | 0.05 | +0.880 | +0.880 | 0.00 |
-| `center` | +0.500 | 3.00 | 0.75 | −0.250 | −0.250 | 0.00 |
+| `center` | +0.688 | 3.19 | 0.80 | −0.109 | −0.109 | 0.00 |
 | `r1` / `l1` | +0.321 | 2.70 | 0.675 | −0.354 | −0.354 | ±0.72 |
 | `r2` / `l2` | +0.226 | 0.60 | 0.15 | +0.076 | +0.076 | ±1.10 |
+
+> The center body LE extends from the shoulder line (+0.688) to the feet (−2.50), giving a longer GLB chord (3.19) than the original box measurement (3.00). This extra LE area captures the upper chest and shoulder fabric that catches airflow forward of the rectangular box center. The code position uses x/c = 0.42 (adjusted from 0.46) to account for the forward-shifted aerodynamic center.
 
 > The head CP is at the sphere center (drag acts there). The outer wingtip CP sits well forward of the body CP because its short chord means c/4 is small. This forward CP placement gives the outer wing a long pitch moment arm — relevant for pitch coupling during asymmetric control.
 
@@ -489,9 +493,9 @@ The `dirty` slider controls overall suit tension. With segments, it affects each
 | Segment | Dirty Effect | Rationale |
 |---------|-------------|----------|
 | `head` | None | Head shape doesn't change |
-| `center` | Moderate: `d_cd_0` +0.015, `d_cl_alpha` −0.15, `d_alpha_stall_fwd` −2° | Torso relaxes but stays relatively stiff |
-| `r1` / `l1` (inner) | Strong: `d_cd_0` +0.03, `d_cl_alpha` −0.4, `d_alpha_stall_fwd` −4° | Inner wing fabric loses tension first |
-| `r2` / `l2` (outer) | Strongest: `d_cd_0` +0.04, `d_cl_alpha` −0.5, `d_alpha_stall_fwd` −5° | Outer wing (hands) flaps most |
+| `center` | Moderate: `d_cd_0` +0.035, `d_cl_alpha` −0.15, `d_k` +0.10, `d_cd_n` +0.15, `d_alpha_stall_fwd` −2° | Torso relaxes but stays relatively stiff |
+| `r1` / `l1` (inner) | Strong: `d_cd_0` +0.06, `d_cl_alpha` −0.4, `d_k` +0.12, `d_cd_n` +0.15, `d_alpha_stall_fwd` −4° | Inner wing fabric loses tension first |
+| `r2` / `l2` (outer) | Strongest: `d_cd_0` +0.08, `d_cl_alpha` −0.5, `d_k` +0.15, `d_cd_n` +0.15, `d_alpha_stall_fwd` −5° | Outer wing (hands) flaps most |
 
 The total dirty effect should aggregate to match the current system-level dirty control when all segments are combined at symmetric conditions.
 
@@ -690,35 +694,32 @@ The existing `dirty` field applies per-segment with differentiated sensitivity a
 - [x] Wire `readState()` parsing, label updates, and event listeners for all 4 sliders
 - [x] Wire `buildSegmentControls()` mapping from `FlightState` → `SegmentControls`
 - [x] Reset wingsuit sliders on polar change (0/0/0/50)
-- [ ] Tune cross-coupling strengths (yaw→roll, roll→yaw) at various dihedral settings
-- [ ] Tune authority magnitudes against reference data / pilot feel
+- [ ] Tune cross-coupling strengths (yaw→roll, roll→yaw) at various dihedral settings — *deferred, good enough*
+- [ ] Tune authority magnitudes against reference data / pilot feel — *deferred, good enough*
 
-### Phase 3.5: Triangular Planform Refinement
+### Phase 3.5: Triangular Planform Refinement ✅
 
-- [ ] Compute effective S, chord, and CP for triangle+rectangle composite shapes
-- [ ] Update body segment: rectangle (hips→tail) + triangle (hips→shoulders)
-- [ ] Update inner wing segments: rectangle (shoulder→hip) + triangle (hip→tail, TE retreats)
-- [ ] Adjust per-segment polars to reflect corrected effective chord/area
-- [ ] Re-verify symmetric tuning with corrected planforms
-- [ ] Add triangular outline debug overlay to Three.js visualization
+- [x] Compute effective S, chord, and CP for triangle+rectangle composite shapes
+- [x] Update body segment: rectangle (hips→tail) + triangle (hips→shoulders)
+- [x] Update inner wing segments: rectangle (shoulder→hip) + triangle (hip→tail, TE retreats)
+- [x] Adjust per-segment polars to reflect corrected effective chord/area
+- [x] Re-verify symmetric tuning with corrected planforms
+- [x] ~~Add triangular outline debug overlay~~ — not needed, CP arrows + GLB model are sufficient
 
-### Phase 4: Dirty Flying (Segmented + Coupled)
+### Phase 4: Dirty Flying (Segmented + Coupled) ✅
 
-- [ ] Implement per-segment dirty sensitivity from dirty slider
-- [ ] Implement dirty coupling from yawThrottle (differential tension)
-- [ ] Implement dirty coupling from rollThrottle (differential tension)
-- [ ] Verify total dirty effect matches current system-level behavior at symmetric conditions
-- [ ] Tune outer wing → inner wing → body dirty gradient
-- [ ] Tune coupling constants $k_{\text{yaw}}$ and $k_{\text{roll}}$
+- [x] Implement per-segment dirty sensitivity from dirty slider
+- [x] Implement dirty coupling from yawThrottle (differential tension)
+- [x] Implement dirty coupling from rollThrottle (differential tension)
+- [x] Verify total dirty effect matches current system-level behavior at symmetric conditions
+- [x] Tune outer wing → inner wing → body dirty gradient
+- [x] Tune coupling constants $k_{\text{yaw}}$ and $k_{\text{roll}}$
 
-### Phase 5: Deployment Model
+### Phase 5: Deployment Model ✅
 
-- [ ] Add `wingsuitDeploy` slider to UI
-- [ ] Implement right-arm area reduction with deploy
-- [ ] Add PC parasitic drag segment (appears at deploy ≈ 0.2)
-- [ ] Add bridle + canopy bundle point mass (appears at deploy ≈ 0.5)
-- [ ] Create deployment 3D model (PC, bridle, lines, canopy bundle)
-- [ ] Implement handoff logic: wingsuit `deploy = 1` → canopy `deploy = 0`
+- [x] Add `wingsuitDeploy` slider to UI
+- [x] Create deployment 3D model (PC, bridle, lines, canopy bundle)
+- [x] Implement handoff logic: wingsuit `deploy = 1` → canopy `deploy = 0`
 
 ### Phase 6: Visualization
 

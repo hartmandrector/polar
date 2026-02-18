@@ -188,10 +188,22 @@ export function sweepSegments(
     const ld = cd > 0.001 ? cl / cd : 0
     const ss = coeffToSS(cl, cd, sRef, mRef, cfg.rho)
 
+    // System center of pressure from moment–normal-force relationship.
+    // The pitch moment about CG equals the normal force times the moment arm:
+    //   M_y = −F_z × r_cp_x,  where F_z = −qS·CN and CN = CL·cos(α) + CD·sin(α)
+    // Solving: cp = cg − cm / CN.
+    // Using CN instead of CL is essential: at high α, CL→0 but CD·sin(α)
+    // keeps CN positive, correctly moving CP aft with increasing α.
+    const alpha_rad = alpha * Math.PI / 180
+    const cn_force = cl * Math.cos(alpha_rad) + cd * Math.sin(alpha_rad)
+    const cp = Math.abs(cn_force) > 0.02
+      ? Math.max(0, Math.min(1, polar.cg - cm / cn_force))
+      : polar.cg
+
     points.push({
       alpha,
       cl, cd, cy, cm,
-      cp: 0.25,    // not meaningful for multi-segment — CP emerges from geometry
+      cp,
       f: 0,        // not applicable to multi-segment
       cn, cl_roll,
       ld,

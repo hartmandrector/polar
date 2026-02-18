@@ -212,10 +212,14 @@ export function windDirectionBody(alpha_deg: number, beta_deg: number): THREE.Ve
   const a = alpha_deg * DEG2RAD
   const b = beta_deg * DEG2RAD
 
-  // Matches vectors.ts existing convention:
-  // wind comes from +Z at α=0,β=0; positive α tilts wind down, positive β tilts left.
+  // Wind comes from +Z at α=0,β=0; positive α tilts wind down.
+  // Positive β = sideslip right → wind comes from the right → negative Three.js X.
+  // NED mapping: windDir_NED = (cos(β)cos(α), sin(β)cos(α), sin(α))
+  //   Three.x = -NED.y = -sin(β)cos(α)
+  //   Three.y = -NED.z = -sin(α)
+  //   Three.z =  NED.x =  cos(β)cos(α)
   return new THREE.Vector3(
-    Math.sin(b) * Math.cos(a),
+    -Math.sin(b) * Math.cos(a),
     -Math.sin(a),
     Math.cos(b) * Math.cos(a)
   ).normalize()

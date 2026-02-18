@@ -140,12 +140,13 @@ describe('sumAllSegments', () => {
     const result = sumAllSegments([seg], [sf], cgMeters, height, windDir, liftDir, sideDir)
 
     // Segment position is (0,0,0). CP offset from quarter-chord creates
-    // a lever arm along x. With wind along +x and lift along -z:
+    // a lever arm along x. In NED, aft = −x, so offset is negated.
+    // With wind along +x and lift along -z:
     //   fx = -drag, fy = side, fz = -lift
-    //   rx = (cp - 0.25) * chord, ry = 0, rz = 0
+    //   rx = -(cp - 0.25) * chord, ry = 0, rz = 0
     //   r×F y-component = rz*fx - rx*fz = 0 - rx*(-lift) = rx * lift
     // Plus intrinsic moment on y-axis.
-    const cpOffset = (sf.cp - 0.25) * polar.chord
+    const cpOffset = -(sf.cp - 0.25) * polar.chord
     const leverMomentY = cpOffset * sf.lift  // rx * lift
     const expectedMy = sf.moment + leverMomentY
 
@@ -462,10 +463,10 @@ describe('computeWindFrameNED', () => {
     expect(windDir.z).toBeCloseTo(1, 4)
   })
 
-  it('at α=0, β=90: wind comes from the left (-y in NED)', () => {
+  it('at α=0, β=90: wind comes from the right (+y in NED)', () => {
     const { windDir } = computeWindFrameNED(0, 90)
     expect(windDir.x).toBeCloseTo(0, 4)
-    expect(windDir.y).toBeCloseTo(-1, 4)
+    expect(windDir.y).toBeCloseTo(1, 4)
   })
 
   it('wind, lift, and side are mutually orthogonal', () => {

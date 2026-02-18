@@ -37,6 +37,7 @@ export interface FlightState {
   yawThrottle: number       // [-1, +1] lateral spine/head shift
   rollThrottle: number      // [-1, +1] differential shoulder height
   wsDihedral: number        // [0, 1] wing dihedral angle
+  wsDeploy: number          // [0, 1] wingsuit deployment phase
 }
 
 export type StateChangeCallback = (state: FlightState) => void
@@ -97,10 +98,12 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const wsYawSlider = document.getElementById('ws-yaw-slider') as HTMLInputElement
   const wsRollSlider = document.getElementById('ws-roll-slider') as HTMLInputElement
   const wsDihedralSlider = document.getElementById('ws-dihedral-slider') as HTMLInputElement
+  const wsDeploySlider = document.getElementById('ws-deploy-slider') as HTMLInputElement
   const wsPitchLabel = document.getElementById('ws-pitch-value')!
   const wsYawLabel = document.getElementById('ws-yaw-value')!
   const wsRollLabel = document.getElementById('ws-roll-value')!
   const wsDihedralLabel = document.getElementById('ws-dihedral-value')!
+  const wsDeployLabel = document.getElementById('ws-deploy-value')!
 
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
@@ -200,15 +203,10 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       deltaSlider.min = '-100'
       deltaSlider.max = '100'
     }
-    // Hide delta slider entirely for canopy+slick (no unzip, no δ use)
+    // Hide delta slider for canopy+slick and for wingsuit 6-seg (throttle controls replace δ)
     if (deltaGroup) {
-      deltaGroup.style.display = (modelType === 'canopy' && canopyPilotType === 'slick') ? 'none' : ''
-    }
-
-    // ── Hide dirty slider in canopy mode (segments handle everything) ──
-    const dirtyGroup = document.getElementById('dirty-group')
-    if (dirtyGroup) {
-      dirtyGroup.style.display = modelType === 'canopy' ? 'none' : ''
+      const hideDelta = (modelType === 'canopy' && canopyPilotType === 'slick') || polarKey === 'a5segments'
+      deltaGroup.style.display = hideDelta ? 'none' : ''
     }
 
     // ── Show/hide wingsuit controls group ──
@@ -222,10 +220,12 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const wsYaw = parseFloat(wsYawSlider.value) / 100
     const wsRoll = parseFloat(wsRollSlider.value) / 100
     const wsDihedralVal = parseFloat(wsDihedralSlider.value) / 100
+    const wsDeployVal = parseFloat(wsDeploySlider.value) / 100
     wsPitchLabel.textContent = `${(wsPitch * 100).toFixed(0)}`
     wsYawLabel.textContent = `${(wsYaw * 100).toFixed(0)}`
     wsRollLabel.textContent = `${(wsRoll * 100).toFixed(0)}`
     wsDihedralLabel.textContent = `${(wsDihedralVal * 100).toFixed(0)}%`
+    wsDeployLabel.textContent = `${(wsDeployVal * 100).toFixed(0)}%`
 
     // Update slider labels based on attitude mode
     const rollLabelEl = document.getElementById('roll-label')
@@ -275,6 +275,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       yawThrottle: wsYaw,
       rollThrottle: wsRoll,
       wsDihedral: wsDihedralVal,
+      wsDeploy: wsDeployVal,
     }
   }
 
@@ -290,11 +291,12 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     wsYawSlider.value = '0'
     wsRollSlider.value = '0'
     wsDihedralSlider.value = '50'
+    wsDeploySlider.value = '0'
     onInput()
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider, wsDeploySlider]) {
     el.addEventListener('input', onInput)
   }
 

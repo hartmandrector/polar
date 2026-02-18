@@ -113,15 +113,12 @@ export function computeWindFrameNED(alpha_deg: number, beta_deg: number): WindFr
   const a = alpha_deg * Math.PI / 180
   const b = beta_deg * Math.PI / 180
 
-  // Wind direction: where air comes FROM in body NED
-  // Derived from Three.js windDirectionBody → NED conversion:
-  //   Three.js: (sin(β)cos(α), -sin(α), cos(β)cos(α))
-  //   NED.x = Three.z = cos(β)cos(α)
-  //   NED.y = -Three.x = -sin(β)cos(α)
-  //   NED.z = -Three.y = sin(α)
+  // Wind direction: where air comes FROM in body NED.
+  // At α=0,β=0 → wind from +x (ahead). Positive β → wind from +y (right).
+  // This is parallel to the body velocity vector (direction of travel).
   const windDir: Vec3NED = {
     x: Math.cos(b) * Math.cos(a),
-    y: -Math.sin(b) * Math.cos(a),
+    y: Math.sin(b) * Math.cos(a),
     z: Math.sin(a),
   }
 
@@ -132,10 +129,10 @@ export function computeWindFrameNED(alpha_deg: number, beta_deg: number): WindFr
   // But to match Three.js exactly: use the double-cross formula.
   //
   // up_NED = (0, 0, -1)  [Three.js (0,1,0) → NED]
-  // temp = cross(wind, up) = (wind.y·(-1) - wind.z·0, wind.z·0 - wind.x·(-1), wind.x·0 - wind.y·0)
-  //      = (-wind.y, wind.x, 0) = (sin(β)cos(α), cos(β)cos(α), 0)
+  // temp = cross(wind, up) = (-wind.y, wind.x, 0)
+  //      = (-sin(β)cos(α), cos(β)cos(α), 0)
   // lift = cross(temp, wind)
-  const tx = Math.sin(b) * Math.cos(a)
+  const tx = -Math.sin(b) * Math.cos(a)
   const ty = Math.cos(b) * Math.cos(a)
   const tz = 0
   let lx = ty * windDir.z - tz * windDir.y
@@ -240,11 +237,12 @@ export function sumAllSegments(
 
     // CP position in meters: segment AC + CP offset along chord direction.
     // CP is a chord fraction from LE — offset from quarter-chord (AC at 0.25c).
-    // Positive offset = aft of AC in NED (toward trailing edge).
+    // In NED, chord runs from LE (+x, forward) to TE (-x, aft), so
+    // CP aft of QC (cp > 0.25) → negative x offset (negate the fraction).
     // The chord direction rotates with pitchOffset_deg in the x-z plane:
-    //   0° → chord along x (canopy cell, prone body)
-    //  90° → chord along z (upright pilot hanging under canopy)
-    const cpOffsetNorm = (f.cp - 0.25) * seg.chord / height
+    //   0° → chord along −x (prone body: LE=head +x, TE=feet −x)
+    //  90° → chord along −z (upright pilot: LE=head −z, TE=feet +z)
+    const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
     const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
     const cpX = (seg.position.x + cpOffsetNorm * Math.cos(pitchRad)) * height
     const cpY = seg.position.y * height
@@ -371,7 +369,7 @@ export function evaluateAeroForcesDetailed(
 
     // CP position in meters (same logic as sumAllSegments)
     const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
-    const cpOffsetNorm = (f.cp - 0.25) * seg.chord / height
+    const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
     const cpX = (seg.position.x + cpOffsetNorm * Math.cos(pitchRad)) * height
     const cpY = seg.position.y * height
     const cpZ = (seg.position.z + cpOffsetNorm * Math.sin(pitchRad)) * height

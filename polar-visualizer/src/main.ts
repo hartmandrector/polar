@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, CANOPY_SCALE } from './viewer/model-loader.ts'
+import { loadModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -87,6 +87,9 @@ function sweepKey(s: FlightState): string {
   if (s.modelType === 'canopy') {
     key += `|cc:${s.canopyControlMode}|lh:${s.canopyLeftHand}|rh:${s.canopyRightHand}|ws:${s.canopyWeightShift}|pp:${s.pilotPitch}|dep:${s.deploy}`
   }
+  if (s.modelType === 'wingsuit') {
+    key += `|pt:${s.pitchThrottle}|yt:${s.yawThrottle}|rt:${s.rollThrottle}|dh:${s.wsDihedral}|wsd:${s.wsDeploy}`
+  }
   return key
 }
 
@@ -135,6 +138,7 @@ function buildSegmentControls(state: FlightState): SegmentControls {
     ctrl.yawThrottle = state.yawThrottle
     ctrl.rollThrottle = state.rollThrottle
     ctrl.dihedral = state.wsDihedral
+    ctrl.wingsuitDeploy = state.wsDeploy
   }
 
   return ctrl
@@ -186,7 +190,16 @@ function computeSegmentReadout(
   const cn = qSc > 1e-10 ? system.moment.z / qSc : 0
   const cl_roll = qSc > 1e-10 ? system.moment.x / qSc : 0
 
-  return { cl, cd, cy, cm, cn, cl_roll, cp: 0.25, f: 0 }
+  // System center of pressure from moment–normal-force relationship.
+  // CN = CL·cos(α) + CD·sin(α) — stays positive at all α, correctly
+  // capturing drag-based CP shift in post-stall / high-α flight.
+  const alpha_rad = alpha_deg * Math.PI / 180
+  const cn_force = cl * Math.cos(alpha_rad) + cd * Math.sin(alpha_rad)
+  const cp = Math.abs(cn_force) > 0.02
+    ? Math.max(0, Math.min(1, polar.cg - cm / cn_force))
+    : polar.cg
+
+  return { cl, cd, cy, cm, cn, cl_roll, cp, f: 0 }
 }
 
 /**
@@ -542,6 +555,10 @@ function updateVisualization(state: FlightState): void {
         CANOPY_SCALE,               // Y (vertical) — always full height
         CANOPY_SCALE * chordScale,  // Z (fore-aft/chord)
       )
+    }
+    // Wingsuit deployment visualization — PC, bridle, snivel, lines
+    if (currentModel.deployGroup) {
+      updateWingsuitDeploy(currentModel, state.wsDeploy, state.alpha_deg, state.beta_deg)
     }
   }
 

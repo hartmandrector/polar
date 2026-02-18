@@ -74,9 +74,14 @@
         <input type="range" id="delta-slider" min="-100" max="100" value="0" step="1" />
       </div>
 
-      <div class="control-group" id="dirty-group">
-        <label>Dirty: <span id="dirty-value">0.00</span></label>
-        <input type="range" id="dirty-slider" min="0" max="100" value="0" step="1" />
+      <div class="control-group">
+        <label>Airspeed: <span id="airspeed-value">45.0 m/s</span></label>
+        <input type="range" id="airspeed-slider" min="0" max="80" value="45" step="0.5" />
+      </div>
+
+      <div class="control-group">
+        <label>ρ (Density): <span id="rho-value">1.095 kg/m³</span></label>
+        <input type="range" id="rho-slider" min="400" max="1225" value="1095" step="5" />
       </div>
 
       <div id="wingsuit-controls-group" class="attitude-group" style="display:none;">
@@ -93,20 +98,18 @@
           <label>Roll Throttle: <span id="ws-roll-value">0</span></label>
           <input type="range" id="ws-roll-slider" min="-100" max="100" value="0" step="1" />
         </div>
+        <div class="control-group" id="dirty-group">
+          <label>Dirty: <span id="dirty-value">0.00</span></label>
+          <input type="range" id="dirty-slider" min="0" max="100" value="0" step="1" />
+        </div>
         <div class="control-group">
           <label>Dihedral: <span id="ws-dihedral-value">50%</span></label>
           <input type="range" id="ws-dihedral-slider" min="0" max="100" value="50" step="1" />
         </div>
-      </div>
-
-      <div class="control-group">
-        <label>Airspeed: <span id="airspeed-value">45.0 m/s</span></label>
-        <input type="range" id="airspeed-slider" min="0" max="80" value="45" step="0.5" />
-      </div>
-
-      <div class="control-group">
-        <label>ρ (Density): <span id="rho-value">1.095 kg/m³</span></label>
-        <input type="range" id="rho-slider" min="400" max="1225" value="1095" step="5" />
+        <div class="control-group">
+          <label>Deploy: <span id="ws-deploy-value">0%</span></label>
+          <input type="range" id="ws-deploy-slider" min="0" max="100" value="0" step="1" />
+        </div>
       </div>
 
       <div class="control-group">
