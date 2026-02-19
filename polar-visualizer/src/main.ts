@@ -450,6 +450,7 @@ function updateVisualization(state: FlightState): void {
   // Compute segment forces ONCE and share across readout, system view, and vectors
   let cachedSegForces: import('./polar/aero-segment.ts').SegmentForceResult[] | undefined
   let cachedPerSegment: SegmentAeroResult[] | undefined
+  let segReadout: import('./polar/continuous-polar.ts').FullCoefficients | undefined
   if (hasSegments) {
     // Compute CG for evaluateAeroForcesDetailed
     const cgNED = polar.massSegments && polar.massSegments.length > 0
@@ -475,7 +476,7 @@ function updateVisualization(state: FlightState): void {
     }
 
     // Compute segment-summed coefficients for readout at current flight state
-    const segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
+    segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
     updateReadout(segReadout, polar, state.airspeed, state.rho, legacyCoeffs)
     updateInertiaReadout(currentInertia, segReadout, polar, state.airspeed, state.rho)
 
@@ -575,6 +576,8 @@ function updateVisualization(state: FlightState): void {
         -currentModel.cgOffsetThree.y,
         -currentModel.cgOffsetThree.z,
       )
+    } else {
+      massOverlay.group.position.set(0, 0, 0)
     }
     // Compute mass pivot once: find where the 3D pilotPivot sits in
     // mass-overlay local space, then convert to NED normalised coords.
@@ -594,6 +597,9 @@ function updateVisualization(state: FlightState): void {
     massOverlay.setVisible(state.showMassOverlay)
     if (state.showMassOverlay && polar.massSegments) {
       massOverlay.update(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
+      // CP diamond marker — use segmented readout CP when available, else lumped coeffs
+      const cpFraction = segReadout ? segReadout.cp : coeffs.cp
+      massOverlay.updateCP(cpFraction, polar.cg, polar.chord, 1.875, currentModel.pilotScale, polar.massSegments)
     }
   }
 

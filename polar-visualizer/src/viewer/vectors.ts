@@ -417,10 +417,8 @@ export function updateForceVectors(
         if (velMag > 0.1) {
           sa.velocity.setDirection(applyFrame(velThree.normalize()).normalize())
           sa.velocity.setLength(velMag * VEL_SCALE, 0.06, 0.03)
-          // Position at segment aero center (not CP)
-          const segPosNED = { x: seg.position.x, y: seg.position.y, z: seg.position.z }
-          const segPosThree = nedToThreeJS(segPosNED).multiplyScalar(pilotScale * 1.875)
-          sa.velocity.position.copy(applyFramePos(shiftPos(segPosThree)))
+          // Position at segment CP (same as force arrows)
+          sa.velocity.position.copy(posWorld)
           sa.velocity.visible = true
         } else {
           sa.velocity.visible = false

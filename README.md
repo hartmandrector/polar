@@ -512,6 +512,70 @@ Full derivation and implementation checklist: [SIMULATION.md](SIMULATION.md) §1
 
 ---
 
+## Segment Force Summation & System Aerodynamics
+
+When a polar has multiple `AeroSegment`s (canopy cells, flap segments, lines, pilot, etc.), the system-level coefficients and sustained speeds aren't read from a single polar — they're **built up from first principles** by summing forces and moments across every segment.
+
+### Per-Segment Evaluation
+
+Each segment has its own Kirchhoff polar, reference area $S_i$, chord $c_i$, and position in the NED body frame. On every frame, each segment's `getCoeffs(α, β, controls)` evaluates its local coefficient set $\{C_L, C_D, C_Y, C_M, CP\}$, handling control response, pitch offsets, and local flow transforms internally. The physical forces are then:
+
+$$L_i = q \cdot S_i \cdot C_{L,i} \qquad D_i = q \cdot S_i \cdot C_{D,i} \qquad Y_i = q \cdot S_i \cdot C_{Y,i}$$
+
+$$M_{0,i} = q \cdot S_i \cdot c_i \cdot C_{M,i}$$
+
+where $q = \tfrac{1}{2}\rho V^2$ is the dynamic pressure.
+
+### Wind Frame → Body Frame
+
+Forces are computed in the NED wind frame — lift perpendicular to the airflow, drag opposing it, side force lateral — then projected into body-frame NED coordinates:
+
+$$\vec{F}_i = L_i \cdot \hat{l} - D_i \cdot \hat{w} + Y_i \cdot \hat{s}$$
+
+The wind direction $\hat{w}$, lift direction $\hat{l}$, and side direction $\hat{s}$ are orthonormal vectors constructed from $(\alpha, \beta)$ via double cross-product with the NED vertical reference.
+
+### CP Position & Moment Arms
+
+Each segment's center of pressure is offset from its aerodynamic center (at quarter-chord) along the chord direction. The offset is rotated by the segment's `pitchOffset_deg` in the x-z plane to handle upright bodies (pilot hanging under canopy at 90°) versus prone bodies (wingsuit at 0°):
+
+$$\Delta x_{CP} = -(CP - 0.25) \cdot \frac{c_{seg}}{h}$$
+
+$$\vec{r}_{CP,i} = \vec{r}_{seg,i} + \Delta x_{CP} \cdot (\cos\theta_p,\; 0,\; \sin\theta_p)$$
+
+where $h$ = 1.875 m (reference height) and $\theta_p$ is the pitch offset. The lever arm from the system CG is then $\vec{r}_i = \vec{r}_{CP,i} \cdot h - \vec{r}_{CG}$.
+
+### Force & Moment Summation
+
+Total aero force and moment about the system CG are accumulated across all segments. Each segment contributes **two** moment terms — one from its lever arm and one from its intrinsic pitching moment:
+
+$$\vec{F}_{total} = \sum_i \vec{F}_i$$
+
+$$\vec{M}_{total} = \sum_i \left(\vec{r}_i \times \vec{F}_i \;+\; M_{0,i} \cdot \hat{y}\right)$$
+
+The $\vec{r}_i \times \vec{F}_i$ term captures how off-CG forces create pitch, yaw, and roll moments. The $M_{0,i} \cdot \hat{y}$ term adds each segment's own pitch tendency (from camber, flap deflection, etc.) directly about the NED y-axis.
+
+### System Coefficient Recovery
+
+The summed body-frame force is decomposed back into wind-frame scalars via dot products, then non-dimensionalized to recover system-level coefficients:
+
+$$C_L = \frac{\hat{l} \cdot \vec{F}_{total}}{qS_{ref}} \qquad C_D = \frac{-\hat{w} \cdot \vec{F}_{total}}{qS_{ref}} \qquad C_M = \frac{M_y}{qS_{ref} \cdot c_{ref}}$$
+
+These are the coefficients displayed on the charts and in the readout panel — they emerge from the geometry and interactions of all segments rather than from a single interpolated polar.
+
+### System Center of Pressure
+
+The system CP is derived from the moment-balance relationship. Since $C_M = C_N \cdot (CG - CP)$, solving for CP gives:
+
+$$CP_{sys} = CG - \frac{C_M}{C_N}$$
+
+where the **normal-force coefficient** $C_N = C_L \cos\alpha + C_D \sin\alpha$ captures both lift and drag contributions to the pitching moment arm. This stays positive at all angles of attack and correctly tracks how drag-dominated forces shift the effective CP in deep stall. When $|C_N| < 0.02$ (near zero normal force), CP falls back to the CG position.
+
+### Sustained Speeds from Segments
+
+The system $C_L$ and $C_D$ from segment summation feed into the same equilibrium glide equations used for monolithic polars — there's no separate formula. The speed polar charts sweep $\alpha$ from $-180°$ to $+180°$, and at each point the full segment pipeline runs: evaluate all segments, sum forces, recover system coefficients, compute sustained speeds. This means the speed polar automatically captures interactions like brake-induced drag, differential flap loading, deployment morphing, and dirty flying — anything that changes any segment's contribution flows through to the system performance envelope.
+
+---
+
 ## Sustained Speed Polar
 
 Given CL and CD at a particular α, the model computes equilibrium glide speeds:

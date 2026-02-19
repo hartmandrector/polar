@@ -1,0 +1,480 @@
+Loading cp2.gltf (438 KB) 100%
+Config.js:68 [17:26:29] Saved config to LocalStorage.
+/**
+ * GLB Measurement Script for Three.js Editor
+ * ============================================
+ * 
+ * Usage:
+ *   1. Open https://threejs.org/editor/
+ *   2. File → Import → select a GLB file
+ *   3. Open browser console (F12 → Console tab)
+ *   4. Paste this entire script and press Enter
+ * 
+ * Output: JSON block with all measurements needed for MODEL-GEOMETRY.md
+ */
+
+(function measureGLB() {
+  // Find the loaded model in the scene
+  const root = editor.scene.children.find(c => c.name !== 'Camera' && c.type !== 'AmbientLight' && c.type !== 'DirectionalLight');
+  if (!root) {
+    console.error('No model found in scene. Import a GLB first.');
+    return;
+  }
+
+  console.log('=== GLB Measurement: ' + root.name + ' ===\n');
+
+  // ─── Scene tree ───
+  console.log('── Scene Tree ──');
+  function printTree(obj, indent) {
+    const pos = obj.position;
+    const rot = obj.rotation;
+    const scl = obj.scale;
+    const rotDeg = [
+      (rot.x * 180 / Math.PI).toFixed(2),
+      (rot.y * 180 / Math.PI).toFixed(2),
+      (rot.z * 180 / Math.PI).toFixed(2),
+    ];
+    console.log(
+      indent + obj.name + ' (' + obj.type + ')' +
+      '  pos(' + pos.x.toFixed(4) + ', ' + pos.y.toFixed(4) + ', ' + pos.z.toFixed(4) + ')' +
+      '  rot(' + rotDeg.join('°, ') + '°)' +
+      '  scale(' + scl.x.toFixed(4) + ', ' + scl.y.toFixed(4) + ', ' + scl.z.toFixed(4) + ')'
+    );
+    obj.children.forEach(function(child) { printTree(child, indent + '  '); });
+  }
+  printTree(root, '');
+
+  // ─── Per-mesh buffer geometry ───
+  console.log('\n── Buffer Geometry (per-mesh, pre-transform) ──');
+  root.traverse(function(child) {
+    if (!child.isMesh) return;
+    child.geometry.computeBoundingBox();
+    var bb = child.geometry.boundingBox;
+    var size = new THREE.Vector3();
+    bb.getSize(size);
+    var center = new THREE.Vector3();
+    bb.getCenter(center);
+    console.log('Mesh: ' + child.name);
+    console.log('  Vertices: ' + (child.geometry.attributes.position ? child.geometry.attributes.position.count : 'N/A'));
+    console.log('  Buffer min: { x: ' + bb.min.x.toFixed(3) + ', y: ' + bb.min.y.toFixed(3) + ', z: ' + bb.min.z.toFixed(3) + ' }');
+    console.log('  Buffer max: { x: ' + bb.max.x.toFixed(3) + ', y: ' + bb.max.y.toFixed(3) + ', z: ' + bb.max.z.toFixed(3) + ' }');
+    console.log('  Buffer size: { x: ' + size.x.toFixed(3) + ', y: ' + size.y.toFixed(3) + ', z: ' + size.z.toFixed(3) + ' }');
+    console.log('  Buffer center: { x: ' + center.x.toFixed(3) + ', y: ' + center.y.toFixed(3) + ', z: ' + center.z.toFixed(3) + ' }');
+  });
+
+  // ─── World-space bounding box ───
+  console.log('\n── World-Space BBox (after all transforms) ──');
+  var worldBox = new THREE.Box3().setFromObject(root);
+  var worldSize = worldBox.getSize(new THREE.Vector3());
+  var worldCenter = worldBox.getCenter(new THREE.Vector3());
+  console.log('BBox min: { x: ' + worldBox.min.x.toFixed(4) + ', y: ' + worldBox.min.y.toFixed(4) + ', z: ' + worldBox.min.z.toFixed(4) + ' }');
+  console.log('BBox max: { x: ' + worldBox.max.x.toFixed(4) + ', y: ' + worldBox.max.y.toFixed(4) + ', z: ' + worldBox.max.z.toFixed(4) + ' }');
+  console.log('BBox size: { x: ' + worldSize.x.toFixed(4) + ', y: ' + worldSize.y.toFixed(4) + ', z: ' + worldSize.z.toFixed(4) + ' }');
+  console.log('BBox center: { x: ' + worldCenter.x.toFixed(4) + ', y: ' + worldCenter.y.toFixed(4) + ', z: ' + worldCenter.z.toFixed(4) + ' }');
+  console.log('Max dimension: ' + Math.max(worldSize.x, worldSize.y, worldSize.z).toFixed(4) +
+    ' (axis: ' + (worldSize.x >= worldSize.y && worldSize.x >= worldSize.z ? 'X' : worldSize.y >= worldSize.z ? 'Y' : 'Z') + ')');
+
+  // ─── Derived scaling ───
+  var maxDim = Math.max(worldSize.x, worldSize.y, worldSize.z);
+  var pilotHeight = 1.875;  // A5_HEIGHT — change if not a wingsuit pilot
+  var glbToMeters = pilotHeight / maxDim;
+  var glbToNED = glbToMeters / pilotHeight;
+  console.log('\n── Derived Scaling (assuming pilot height = ' + pilotHeight + ' m) ──');
+  console.log('glbToMeters: ' + glbToMeters.toFixed(4) + '  (1 GLB unit = ' + glbToMeters.toFixed(4) + ' m)');
+  console.log('glbToNED:    ' + glbToNED.toFixed(4) + '  (1 GLB unit = ' + glbToNED.toFixed(4) + ' NED)');
+  console.log('Origin offset from BBox center: { x: ' +
+    (-worldCenter.x).toFixed(4) + ', y: ' +
+    (-worldCenter.y).toFixed(4) + ', z: ' +
+    (-worldCenter.z).toFixed(4) + ' }');
+
+  // ─── Markdown table snippet ───
+  console.log('\n── Markdown Table Snippet (copy-paste into MODEL-GEOMETRY.md) ──');
+  console.log('| BBox min | { x: ' + worldBox.min.x.toFixed(3) + ', y: ' + worldBox.min.y.toFixed(3) + ', z: ' + worldBox.min.z.toFixed(3) + ' } | World-space |');
+  console.log('| BBox max | { x: ' + worldBox.max.x.toFixed(3) + ', y: ' + worldBox.max.y.toFixed(3) + ', z: ' + worldBox.max.z.toFixed(3) + ' } | World-space |');
+  console.log('| BBox size | { x: ' + worldSize.x.toFixed(3) + ', y: ' + worldSize.y.toFixed(3) + ', z: ' + worldSize.z.toFixed(3) + ' } | World-space |');
+  console.log('| `glbToMeters` | ' + glbToMeters.toFixed(4) + ' | `' + pilotHeight + ' / ' + maxDim.toFixed(3) + '` |');
+  console.log('| `glbToNED` | ' + glbToNED.toFixed(4) + ' | `' + glbToMeters.toFixed(4) + ' / ' + pilotHeight + '` |');
+
+  console.log('\n=== Done ===');
+})();
+
+VM1146:22 === GLB Measurement: cp2.gltf ===
+
+VM1146:25 ── Scene Tree ──
+VM1146:35 cp2.gltf (Group)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35   cp1glb (Object3D)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35     DirectionalLight (DirectionalLight)  pos(5.0000, 10.0000, 7.5000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+2VM1146:35        (Object3D)  pos(0.0000, 0.0000, -1.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35     canopy1glb (Object3D)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35       DirectionalLight_2 (DirectionalLight)  pos(5.0000, 10.0000, 7.5000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+3VM1146:35          (Object3D)  pos(0.0000, 0.0000, -1.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35       hartmanparachute2glb (Object3D)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Empty (Object3D)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(0.2060, 0.2060, 0.2060)
+VM1146:35         Top_7_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_5_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_6_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_1_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_3_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_4_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_2_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Top_1_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_2_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_1 (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_2_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_6_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_7_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_5_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_3_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_4_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_6_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_7_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_5_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_3_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Bottom_4_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rib_8_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Stabilizer_L (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Rear_Riser (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         Front_Riser (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         d2_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c2_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c2_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         b2_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a2_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a2_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         d4_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c4_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c4_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         b4_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a4_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a4_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         d6_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c6_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c6_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         b6_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a6_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a6_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         d8_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c8_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         c8_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         b8_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a8_upper (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35         a8_lower (Mesh)  pos(0.0000, 0.0000, 0.0000)  rot(0.00°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:35       wingsuit4glb (Object3D)  pos(0.0000, -5.2800, -0.0800)  rot(-96.40°, 0.00°, 0.00°)  scale(1.0000, 1.0000, 1.0000)
+VM1146:46 
+── Buffer Geometry (per-mesh, pre-transform) ──
+VM1146:55 Mesh: Top_7_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -3.133, y: 3.427, z: -2.874 }
+VM1146:58   Buffer max: { x: 3.133, y: 3.983, z: 0.654 }
+VM1146:59   Buffer size: { x: 6.266, y: 0.556, z: 3.528 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.705, z: -1.110 }
+VM1146:55 Mesh: Top_5_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -2.329, y: 3.928, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.329, y: 4.429, z: 0.654 }
+VM1146:59   Buffer size: { x: 4.657, y: 0.501, z: 3.527 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.178, z: -1.110 }
+VM1146:55 Mesh: Top_6_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -2.749, y: 3.699, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.749, y: 4.233, z: 0.654 }
+VM1146:59   Buffer size: { x: 5.497, y: 0.534, z: 3.528 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.966, z: -1.110 }
+VM1146:55 Mesh: Bottom_1_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -0.448, y: 4.106, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.448, y: 4.337, z: 0.313 }
+VM1146:59   Buffer size: { x: 0.896, y: 0.231, z: 3.187 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.221, z: -1.280 }
+VM1146:55 Mesh: Top_3_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -1.412, y: 4.236, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.412, y: 4.673, z: 0.654 }
+VM1146:59   Buffer size: { x: 2.823, y: 0.438, z: 3.527 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.455, z: -1.110 }
+VM1146:55 Mesh: Top_4_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -1.882, y: 4.107, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.882, y: 4.580, z: 0.654 }
+VM1146:59   Buffer size: { x: 3.764, y: 0.474, z: 3.527 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.344, z: -1.110 }
+VM1146:55 Mesh: Top_2_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -0.928, y: 4.304, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.928, y: 4.719, z: 0.654 }
+VM1146:59   Buffer size: { x: 1.856, y: 0.415, z: 3.528 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.512, z: -1.110 }
+VM1146:55 Mesh: Top_1_L
+VM1146:56   Vertices: 390
+VM1146:57   Buffer min: { x: -0.459, y: 4.331, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.459, y: 4.735, z: 0.655 }
+VM1146:59   Buffer size: { x: 0.917, y: 0.404, z: 3.528 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.533, z: -1.110 }
+VM1146:55 Mesh: Bottom_2_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -0.895, y: 4.091, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.895, y: 4.331, z: 0.312 }
+VM1146:59   Buffer size: { x: 1.789, y: 0.240, z: 3.186 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.211, z: -1.281 }
+VM1146:55 Mesh: Rib_1
+VM1146:56   Vertices: 73
+VM1146:57   Buffer min: { x: 0.000, y: 4.155, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.000, y: 4.681, z: 0.627 }
+VM1146:59   Buffer size: { x: 0.000, y: 0.526, z: 3.501 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.418, z: -1.123 }
+VM1146:55 Mesh: Rib_2_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -0.459, y: 4.149, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.459, y: 4.675, z: 0.626 }
+VM1146:59   Buffer size: { x: 0.917, y: 0.525, z: 3.500 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.412, z: -1.124 }
+VM1146:55 Mesh: Rib_6_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -2.329, y: 3.766, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.329, y: 4.233, z: 0.626 }
+VM1146:59   Buffer size: { x: 4.657, y: 0.468, z: 3.500 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.000, z: -1.124 }
+VM1146:55 Mesh: Rib_7_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -2.749, y: 3.549, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.749, y: 3.983, z: 0.626 }
+VM1146:59   Buffer size: { x: 5.497, y: 0.434, z: 3.500 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.766, z: -1.124 }
+VM1146:55 Mesh: Rib_5_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -1.882, y: 3.936, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.882, y: 4.429, z: 0.626 }
+VM1146:59   Buffer size: { x: 3.764, y: 0.493, z: 3.499 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.182, z: -1.124 }
+VM1146:55 Mesh: Rib_3_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -0.928, y: 4.123, z: -2.874 }
+VM1146:58   Buffer max: { x: 0.928, y: 4.646, z: 0.626 }
+VM1146:59   Buffer size: { x: 1.856, y: 0.523, z: 3.500 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.385, z: -1.124 }
+VM1146:55 Mesh: Rib_4_L
+VM1146:56   Vertices: 146
+VM1146:57   Buffer min: { x: -1.412, y: 4.058, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.412, y: 4.571, z: 0.626 }
+VM1146:59   Buffer size: { x: 2.823, y: 0.513, z: 3.499 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.315, z: -1.124 }
+VM1146:55 Mesh: Bottom_6_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -2.555, y: 3.549, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.555, y: 3.927, z: 0.312 }
+VM1146:59   Buffer size: { x: 5.110, y: 0.378, z: 3.186 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.738, z: -1.281 }
+VM1146:55 Mesh: Bottom_7_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -2.909, y: 3.289, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.909, y: 3.699, z: 0.313 }
+VM1146:59   Buffer size: { x: 5.819, y: 0.410, z: 3.187 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.494, z: -1.280 }
+VM1146:55 Mesh: Bottom_5_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -2.172, y: 3.766, z: -2.874 }
+VM1146:58   Buffer max: { x: 2.172, y: 4.106, z: 0.312 }
+VM1146:59   Buffer size: { x: 4.343, y: 0.341, z: 3.186 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.936, z: -1.281 }
+VM1146:55 Mesh: Bottom_3_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -1.336, y: 4.043, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.336, y: 4.304, z: 0.312 }
+VM1146:59   Buffer size: { x: 2.671, y: 0.261, z: 3.186 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.174, z: -1.281 }
+VM1146:55 Mesh: Bottom_4_L
+VM1146:56   Vertices: 340
+VM1146:57   Buffer min: { x: -1.763, y: 3.936, z: -2.874 }
+VM1146:58   Buffer max: { x: 1.763, y: 4.235, z: 0.312 }
+VM1146:59   Buffer size: { x: 3.525, y: 0.300, z: 3.186 }
+VM1146:60   Buffer center: { x: 0.000, y: 4.086, z: -1.281 }
+VM1146:55 Mesh: Rib_8_L
+VM1146:56   Vertices: 550
+VM1146:57   Buffer min: { x: -3.133, y: 3.289, z: -2.874 }
+VM1146:58   Buffer max: { x: 3.133, y: 3.688, z: 0.627 }
+VM1146:59   Buffer size: { x: 6.265, y: 0.399, z: 3.501 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.489, z: -1.123 }
+VM1146:55 Mesh: Stabilizer_L
+VM1146:56   Vertices: 300
+VM1146:57   Buffer min: { x: -2.906, y: 3.059, z: -2.854 }
+VM1146:58   Buffer max: { x: 2.906, y: 3.423, z: 0.293 }
+VM1146:59   Buffer size: { x: 5.812, y: 0.365, z: 3.147 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.241, z: -1.281 }
+VM1146:55 Mesh: Rear_Riser
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.425, y: -0.002, z: -0.196 }
+VM1146:58   Buffer max: { x: 0.425, y: 0.469, z: 0.003 }
+VM1146:59   Buffer size: { x: 0.851, y: 0.471, z: 0.199 }
+VM1146:60   Buffer center: { x: 0.000, y: 0.233, z: -0.096 }
+VM1146:55 Mesh: Front_Riser
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.439, y: -0.002, z: -0.016 }
+VM1146:58   Buffer max: { x: 0.439, y: 0.502, z: 0.005 }
+VM1146:59   Buffer size: { x: 0.878, y: 0.504, z: 0.021 }
+VM1146:60   Buffer center: { x: 0.000, y: 0.250, z: -0.006 }
+VM1146:55 Mesh: d2_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.451, y: 3.106, z: -1.951 }
+VM1146:58   Buffer max: { x: 0.451, y: 4.261, z: -1.182 }
+VM1146:59   Buffer size: { x: 0.901, y: 1.155, z: 0.769 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.683, z: -1.567 }
+VM1146:55 Mesh: c2_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.450, y: 3.108, z: -1.281 }
+VM1146:58   Buffer max: { x: 0.450, y: 4.223, z: -1.181 }
+VM1146:59   Buffer size: { x: 0.899, y: 1.115, z: 0.100 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.666, z: -1.231 }
+VM1146:55 Mesh: c2_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.443, y: 0.465, z: -1.191 }
+VM1146:58   Buffer max: { x: 0.443, y: 3.110, z: -0.188 }
+VM1146:59   Buffer size: { x: 0.886, y: 2.645, z: 1.003 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.787, z: -0.689 }
+VM1146:55 Mesh: b2_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.448, y: 3.065, z: -0.481 }
+VM1146:58   Buffer max: { x: 0.448, y: 4.186, z: -0.059 }
+VM1146:59   Buffer size: { x: 0.897, y: 1.121, z: 0.422 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.625, z: -0.270 }
+VM1146:55 Mesh: a2_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.447, y: 3.065, z: -0.069 }
+VM1146:58   Buffer max: { x: 0.447, y: 4.151, z: 0.308 }
+VM1146:59   Buffer size: { x: 0.895, y: 1.086, z: 0.377 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.608, z: 0.120 }
+VM1146:55 Mesh: a2_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -0.445, y: 0.500, z: -0.069 }
+VM1146:58   Buffer max: { x: 0.445, y: 3.067, z: -0.006 }
+VM1146:59   Buffer size: { x: 0.890, y: 2.567, z: 0.063 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.783, z: -0.038 }
+VM1146:55 Mesh: d4_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.324, y: 3.040, z: -1.951 }
+VM1146:58   Buffer max: { x: 1.324, y: 4.168, z: -1.182 }
+VM1146:59   Buffer size: { x: 2.648, y: 1.127, z: 0.769 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.604, z: -1.567 }
+VM1146:55 Mesh: c4_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.316, y: 3.042, z: -1.281 }
+VM1146:58   Buffer max: { x: 1.316, y: 4.131, z: -1.182 }
+VM1146:59   Buffer size: { x: 2.633, y: 1.090, z: 0.100 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.587, z: -1.231 }
+VM1146:55 Mesh: c4_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.052, y: 0.464, z: -1.190 }
+VM1146:58   Buffer max: { x: 1.052, y: 3.045, z: -0.189 }
+VM1146:59   Buffer size: { x: 2.103, y: 2.581, z: 1.001 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.755, z: -0.690 }
+VM1146:55 Mesh: b4_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.307, y: 3.001, z: -0.481 }
+VM1146:58   Buffer max: { x: 1.307, y: 4.094, z: -0.060 }
+VM1146:59   Buffer size: { x: 2.615, y: 1.094, z: 0.421 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.548, z: -0.271 }
+VM1146:55 Mesh: a4_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.300, y: 3.001, z: -0.068 }
+VM1146:58   Buffer max: { x: 1.300, y: 4.061, z: 0.307 }
+VM1146:59   Buffer size: { x: 2.599, y: 1.060, z: 0.375 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.531, z: 0.120 }
+VM1146:55 Mesh: a4_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.045, y: 0.499, z: -0.069 }
+VM1146:58   Buffer max: { x: 1.045, y: 3.004, z: -0.006 }
+VM1146:59   Buffer size: { x: 2.089, y: 2.505, z: 0.063 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.751, z: -0.038 }
+VM1146:55 Mesh: d6_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.142, y: 2.829, z: -1.950 }
+VM1146:58   Buffer max: { x: 2.142, y: 3.866, z: -1.183 }
+VM1146:59   Buffer size: { x: 4.285, y: 1.037, z: 0.767 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.348, z: -1.567 }
+VM1146:55 Mesh: c6_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.127, y: 2.830, z: -1.282 }
+VM1146:58   Buffer max: { x: 2.127, y: 3.834, z: -1.181 }
+VM1146:59   Buffer size: { x: 4.253, y: 1.003, z: 0.100 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.332, z: -1.231 }
+VM1146:55 Mesh: c6_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.621, y: 0.464, z: -1.190 }
+VM1146:58   Buffer max: { x: 1.621, y: 2.836, z: -0.189 }
+VM1146:59   Buffer size: { x: 3.242, y: 2.372, z: 1.001 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.650, z: -0.690 }
+VM1146:55 Mesh: b6_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.108, y: 2.794, z: -0.481 }
+VM1146:58   Buffer max: { x: 2.108, y: 3.799, z: -0.060 }
+VM1146:59   Buffer size: { x: 4.215, y: 1.005, z: 0.421 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.297, z: -0.270 }
+VM1146:55 Mesh: a6_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.092, y: 2.794, z: -0.068 }
+VM1146:58   Buffer max: { x: 2.092, y: 3.769, z: 0.307 }
+VM1146:59   Buffer size: { x: 4.184, y: 0.974, z: 0.376 }
+VM1146:60   Buffer center: { x: 0.000, y: 3.282, z: 0.120 }
+VM1146:55 Mesh: a6_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -1.602, y: 0.498, z: -0.069 }
+VM1146:58   Buffer max: { x: 1.602, y: 2.799, z: -0.006 }
+VM1146:59   Buffer size: { x: 3.205, y: 2.301, z: 0.063 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.649, z: -0.038 }
+VM1146:55 Mesh: d8_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.866, y: 2.487, z: -1.951 }
+VM1146:58   Buffer max: { x: 2.866, y: 3.376, z: -1.183 }
+VM1146:59   Buffer size: { x: 5.732, y: 0.889, z: 0.768 }
+VM1146:60   Buffer center: { x: 0.000, y: 2.931, z: -1.567 }
+VM1146:55 Mesh: c8_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.843, y: 2.488, z: -1.281 }
+VM1146:58   Buffer max: { x: 2.843, y: 3.348, z: -1.181 }
+VM1146:59   Buffer size: { x: 5.686, y: 0.861, z: 0.100 }
+VM1146:60   Buffer center: { x: 0.000, y: 2.918, z: -1.231 }
+VM1146:55 Mesh: c8_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.125, y: 0.463, z: -1.190 }
+VM1146:58   Buffer max: { x: 2.125, y: 2.494, z: -0.188 }
+VM1146:59   Buffer size: { x: 4.250, y: 2.031, z: 1.002 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.479, z: -0.689 }
+VM1146:55 Mesh: b8_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.817, y: 2.458, z: -0.481 }
+VM1146:58   Buffer max: { x: 2.817, y: 3.319, z: -0.059 }
+VM1146:59   Buffer size: { x: 5.634, y: 0.861, z: 0.421 }
+VM1146:60   Buffer center: { x: 0.000, y: 2.889, z: -0.270 }
+VM1146:55 Mesh: a8_upper
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.795, y: 2.458, z: -0.068 }
+VM1146:58   Buffer max: { x: 2.795, y: 3.293, z: 0.309 }
+VM1146:59   Buffer size: { x: 5.590, y: 0.834, z: 0.377 }
+VM1146:60   Buffer center: { x: 0.000, y: 2.875, z: 0.120 }
+VM1146:55 Mesh: a8_lower
+VM1146:56   Vertices: 32
+VM1146:57   Buffer min: { x: -2.096, y: 0.497, z: -0.069 }
+VM1146:58   Buffer max: { x: 2.096, y: 2.465, z: -0.006 }
+VM1146:59   Buffer size: { x: 4.192, y: 1.968, z: 0.062 }
+VM1146:60   Buffer center: { x: 0.000, y: 1.481, z: -0.037 }
+VM1146:64 
+── World-Space BBox (after all transforms) ──
+VM1146:68 BBox min: { x: -3.1329, y: -0.0024, z: -2.8737 }
+VM1146:69 BBox max: { x: 3.1329, y: 4.7352, z: 0.6545 }
+VM1146:70 BBox size: { x: 6.2657, y: 4.7376, z: 3.5282 }
+VM1146:71 BBox center: { x: 0.0000, y: 2.3664, z: -1.1096 }
+VM1146:72 Max dimension: 6.2657 (axis: X)
+VM1146:80 
+── Derived Scaling (assuming pilot height = 1.875 m) ──
+VM1146:81 glbToMeters: 0.2992  (1 GLB unit = 0.2992 m)
+VM1146:82 glbToNED:    0.1596  (1 GLB unit = 0.1596 NED)
+VM1146:83 Origin offset from BBox center: { x: -0.0000, y: -2.3664, z: 1.1096 }
+VM1146:89 
+── Markdown Table Snippet (copy-paste into MODEL-GEOMETRY.md) ──
+VM1146:90 | BBox min | { x: -3.133, y: -0.002, z: -2.874 } | World-space |
+VM1146:91 | BBox max | { x: 3.133, y: 4.735, z: 0.655 } | World-space |
+VM1146:92 | BBox size | { x: 6.266, y: 4.738, z: 3.528 } | World-space |
+VM1146:93 | `glbToMeters` | 0.2992 | `1.875 / 6.266` |
+VM1146:94 | `glbToNED` | 0.1596 | `0.2992 / 1.875` |
+VM1146:96 
+=== Done ===
+undefined

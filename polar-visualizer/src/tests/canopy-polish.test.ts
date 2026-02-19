@@ -343,7 +343,7 @@ describe('brake flap segments', () => {
     const shiftOuter = r3Full - r3Zero
     expect(shiftOuter).toBeGreaterThan(shiftInner)
     // Outer shift should be ~3x inner shift (30%/10%) adjusted for brake sensitivity
-    // Inner: 0.4 * 0.10 * chord = 0.04 * 2.5, Outer: 1.0 * 0.30 * chord = 0.30 * 2.5
+    // Inner: 0.4 * 0.10 * chord = 0.04 * 3.29, Outer: 1.0 * 0.30 * chord = 0.30 * 3.29
     // Ratio = 0.30/0.04 = 7.5 (chord fraction × sensitivity difference)
     expect(shiftOuter).toBeGreaterThan(shiftInner * 5)
   })

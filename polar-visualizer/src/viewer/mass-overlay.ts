@@ -5,6 +5,9 @@
  * Positions are in NED body frame, converted to Three.js at render time.
  * Sphere size is proportional to mass fraction for visual clarity.
  * Dynamically adapts to any number of mass segments.
+ *
+ * CG marker: semi-transparent red sphere with crosshair lines (⊕ convention).
+ * CP marker: green octahedron (diamond) — standard CP symbol in XFLR5/Tornado.
  */
 
 import * as THREE from 'three'
@@ -16,6 +19,8 @@ export interface MassOverlay {
   group: THREE.Group
   /** Update sphere positions from a polar's mass segments */
   update(segments: MassSegment[], height: number, weight: number, pilotScale: number): void
+  /** Update CP diamond marker position from system CP chord fraction */
+  updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[]): void
   /** Toggle visibility */
   setVisible(visible: boolean): void
 }
@@ -44,22 +49,55 @@ export function createMassOverlay(): MassOverlay {
   const cgMaterial = new THREE.MeshPhongMaterial({
     color: CG_COLOR,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.45,
     specular: 0x444444,
     shininess: 60,
+  })
+  const cpMaterial = new THREE.MeshPhongMaterial({
+    color: 0x44ff88,
+    transparent: true,
+    opacity: 0.55,
+    specular: 0x224422,
+    shininess: 50,
   })
   const linesMaterial = new THREE.LineBasicMaterial({
     color: MASS_COLOR,
     transparent: true,
     opacity: 0.25,
   })
+  const crosshairMaterial = new THREE.LineBasicMaterial({
+    color: CG_COLOR,
+    transparent: true,
+    opacity: 0.7,
+  })
 
   const sphereGeo = new THREE.SphereGeometry(1, 12, 8)
+  const octaGeo = new THREE.OctahedronGeometry(1, 0)
 
-  // CG marker (always present)
+  // CG marker — semi-transparent sphere with crosshair lines (⊕)
+  const cgGroup = new THREE.Group()
+  cgGroup.name = 'cg-marker'
   const cgMesh = new THREE.Mesh(sphereGeo, cgMaterial)
-  cgMesh.name = 'cg-marker'
-  group.add(cgMesh)
+  cgGroup.add(cgMesh)
+
+  // Crosshair lines inside the CG sphere (axis-aligned, diameter = 2 unit radii)
+  const crossLen = 1.3  // extends slightly beyond sphere surface for visibility
+  const xPts = [new THREE.Vector3(-crossLen, 0, 0), new THREE.Vector3(crossLen, 0, 0)]
+  const yPts = [new THREE.Vector3(0, -crossLen, 0), new THREE.Vector3(0, crossLen, 0)]
+  const zPts = [new THREE.Vector3(0, 0, -crossLen), new THREE.Vector3(0, 0, crossLen)]
+  for (const pts of [xPts, yPts, zPts]) {
+    const geo = new THREE.BufferGeometry().setFromPoints(pts)
+    const line = new THREE.Line(geo, crosshairMaterial)
+    line.name = 'cg-crosshair'
+    cgGroup.add(line)
+  }
+  group.add(cgGroup)
+
+  // CP marker — green diamond (octahedron)
+  const cpMesh = new THREE.Mesh(octaGeo, cpMaterial)
+  cpMesh.name = 'cp-marker'
+  cpMesh.visible = false
+  group.add(cpMesh)
 
   // Dynamic mass point meshes
   let massPoints: THREE.Mesh[] = []
@@ -112,12 +150,12 @@ export function createMassOverlay(): MassOverlay {
 
     // CG marker
     const cgThree = nedToThreeJS({ x: cg.x, y: cg.y, z: cg.z })
-    cgMesh.position.set(
+    cgGroup.position.set(
       cgThree.x * scale,
       cgThree.y * scale,
       cgThree.z * scale
     )
-    cgMesh.scale.setScalar(MAX_RADIUS * 1.3)
+    cgGroup.scale.setScalar(MAX_RADIUS * 0.65)
 
     // Remove old lines
     const oldLines = group.children.filter(c => c.name === 'mass-line')
@@ -127,7 +165,7 @@ export function createMassOverlay(): MassOverlay {
     for (const mesh of massPoints) {
       const geometry = new THREE.BufferGeometry().setFromPoints([
         mesh.position.clone(),
-        cgMesh.position.clone(),
+        cgGroup.position.clone(),
       ])
       const line = new THREE.Line(geometry, linesMaterial)
       line.name = 'mass-line'
@@ -135,9 +173,54 @@ export function createMassOverlay(): MassOverlay {
     }
   }
 
-  function setVisible(visible: boolean): void {
-    group.visible = visible
+  /**
+   * Update CP diamond marker position.
+   * cpFraction / cgFraction are chord fractions from LE (0=nose, 1=tail).
+   * chord is the reference chord [m] for converting fractions to distances.
+   * When mass segments exist, we position CP relative to the computed CG.
+   * Otherwise we use the chord-fraction system directly.
+   */
+  function updateCP(
+    cpFraction: number,
+    cgFraction: number,
+    chord: number,
+    height: number,
+    pilotScale: number,
+    massSegments?: MassSegment[],
+  ): void {
+    if (massSegments && massSegments.length > 0) {
+      // Position CP along chord axis relative to computed CG
+      const cg = computeCenterOfMass(massSegments, height, 1)  // weight doesn't affect position
+      // CP offset from CG along NED x-axis (forward): positive = CP forward of CG
+      // Chord fractions × chord → meters, then ÷ height → normalised NED units
+      const cpOffsetNorm = (cgFraction - cpFraction) * chord / height
+      const cpNED = { x: cg.x + cpOffsetNorm, y: cg.y, z: cg.z }
+      const cpThree = nedToThreeJS(cpNED)
+      cpMesh.position.set(
+        cpThree.x * pilotScale,
+        cpThree.y * pilotScale,
+        cpThree.z * pilotScale,
+      )
+    } else {
+      // No mass segments — use chord-fraction directly
+      // In NED normalised: forward (nose) = +x, aft (tail) = -x
+      // fraction 0 (LE) → +x, fraction 1 (TE) → -x
+      const cpNED = { x: (0.5 - cpFraction) * (1.0 / height), y: 0, z: 0 }
+      const cpThree = nedToThreeJS(cpNED)
+      cpMesh.position.set(
+        cpThree.x * pilotScale,
+        cpThree.y * pilotScale,
+        cpThree.z * pilotScale,
+      )
+    }
+    cpMesh.scale.setScalar(MAX_RADIUS * 0.65)
+    cpMesh.visible = true
   }
 
-  return { group, update, setVisible }
+  function setVisible(visible: boolean): void {
+    group.visible = visible
+    if (!visible) cpMesh.visible = false
+  }
+
+  return { group, update, updateCP, setVisible }
 }

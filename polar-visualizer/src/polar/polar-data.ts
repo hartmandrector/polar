@@ -707,7 +707,7 @@ export function rotatePilotMass(
  * - S = total canopy area / 7 ≈ 2.92 m² (per cell)
  * - cd_0 = canopy-only profile drag (~0.035), not system drag (0.21)
  *   System parasitic drag is handled by separate line/pilot/bridle segments.
- * - chord = canopy cell chord (~2.5 m), not body reference length (8 m)
+ * - chord = canopy cell chord (~3.29 m), not body reference length (8 m)
  *
  * All stall, lift-curve, moment, and CP parameters start from the lumped
  * polar values. These are initial estimates — tuning via debug overrides
@@ -755,7 +755,7 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   // Physical — per cell
   s: 20.439 / 7,   // ≈ 2.92 m²
   m: 77.5,          // system mass (for weight calculation — only used at system level)
-  chord: 2.5,       // cell chord [m]
+  chord: 3.29,       // cell chord [m] — 220 ft² canopy, derived from GLB arc span × glbToMeters
 
   // Brake control derivatives (per-cell — same as lumped, applied via δ)
   controls: {
@@ -869,12 +869,12 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // cell skin positions, because the canopy profile tapers to zero at the TE.
   // As brake is applied, position shifts forward toward cell center (quarter-chord of deployed flap).
   //                         name        TE position (NED norm)                       θ     side     brkSens chordFrac  cellS         cellChord  polar
-  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 2.5,  0.170, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 2.5,  0.170, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 2.5,  0.162, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 2.5,  0.162, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 2.5,  0.145, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 2.5,  0.145, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
 
   // ── 2 parasitic bodies (lines + pilot chute — always the same) ──
   //                    name       position (NED norm)                   S      chord  CD
@@ -969,7 +969,7 @@ export const aurafiveContinuous: ContinuousPolar = {
   chord: 1.8,
 
   massSegments: WINGSUIT_MASS_SEGMENTS,
-  cgOffsetFraction: 0.137,
+  cgOffsetFraction: 0.197,
 
   controls: {
     brake: {
@@ -1038,7 +1038,7 @@ export const ibexulContinuous: ContinuousPolar = {
 
   s: 20.439,
   m: 77.5,
-  chord: 2.5,
+  chord: 3.29,
 
   massSegments: CANOPY_WEIGHT_SEGMENTS,
   inertiaMassSegments: CANOPY_INERTIA_SEGMENTS,
@@ -1478,7 +1478,7 @@ export const a5segmentsContinuous: ContinuousPolar = {
   chord: 1.8,
 
   massSegments: WINGSUIT_MASS_SEGMENTS,
-  cgOffsetFraction: 0.137,
+  cgOffsetFraction: 0.197,
 
   controls: {
     brake: {

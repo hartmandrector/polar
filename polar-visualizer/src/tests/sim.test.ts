@@ -308,7 +308,8 @@ describe('simulate', () => {
 
     // After 1s of free fall, w ≈ g (≈9.8 m/s)
     // Some drag will have built up, so w < g, but should be in the ballpark
-    expect(final.w).toBeGreaterThan(5)
+    // Apparent mass from the canopy chord reduces effective acceleration slightly
+    expect(final.w).toBeGreaterThan(4.5)
     expect(final.w).toBeLessThan(12)
 
     // Should have fallen some distance (z increases in NED)

@@ -39,7 +39,7 @@ import {
 // ── Test constants ──────────────────────────────────────────────────────────
 
 /** Ibex UL canopy geometry */
-const IBEX_GEOM: CanopyGeometry = canopyGeometryFromPolar(20.439, 2.5)
+const IBEX_GEOM: CanopyGeometry = canopyGeometryFromPolar(20.439, 3.29)
 const RHO = 1.225
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -56,10 +56,10 @@ describe('computeApparentMass', () => {
 
   it('matches hand-calculated normal apparent mass', () => {
     // m_a_z = (π/4) · ρ · c² · b
-    // = 0.7854 · 1.225 · 6.25 · 8.1756
-    // ≈ 49.2 kg
+    // = 0.7854 · 1.225 · 10.8241 · 6.2126
+    // ≈ 64.7 kg
     const m = computeApparentMass(IBEX_GEOM, RHO)
-    expect(m.z).toBeCloseTo(Math.PI / 4 * RHO * 2.5 * 2.5 * IBEX_GEOM.span, 1)
+    expect(m.z).toBeCloseTo(Math.PI / 4 * RHO * 3.29 * 3.29 * IBEX_GEOM.span, 1)
   })
 
   it('x-axis (chordwise) is small — thin plate in its own plane', () => {
@@ -80,14 +80,14 @@ describe('computeApparentInertia', () => {
   it('roll inertia (Ixx) is significant', () => {
     const I = computeApparentInertia(IBEX_GEOM, RHO)
     // I_a_xx = (π/4) · ρ · c² · b³ / 12
-    const expected = Math.PI / 4 * RHO * 2.5 * 2.5 * IBEX_GEOM.span ** 3 / 12
+    const expected = Math.PI / 4 * RHO * 3.29 * 3.29 * IBEX_GEOM.span ** 3 / 12
     expect(I.Ixx).toBeCloseTo(expected, 1)
   })
 
   it('pitch inertia (Iyy) uses chord distribution', () => {
     const I = computeApparentInertia(IBEX_GEOM, RHO)
     // I_a_yy = (π/4) · ρ · b · c³ / 12
-    const expected = Math.PI / 4 * RHO * IBEX_GEOM.span * 2.5 ** 3 / 12
+    const expected = Math.PI / 4 * RHO * IBEX_GEOM.span * 3.29 ** 3 / 12
     expect(I.Iyy).toBeCloseTo(expected, 1)
   })
 
@@ -99,9 +99,9 @@ describe('computeApparentInertia', () => {
 
 describe('canopyGeometryFromPolar', () => {
   it('derives span from area / chord', () => {
-    const geom = canopyGeometryFromPolar(20.439, 2.5)
-    expect(geom.span).toBeCloseTo(20.439 / 2.5, 6)
-    expect(geom.chord).toBe(2.5)
+    const geom = canopyGeometryFromPolar(20.439, 3.29)
+    expect(geom.span).toBeCloseTo(20.439 / 3.29, 6)
+    expect(geom.chord).toBe(3.29)
     expect(geom.area).toBe(20.439)
   })
 })
