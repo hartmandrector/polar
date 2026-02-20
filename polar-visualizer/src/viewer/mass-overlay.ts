@@ -19,8 +19,8 @@ export interface MassOverlay {
   group: THREE.Group
   /** Update sphere positions from a polar's mass segments */
   update(segments: MassSegment[], height: number, weight: number, pilotScale: number): void
-  /** Update CP diamond marker position from system CP chord fraction */
-  updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[]): void
+  /** Update CP diamond marker position from system CP chord fraction or 3D NED position */
+  updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[], cpNED?: { x: number; y: number; z: number }): void
   /** Toggle visibility */
   setVisible(visible: boolean): void
 }
@@ -175,10 +175,13 @@ export function createMassOverlay(): MassOverlay {
 
   /**
    * Update CP diamond marker position.
-   * cpFraction / cgFraction are chord fractions from LE (0=nose, 1=tail).
-   * chord is the reference chord [m] for converting fractions to distances.
-   * When mass segments exist, we position CP relative to the computed CG.
-   * Otherwise we use the chord-fraction system directly.
+   *
+   * When a 3D cpNED position is provided (from M×F/|F|² in segment-summed
+   * path), position the diamond directly at that height-normalised NED point.
+   *
+   * Otherwise fall back to the 1D chord-fraction approach:
+   *   cpFraction / cgFraction are chord fractions from LE (0=nose, 1=tail).
+   *   chord is the reference chord [m] for converting fractions to distances.
    */
   function updateCP(
     cpFraction: number,
@@ -187,12 +190,19 @@ export function createMassOverlay(): MassOverlay {
     height: number,
     pilotScale: number,
     massSegments?: MassSegment[],
+    cpNEDin?: { x: number; y: number; z: number },
   ): void {
-    if (massSegments && massSegments.length > 0) {
-      // Position CP along chord axis relative to computed CG
-      const cg = computeCenterOfMass(massSegments, height, 1)  // weight doesn't affect position
-      // CP offset from CG along NED x-axis (forward): positive = CP forward of CG
-      // Chord fractions × chord → meters, then ÷ height → normalised NED units
+    if (cpNEDin) {
+      // 3D system CP from cross-product formula — position directly
+      const cpThree = nedToThreeJS(cpNEDin)
+      cpMesh.position.set(
+        cpThree.x * pilotScale,
+        cpThree.y * pilotScale,
+        cpThree.z * pilotScale,
+      )
+    } else if (massSegments && massSegments.length > 0) {
+      // Fallback: position CP along chord axis relative to computed CG
+      const cg = computeCenterOfMass(massSegments, height, 1)
       const cpOffsetNorm = (cgFraction - cpFraction) * chord / height
       const cpNED = { x: cg.x + cpOffsetNorm, y: cg.y, z: cg.z }
       const cpThree = nedToThreeJS(cpNED)
@@ -203,8 +213,6 @@ export function createMassOverlay(): MassOverlay {
       )
     } else {
       // No mass segments — use chord-fraction directly
-      // In NED normalised: forward (nose) = +x, aft (tail) = -x
-      // fraction 0 (LE) → +x, fraction 1 (TE) → -x
       const cpNED = { x: (0.5 - cpFraction) * (1.0 / height), y: 0, z: 0 }
       const cpThree = nedToThreeJS(cpNED)
       cpMesh.position.set(

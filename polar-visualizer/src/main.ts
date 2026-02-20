@@ -27,6 +27,8 @@ import { updateInertiaReadout, updateRatesReadout, updatePositionsReadout } from
 import { computeInertia, ZERO_INERTIA, computeCenterOfMass } from './polar/inertia.ts'
 import type { InertiaComponents } from './polar/inertia.ts'
 import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
+import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
+import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
@@ -37,6 +39,7 @@ let forceVectors: ForceVectors
 let flightState: FlightState
 let loadingModel = false
 let massOverlay: MassOverlay
+let cellWireframes: CellWireframes | null = null
 let currentInertia: InertiaComponents = ZERO_INERTIA
 let prevPolarKeyForInertia = ''
 
@@ -66,6 +69,15 @@ async function switchModel(modelType: ModelType, cgOffsetFraction: number = 0, p
       applyCgOffset(currentModel, cgOffsetFraction)
     }
     sceneCtx.scene.add(currentModel.group)
+
+    // Cell wireframes — attach to canopy mesh so they move with it
+    if (modelType === 'canopy' && currentModel.canopyModel) {
+      if (cellWireframes) cellWireframes.dispose()
+      cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
+      currentModel.canopyModel.add(cellWireframes.group)
+    } else {
+      if (cellWireframes) { cellWireframes.dispose(); cellWireframes = null }
+    }
   } catch (err) {
     console.error(`Failed to load model ${modelType}:`, err)
     currentModel = null
@@ -199,7 +211,26 @@ function computeSegmentReadout(
     ? Math.max(0, Math.min(1, polar.cg - cm / cn_force))
     : polar.cg
 
-  return { cl, cd, cy, cm, cn, cl_roll, cp, f: 0 }
+  // 3D system CP from cross-product: r_cp = (M × F) / |F|²
+  // M is moment about CG [N·m], F is total force [N].
+  // Result is in meters, convert to height-normalised NED.
+  const Fx = system.force.x, Fy = system.force.y, Fz = system.force.z
+  const Mx = system.moment.x, My = system.moment.y, Mz = system.moment.z
+  const F2 = Fx * Fx + Fy * Fy + Fz * Fz
+  let cpNED: { x: number; y: number; z: number } | undefined
+  if (F2 > 1e-6) {
+    // M × F cross product
+    const cx = My * Fz - Mz * Fy
+    const cy_cross = Mz * Fx - Mx * Fz
+    const cz = Mx * Fy - My * Fx
+    cpNED = {
+      x: cgMeters.x / 1.875 + cx / (F2 * 1.875),
+      y: cgMeters.y / 1.875 + cy_cross / (F2 * 1.875),
+      z: cgMeters.z / 1.875 + cz / (F2 * 1.875),
+    }
+  }
+
+  return { cl, cd, cy, cm, cn, cl_roll, cp, f: 0, cpNED }
 }
 
 /**
@@ -534,6 +565,7 @@ function updateVisualization(state: FlightState): void {
     bodyRates,
     bodyQuat,
     cachedPerSegment,
+    currentModel?.type === 'canopy' ? state.deploy : 1.0,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
@@ -552,10 +584,22 @@ function updateVisualization(state: FlightState): void {
       const spanScale  = 0.1 + 0.9 * state.deploy  // min 10% span
       const chordScale = 0.3 + 0.7 * state.deploy  // min 30% chord
       currentModel.canopyModel.scale.set(
-        CANOPY_SCALE * spanScale,   // X (lateral/span)
+        -CANOPY_SCALE * spanScale,  // X (lateral/span) — negative preserves X-flip
         CANOPY_SCALE,               // Y (vertical) — always full height
         CANOPY_SCALE * chordScale,  // Z (fore-aft/chord)
       )
+
+      // Scale bridle attachment point to follow the canopy surface deformation.
+      // The base position (at full deployment) is scaled by the same factors.
+      // CG offset is re-applied afterward, so we scale the base then subtract offset.
+      if (currentModel.bridleGroup && currentModel.baseBridlePos) {
+        const cgOffset = currentModel.cgOffsetThree ?? new THREE.Vector3()
+        currentModel.bridleGroup.position.set(
+          currentModel.baseBridlePos.x * spanScale  - cgOffset.x,
+          currentModel.baseBridlePos.y              - cgOffset.y,  // no vertical scaling
+          currentModel.baseBridlePos.z * chordScale - cgOffset.z,
+        )
+      }
     }
     // Wingsuit deployment visualization — PC, bridle, snivel, lines
     if (currentModel.deployGroup) {
@@ -599,7 +643,21 @@ function updateVisualization(state: FlightState): void {
       massOverlay.update(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
       // CP diamond marker — use segmented readout CP when available, else lumped coeffs
       const cpFraction = segReadout ? segReadout.cp : coeffs.cp
-      massOverlay.updateCP(cpFraction, polar.cg, polar.chord, 1.875, currentModel.pilotScale, polar.massSegments)
+      massOverlay.updateCP(cpFraction, polar.cg, polar.chord, 1.875, currentModel.pilotScale, polar.massSegments, segReadout?.cpNED)
+    }
+
+    // Cell wireframes visibility
+    if (cellWireframes) {
+      cellWireframes.setVisible(state.showCellWireframes)
+    }
+
+    // Hide canopy GLB meshes (keep wireframes/overlays visible)
+    if (currentModel.canopyModel) {
+      for (const child of currentModel.canopyModel.children) {
+        if (child.name !== 'cell-wireframes') {
+          child.visible = !state.hideCanopyGlb
+        }
+      }
     }
   }
 

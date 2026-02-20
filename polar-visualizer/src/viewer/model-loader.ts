@@ -9,41 +9,72 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { windDirectionBody } from './frames.ts'
+import {
+  CANOPY_WINGSUIT_ASSEMBLY, CANOPY_SLICK_ASSEMBLY,
+  WINGSUIT_GEOMETRY, SLICK_GEOMETRY, CANOPY_GEOMETRY,
+  MODEL_REGISTRY, TARGET_SIZE,
+  type VehicleAssembly, type ModelGeometry,
+} from './model-registry.ts'
 
 export type ModelType = 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
 export type PilotType = 'wingsuit' | 'slick'
 
 const MODEL_PATHS: Record<ModelType, string> = {
-  wingsuit: '/models/tsimwingsuit.glb',
-  canopy: '/models/cp2.gltf',
-  skydiver: '/models/tslick.glb',
-  airplane: '/models/airplane.glb'
+  wingsuit: WINGSUIT_GEOMETRY.path,
+  canopy: CANOPY_GEOMETRY.path,
+  skydiver: SLICK_GEOMETRY.path,
+  airplane: MODEL_REGISTRY['airplane'].path,
 }
 
 /** Pilot sub-model GLB paths (reuses same assets as standalone models) */
 const PILOT_PATHS: Record<PilotType, string> = {
-  wingsuit: '/models/tsimwingsuit.glb',
-  slick: '/models/tslick.glb',
+  wingsuit: WINGSUIT_GEOMETRY.path,
+  slick: SLICK_GEOMETRY.path,
 }
+
+/** Pilot sub-model geometry (for fabricOvershoot, bbox measurements) */
+const PILOT_GEOMETRY: Record<PilotType, ModelGeometry> = {
+  wingsuit: WINGSUIT_GEOMETRY,
+  slick: SLICK_GEOMETRY,
+}
+
+/** Look up the vehicle assembly for a given pilot type under the canopy. */
+function getAssembly(pilotType: PilotType): VehicleAssembly {
+  return pilotType === 'slick' ? CANOPY_SLICK_ASSEMBLY : CANOPY_WINGSUIT_ASSEMBLY
+}
+
+// ── Legacy constants (now sourced from registry) ────────────────────────────
+// These are kept as named exports for backward compatibility (main.ts imports
+// CANOPY_SCALE for deployment span/chord scaling).
 
 /**
  * Pilot positioning relative to canopy in raw GLB coordinates.
- * From Three.js editor: position (0, −0.540, 0), rotation (−90°, 0°, 0°).
- * The −90° X rotation turns the pilot from prone (flying) to hanging (feet down).
- * The −0.540 Y offset places the pilot's shoulders at the riser attachment point.
+ * Now sourced from VehicleAssembly.childOffset / childRotationDeg.
+ *
+ * OLD:
+ *   const PILOT_OFFSET = {
+ *     position: new THREE.Vector3(0, -0.540, 0),
+ *     rotation: new THREE.Euler(-Math.PI / 2, 0, 0),
+ *   }
  */
-const PILOT_OFFSET = {
-  position: new THREE.Vector3(0, -0.540, 0),
-  rotation: new THREE.Euler(-Math.PI / 2, 0, 0),
+function pilotOffset(assembly: VehicleAssembly): { position: THREE.Vector3; rotation: THREE.Euler } {
+  const o = assembly.childOffset
+  const r = assembly.childRotationDeg
+  return {
+    position: new THREE.Vector3(o.x, o.y, o.z),
+    rotation: new THREE.Euler(
+      r.x * Math.PI / 180,
+      r.y * Math.PI / 180,
+      r.z * Math.PI / 180,
+    ),
+  }
 }
 
 /**
- * Scale factor for the canopy mesh.
- * The raw GLB is undersized — A-lines are ~3.5 m from riser to canopy,
- * so a 1.5× scale brings the canopy to realistic proportions relative to
- * the pilot body.
+ * Scale factor for the canopy mesh — now sourced from assembly.parentScale.
+ * Re-exported for backward compatibility (main.ts deployment scaling).
  */
-export const CANOPY_SCALE = 1.5
+export const CANOPY_SCALE = CANOPY_WINGSUIT_ASSEMBLY.parentScale  // 1.5
 
 /**
  * Wingsuit deployment visualization group.
@@ -119,12 +150,12 @@ async function loadRawGltf(path: string): Promise<THREE.Group> {
 }
 
 /**
- * Reference size for normalization.
+ * Reference size for normalization — now sourced from model-registry.ts.
  * All models with a pilot body are scaled so the pilot's max raw dimension
  * maps to TARGET_SIZE. This keeps the wingsuit the same screen size whether
  * viewed standalone or as a sub-model under a canopy.
  */
-const TARGET_SIZE = 2.0
+// TARGET_SIZE = 2.0 (from model-registry.ts)
 
 /**
  * Cached raw max dimension of the wingsuit GLB.
@@ -152,10 +183,25 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
   let pilotRawHeight = 0  // raw pilot max extent in GLB units (before normalization)
   let referenceDim = 0    // the dimension used for normalization (pilot body size)
   if (type === 'canopy' && pilotType) {
+    const assembly = getAssembly(pilotType)
+    const pilotGeo = PILOT_GEOMETRY[pilotType]
+    const offset = pilotOffset(assembly)
+
     compositeRoot = new THREE.Group()
 
-    // Scale canopy mesh to realistic size (pilot stays 1:1)
-    mainModel.scale.setScalar(CANOPY_SCALE)
+    // Scale canopy mesh to realistic size (pilot stays 1:1).
+    // parentScale from registry (currently 1.5).
+    //
+    // X-axis flip (negative X scale): the canopy GLB has +X = right (from
+    // pilot perspective), but the Three.js scene convention is +X = left
+    // (nedToThreeJS maps NED +y/right to Three.js −X). Without the flip,
+    // the canopy right wing would render on the opposite side from the
+    // physics right-side cells. Negative X scale flips the mesh so both
+    // agree: right = Three.js −X.
+    // Three.js WebGLRenderer detects the negative determinant and auto-
+    // reverses face winding, so normals and culling remain correct.
+    const cs = assembly.parentScale
+    mainModel.scale.set(-cs, cs, cs)
     compositeRoot.add(mainModel)
 
     const pilotModel = await loadRawGltf(PILOT_PATHS[pilotType])
@@ -164,33 +210,42 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     const pilotSize = pilotBox.getSize(new THREE.Vector3())
     pilotRawHeight = Math.max(pilotSize.x, pilotSize.y, pilotSize.z)  // longest axis = body length
 
+    // Scale pilot to match canopy's physical proportions.
+    // childScale corrects for different GLB-to-meters ratios between canopy
+    // and pilot models, so the pilot renders at the correct physical size
+    // relative to the canopy mesh (otherwise the pilot appears ~17% too large).
+    const childSc = assembly.childScale ?? 1
+    pilotModel.scale.setScalar(childSc)
+
     // Wrap pilot in a pivot group at the riser attachment point.
     // Rotating this group about X pitches the hanging pilot fore/aft.
     const pilotPivot = new THREE.Group()
     pilotPivot.name = 'pilot-pitch-pivot'
 
-    // After the -π/2 X rotation the body hangs along Y: head at +Y, feet at -Y.
+    // After the pre-rotation the body hangs along Y: head at +Y, feet at -Y.
     // Raw GLB body length along Z → becomes Y extent.
     // The model origin is at the CG (belly button).  The riser attachment
-    // (shoulders) is slightly above that — roughly 10% of body extent.
+    // (shoulders) is slightly above that — shoulderOffsetFraction of body extent.
     // Shift the model DOWN within the pivot so shoulders sit at the pivot
     // origin, and move the pivot UP by the same amount so the pilot's resting
-    // position stays at PILOT_OFFSET (net position unchanged, but rotation
+    // position stays at childOffset (net position unchanged, but rotation
     // center is now at the shoulders).
+    // The effective offset accounts for childScale: the scaled shoulder
+    // position in the rotated model determines the actual displacement.
     const bodyExtentY = pilotSize.z  // raw body length along GLB Z
-    const shoulderOffset = 0.10 * bodyExtentY
+    const shoulderOffset = assembly.shoulderOffsetFraction * bodyExtentY * childSc
     pilotPivot.position.set(
-      PILOT_OFFSET.position.x,
-      PILOT_OFFSET.position.y + shoulderOffset,
-      PILOT_OFFSET.position.z,
+      offset.position.x,
+      offset.position.y + shoulderOffset,
+      offset.position.z,
     )
     pilotModel.position.set(0, -shoulderOffset, 0)
-    pilotModel.rotation.copy(PILOT_OFFSET.rotation)
+    pilotModel.rotation.copy(offset.rotation)
     pilotPivot.add(pilotModel)
     compositeRoot.add(pilotPivot)
     ;(compositeRoot as any)._pilotPivot = pilotPivot
 
-    // Use the standalone wingsuit/skydiver raw dimension as reference
+    // Use the standalone pilot raw dimension as reference
     // so the pilot appears the same size as when viewed standalone.
     // If we haven't cached it yet, measure it now from the pilot GLB.
     if (wingsuitRawMaxDim === 0) {
@@ -202,13 +257,10 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     }
     referenceDim = wingsuitRawMaxDim
 
-    // Measure canopy top Y for bridle attachment (before bridle is added)
-    const canopyBox = new THREE.Box3().setFromObject(mainModel)
-    const canopyTopY = canopyBox.max.y
-
-    // Store info for post-normalization bridle loading
-    ;(compositeRoot as any)._canopyTopY = canopyTopY
+    // Store info for post-normalization bridle loading (uses bridleTop from registry)
     ;(compositeRoot as any)._needsBridle = true
+    ;(compositeRoot as any)._assembly = assembly
+    ;(compositeRoot as any)._pilotFabricOvershoot = pilotGeo.fabricOvershoot ?? 1.15
   } else {
     compositeRoot = mainModel
     // For standalone models, use their own max dimension
@@ -222,7 +274,17 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     }
   }
 
-  // Center and normalize: scale so referenceDim maps to TARGET_SIZE
+  // ── Normalize and center ──
+  // For canopy models: center at riser convergence (canopy GLB origin).
+  // For other models: center at bbox midpoint (legacy behavior).
+  //
+  // pilotScale: converts NED-normalized meters → Three.js scene units.
+  // For canopy: derived FROM the canopy mesh scale so physics segment
+  // positions land exactly on the GLB mesh. Formula:
+  //   canopyMeshScale = parentScale × s  (scene units per GLB unit)
+  //   pilotScale = canopyMeshScale / (glbToNED × 1.875)
+  //             = canopyMeshScale / glbToMeters
+  // For standalone: derived from pilot body length (legacy).
   const box = new THREE.Box3().setFromObject(compositeRoot)
   const center = box.getCenter(new THREE.Vector3())
   const size = box.getSize(new THREE.Vector3())
@@ -232,18 +294,25 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
   if (referenceDim > 0) {
     const s = TARGET_SIZE / referenceDim
     compositeRoot.scale.multiplyScalar(s)
-    compositeRoot.position.sub(center.multiplyScalar(s))
-    // Body length along Z (flight direction) in normalized units
-    bodyLength = size.z * s
 
-    if (type === 'canopy' && pilotRawHeight > 0) {
-      // Pilot's real height in model units = raw GLB height × normalization scale
-      // pilotScale = model-units-per-meter = (pilotRawHeight × s) / pilotHeightMeters
-      // The 1.15 factor compensates for the wingsuit GLB being slightly larger than
-      // the actual body envelope (fabric extends beyond limb tips)
-      pilotScale = (pilotRawHeight * s * 1.15) / 1.875
+    if (type === 'canopy') {
+      // Riser convergence centering: the canopy GLB origin (riser convergence
+      // point) is at (0,0,0) in compositeRoot space. After uniform scaling by s,
+      // it stays at compositeRoot.position. We leave position at (0,0,0) so the
+      // riser convergence sits at the Three.js scene origin.
+      // applyCgFromMassSegments (called later by main.ts) will shift the model
+      // so the physics CG is at the origin instead — both mesh and force vectors
+      // shift by the same offset, keeping alignment.
+
+      // pilotScale from the canopy mesh: ensures NED physics positions map to
+      // the exact same Three.js coordinates as the canopy GLB geometry.
+      const canopyMeshScale = Math.abs(mainModel.scale.x) * s  // parentScale × s
+      pilotScale = canopyMeshScale / (CANOPY_GEOMETRY.glbToNED * 1.875)
+
     } else {
-      // Standalone model: bodyLength maps to pilot height
+      // Standalone models: bbox-center at origin (legacy)
+      compositeRoot.position.sub(center.multiplyScalar(s))
+      bodyLength = size.z * s
       pilotScale = bodyLength / 1.875
     }
   }
@@ -255,22 +324,28 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
   // inherits the attitude rotation but is positioned in normalized coordinates.
   let bridleGroup: THREE.Group | undefined
   if ((compositeRoot as any)._needsBridle) {
-    const canopyTopY: number = (compositeRoot as any)._canopyTopY
+    const assembly: VehicleAssembly = (compositeRoot as any)._assembly
     const bridlePCModel = await loadRawGltf('/models/bridalandpc.gltf')
-    const s = compositeRoot.scale.x  // normalization scale
-    bridlePCModel.scale.setScalar(1.5 * s)
+    const s = compositeRoot.scale.x  // normalization scale (should be positive)
+    const bridleScale = assembly.deployScales?.bridle ?? 1.5
+    bridlePCModel.scale.setScalar(bridleScale * Math.abs(s))
 
     bridleGroup = new THREE.Group()
     bridleGroup.name = 'bridle-pc-pivot'
     bridleGroup.add(bridlePCModel)
 
-    // Place pivot at the canopy top in normalized coordinates.
-    // canopyTopY is in raw GLB coords; multiply by compositeRoot's scale
-    // then add compositeRoot's position offset from normalization centering.
-    // Shift Z negative to move toward trailing edge of canopy.
-    const attachY = canopyTopY * s + compositeRoot.position.y
-    const trailingEdgeShift = -0.30  // shift toward trailing edge
-    bridleGroup.position.set(0, attachY, compositeRoot.position.z + trailingEdgeShift)
+    // Get bridleTop attachment from registry and convert to Three.js coordinates.
+    // Registry stores GLB coords; transform through the same pipeline as the canopy mesh.
+    const attachment = CANOPY_GEOMETRY.attachments!.find(a => a.name === 'bridleTop')!
+    const glb = attachment.glb
+    // GLB → Three.js with canopy X-flip: (x, y, z) → (−x × cs × s, y × cs × s, z × cs × s)
+    const cs = assembly.parentScale  // canopy scale (1.5)
+    const attachX = -glb.x * cs * s
+    const attachY =  glb.y * cs * s
+    const attachZ =  glb.z * cs * s
+    
+    // Position at attachment in normalized scene coordinates (compositeRoot position is 0,0,0)
+    bridleGroup.position.set(attachX, attachY, attachZ)
 
     group.add(bridleGroup)
   }

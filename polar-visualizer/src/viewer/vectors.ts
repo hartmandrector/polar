@@ -295,6 +295,7 @@ export function updateForceVectors(
   bodyRates?: { p: number; q: number; r: number },
   bodyQuat?: THREE.Quaternion,
   perSegmentData?: SegmentAeroResult[],
+  deploy: number = 1.0,
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -353,19 +354,47 @@ export function updateForceVectors(
       const sf = segForces[i]
       const sa = vectors.segmentArrows[i]
 
+      // Deployment scaling for canopy-attached segments (PC, cells, flaps).
+      // The bridle attachment and canopy surface deform horizontally during deployment.
+      // Match the scaling applied to the canopy GLB mesh and bridle position.
+      const spanScale = 0.1 + 0.9 * deploy   // lateral (NED y)
+      const chordScale = 0.3 + 0.7 * deploy  // fore-aft (NED x)
+      let segPosX = seg.position.x
+      let segPosY = seg.position.y
+      let segPosZ = seg.position.z
+      if (seg.name === 'pc' || seg.name.startsWith('cell_') || seg.name.startsWith('flap_')) {
+        segPosX *= chordScale  // chord/forward axis
+        segPosY *= spanScale   // span/lateral axis
+        // z (vertical) not scaled
+      }
+
       // Segment CP position: segment position + CP offset along chord (NED x-axis).
       // CP fraction is relative to leading edge; AC at 0.25c.
       // cp > 0.25 → aft of AC → toward trailing edge → −x in NED.
       // cpOffsetNorm is in normalized (÷height) NED coordinates.
       // The chord direction rotates with pitchOffset_deg in the x-z plane:
-      //   0° → chord along x (canopy cell, prone body)
-      //  90° → chord along z (upright pilot hanging under canopy)
+      //   0° → chord along +x (canopy cell, prone body: LE=forward)
+      //  90° → chord along −z (upright pilot: LE=head, up)
+      // NED pitch-up rotates +x toward −z, so we negate the angle.
       const cpOffsetNorm = -(sf.cp - 0.25) * seg.chord / 1.875
-      const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
+      const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
+      // Base chord offset at the segment's static pitchOffset
+      let offX = cpOffsetNorm * Math.cos(basePitchRad)
+      let offZ = cpOffsetNorm * Math.sin(basePitchRad)
+      // Rotate the offset by pilotPitch delta so the chord line swings
+      // rigidly with the body (AC position already rotated by the same δ).
+      const cRot = (seg as any)._chordRotationRad ?? 0
+      if (Math.abs(cRot) > 1e-6) {
+        const cos_d = Math.cos(cRot)
+        const sin_d = Math.sin(cRot)
+        const ox = offX, oz = offZ
+        offX = ox * cos_d - oz * sin_d
+        offZ = ox * sin_d + oz * cos_d
+      }
       const cpNED = {
-        x: seg.position.x + cpOffsetNorm * Math.cos(pitchRad),
-        y: seg.position.y,
-        z: seg.position.z + cpOffsetNorm * Math.sin(pitchRad),
+        x: segPosX + offX,
+        y: segPosY,
+        z: segPosZ + offZ,
       }
       const posThree = nedToThreeJS(cpNED).multiplyScalar(pilotScale * 1.875)
       const posWorld = applyFramePos(shiftPos(posThree))
