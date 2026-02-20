@@ -72,9 +72,9 @@ export interface Attachment {
  * The center cell uses X=0 (symmetry plane). Left cells mirror at −X.
  */
 export interface CanopyCellGLB {
-  /** Cell index (1 = center, 2 = first pair, ..., 7 = tip) */
+  /** Cell index (1 = center, 2 = first pair from center, ..., 4 = outermost) */
   readonly index: number
-  /** Cell center X (GLB) — spanwise position (half-span, right side) */
+  /** Cell center X (GLB) — spanwise position (right-side center of full cell) */
   readonly glbX: number
   /** Airfoil Y (GLB) — vertical, average of top and bottom skin Y */
   readonly glbY: number
@@ -82,6 +82,196 @@ export interface CanopyCellGLB {
   readonly glbQcZ: number
   /** Trailing edge Z (GLB) */
   readonly glbTeZ: number
+}
+
+/**
+ * Canopy rib geometry extracted from GLB mesh measurements.
+ *
+ * Each rib is a vertical airfoil-shaped panel at a specific spanwise position.
+ * Load-bearing ribs carry A/B/C/D suspension lines and form cell boundaries.
+ * Non-load-bearing ribs sit at cell centers for shape.
+ */
+export interface CanopyRibGLB {
+  /** Rib index matching GLB mesh naming (1–8 per half-span) */
+  readonly index: number
+  /** Spanwise X position (GLB units, right side ≥ 0) */
+  readonly glbX: number
+  /** Bottom of airfoil profile Y (GLB) */
+  readonly glbYMin: number
+  /** Top of airfoil profile Y (GLB) */
+  readonly glbYMax: number
+  /** Bottom skin Y at the leading edge (GLB) — where the A-line
+   *  attaches to the canopy at the LE. Derived from a_N_upper mesh yMax.
+   *  Only present on load-bearing ribs (which carry A-lines). */
+  readonly glbYBottomLE?: number
+  /** Spanwise X at the A-line LE attachment (GLB) — typically inboard
+   *  of the rib edge because lines converge toward center.
+   *  Derived from a_N_upper mesh xMax. Only load-bearing ribs. */
+  readonly glbXBottomLE?: number
+  /** Spanwise X at the TE cell boundary (GLB) — the bottom skin
+   *  is narrower than the rib edge, especially toward the tips.
+   *  Derived from Bottom_N_L panel xMax. Only load-bearing ribs. */
+  readonly glbXBottomTE?: number
+  /** Bottom surface Y at the trailing edge (GLB) — the TE is thin,
+   *  so the bottom sits well above glbYMin (which is at max thickness).
+   *  Derived from Top_N_L panel yMin (TE seam Y at outer-TE corner).
+   *  Only load-bearing ribs. */
+  readonly glbYBottomTE?: number
+  /** Chord-line Y at the leading edge (GLB) — the Y coordinate of the
+   *  most-forward vertex (max Z) on the rib mesh, i.e. the true airfoil
+   *  nose.  NOT the bounding-box midpoint — the nose is offset toward
+   *  the lower surface on a cambered profile. */
+  readonly glbYChordLE: number
+  /** Spanwise X of the nose vertex (max Z) on the rib mesh (GLB).
+   *  Differs from glbX because glbX is the rib's outer edge while the
+   *  nose vertex sits slightly inboard. */
+  readonly glbXNose: number
+  /** Z of the nose vertex on the rib mesh (GLB).  Slightly aft of the
+   *  top skin zLE (0.655) because the rib profile stops short of the
+   *  fabric leading edge. All ribs cluster around 0.626–0.627. */
+  readonly glbZNose: number
+  /** Whether this rib carries suspension lines (A/B/C/D) */
+  readonly loadBearing: boolean
+}
+
+/**
+ * Bounding box for one cell (or one side of a paired cell) in GLB coordinates.
+ *
+ * The 8 corners follow the canopy arc — inner and outer Y values differ
+ * because the canopy curves downward toward the wingtips.
+ */
+export interface CellBoundsGLB {
+  readonly cellIndex: number
+  readonly side: 'center' | 'right' | 'left'
+  /** Inner boundary rib X (0 for center cell) */
+  readonly xInner: number
+  /** Outer boundary rib X */
+  readonly xOuter: number
+  /** Inner boundary rib Y range (full airfoil profile) */
+  readonly yMinInner: number
+  readonly yMaxInner: number
+  /** Outer boundary rib Y range (full airfoil profile) */
+  readonly yMinOuter: number
+  readonly yMaxOuter: number
+  /** Inner A-line LE attachment X (inboard of rib edge) */
+  readonly xBottomLEInner: number
+  /** Outer A-line LE attachment X (inboard of rib edge) */
+  readonly xBottomLEOuter: number
+  /** Inner A-line LE attachment Y */
+  readonly yBottomLEInner: number
+  /** Outer A-line LE attachment Y */
+  readonly yBottomLEOuter: number
+  /** Inner TE cell boundary X (bottom skin, inboard of rib edge) */
+  readonly xBottomTEInner: number
+  /** Outer TE cell boundary X (bottom skin, inboard of rib edge) */
+  readonly xBottomTEOuter: number
+  /** Inner TE cell boundary Y (TE seam, above yMin) */
+  readonly yBottomTEInner: number
+  /** Outer TE cell boundary Y (TE seam, above yMin) */
+  readonly yBottomTEOuter: number
+  /** Chord-line LE Y at inner boundary — true nose vertex Y */
+  readonly yChordLEInner: number
+  /** Chord-line LE Y at outer boundary — true nose vertex Y */
+  readonly yChordLEOuter: number
+  /** Nose vertex X at inner boundary (inboard of rib edge) */
+  readonly xNoseInner: number
+  /** Nose vertex X at outer boundary (inboard of rib edge) */
+  readonly xNoseOuter: number
+  /** Nose vertex Z — rib mesh LE, slightly aft of top-skin zLE */
+  readonly zNose: number
+  /** Leading edge Z — top skin (chordwise forward) */
+  readonly zLE: number
+  /** Leading edge Z — bottom skin / A-line attachment (chordwise, aft of top LE) */
+  readonly zBottomLE: number
+  /** Trailing edge Z (chordwise aft) */
+  readonly zTE: number
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Line-set types
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A single suspension-line attachment or junction point in GLB coordinates.
+ *
+ * All positions are right-side (+X). Left-side mirrors at −X.
+ */
+export interface LinePointGLB {
+  /** Spanwise position (GLB, right side ≥ 0) */
+  readonly glbX: number
+  /** Vertical position (GLB, Y-up) */
+  readonly glbY: number
+  /** Chordwise position (GLB, +Z = forward) */
+  readonly glbZ: number
+}
+
+/**
+ * Line geometry for one load-bearing rib (right side).
+ *
+ * Each rib carries four line groups: A (LE), B (forward of QC),
+ * C (aft of QC), D (rear).
+ *
+ * A + B upper lines cascade into a single lower line → front riser.
+ * C + D upper lines cascade into a single lower line → rear riser.
+ *
+ * The cascade point is where two upper lines merge into one lower line.
+ * Extracted from the lower segment's top vertex (start of the combined line).
+ */
+export interface LineSetRibGLB {
+  /** Load-bearing rib index (2, 4, 6, 8) */
+  readonly ribIndex: number
+
+  // ── Canopy attachment points (top of upper line segments) ──
+  /** A-line canopy attachment — forward (LE support) */
+  readonly aCanopy: LinePointGLB
+  /** B-line canopy attachment — forward of quarter-chord */
+  readonly bCanopy: LinePointGLB
+  /** C-line canopy attachment — aft of quarter-chord */
+  readonly cCanopy: LinePointGLB
+  /** D-line canopy attachment — rear */
+  readonly dCanopy: LinePointGLB
+
+  // ── Cascade junctions (where upper lines merge into lower) ──
+  /** A/B cascade — front group junction (→ front riser) */
+  readonly abCascade: LinePointGLB
+  /** C/D cascade — rear group junction (→ rear riser) */
+  readonly cdCascade: LinePointGLB
+
+  // ── Lower line riser-end points (bottom of lower segments) ──
+  /** A/B lower line end near front riser */
+  readonly abRiserEnd: LinePointGLB
+  /** C/D lower line end near rear riser */
+  readonly cdRiserEnd: LinePointGLB
+}
+
+/**
+ * Riser geometry in GLB coordinates (right side).
+ *
+ * The riser spans from top (where lower lines attach) to bottom
+ * (at the harness / pilot attachment).
+ */
+export interface RiserGLB {
+  /** Top of riser — where lower lines connect */
+  readonly top: LinePointGLB
+  /** Bottom of riser — at harness */
+  readonly bottom: LinePointGLB
+}
+
+/**
+ * Complete suspension line set geometry for a canopy model.
+ *
+ * Contains per-rib line attachment points, cascade junctions, and riser
+ * endpoints. All positions are right-side GLB coordinates (+X = right).
+ *
+ * Extracted from cp2.gltf mesh vertices using extract-lines.cjs.
+ */
+export interface LineSetGLB {
+  /** Per-rib line data for each load-bearing rib */
+  readonly ribs: readonly LineSetRibGLB[]
+  /** Front riser (receives A/B lower lines) */
+  readonly frontRiser: RiserGLB
+  /** Rear riser (receives C/D lower lines) */
+  readonly rearRiser: RiserGLB
 }
 
 /**
@@ -138,12 +328,14 @@ export interface ModelGeometry {
   readonly attachments: readonly Attachment[]
 
   // ── canopy-specific ──
-  /** Cell geometry for canopy models (7 cells for Ibex UL) */
+  /** Cell geometry for canopy models (4 cells: center + 3 pairs for Ibex UL) */
   readonly cells?: readonly CanopyCellGLB[]
   /** Chord extent in GLB units (LE to TE, from top skin) */
   readonly glbChord?: number
-  /** Leading edge Z position in GLB */
+  /** Leading edge Z position in GLB (top skin) */
   readonly glbLeZ?: number
+  /** Leading edge Z position in GLB (bottom skin / A-line attachment) */
+  readonly glbBottomLeZ?: number
   /** Trailing edge Z position in GLB */
   readonly glbTeZ?: number
   /** Line attachment row Z positions in GLB [chordwise] */
@@ -153,6 +345,12 @@ export interface ModelGeometry {
     readonly C: number  // mid-chord
     readonly D: number  // rear
   }
+
+  /** Rib geometry for canopy models — positions and Y extents from GLB */
+  readonly ribs?: readonly CanopyRibGLB[]
+
+  /** Suspension line set geometry — per-rib attachments, cascades, risers */
+  readonly lineSet?: LineSetGLB
 
   // ── pilot-body-specific ──
   /** CG offset from BBox center as fraction of body length (forward = positive) */
@@ -183,15 +381,23 @@ export interface VehicleAssembly {
   /** Scale applied to parent before compositing [dimensionless] */
   readonly parentScale: number
 
+  /**
+   * Scale applied to the child model within the composite [dimensionless].
+   * Corrects for different GLB-to-meters ratios between parent and child:
+   *   childScale = parentScale × childGlbToMeters / parentGlbToMeters
+   * Without this, the pilot body appears oversized relative to the canopy.
+   */
+  readonly childScale?: number
+
   /** Child position in raw parent GLB coordinates (after parent scaling) */
   readonly childOffset: Vec3
   /** Child rotation [degrees] — applied as Euler XYZ */
   readonly childRotationDeg: Vec3
 
   /**
-   * Shoulder offset as fraction of child's raw body extent.
-   * The pivot point sits this far above the child's CG.
-   * Used to separate the pilot pitch pivot from the CG.
+   * Shoulder offset as fraction of child's raw body extent (before childScale).
+   * Derived from the shoulder attachment landmark: glbZ / maxDim.
+   * The effective offset in the composite is: fraction × bodyExtent × childScale.
    */
   readonly shoulderOffsetFraction: number
 
@@ -208,9 +414,16 @@ export interface VehicleAssembly {
   // ── physics ──
   /** Trim angle [degrees] — canopy trim in straight flight */
   readonly trimAngleDeg: number
-  /** Pilot forward shift from riser [NED normalized] */
+  /**
+   * Pilot forward shift from riser [NED normalized].
+   * In a vertical hang the CG is directly below the riser → 0.
+   * Non-zero only if the body hangs off-center from the attachment.
+   */
   readonly pilotFwdShift: number
-  /** Pilot downward shift from riser [NED normalized] */
+  /**
+   * Pilot downward shift from riser [NED normalized].
+   * Derived from shoulder-to-CG distance: shoulder_glbZ × pilotGlbToMeters / REF_HEIGHT.
+   */
   readonly pilotDownShift: number
 }
 
@@ -280,6 +493,138 @@ export function getCellPositionsNED(
       results.push({ index: cell.index, ned: glbToNED(glbLeft, model), side: 'left' })
     }
   }
+  return results
+}
+
+/**
+ * Compute bounding boxes for all canopy cells in GLB coordinates.
+ *
+ * Each cell is bounded spanwise by load-bearing ribs and chordwise by LE/TE.
+ * Height (Y) values follow the canopy arc at each boundary rib.
+ *
+ * Returns one entry for the center cell, and right + left entries for
+ * each paired cell (mirrored at −X).
+ */
+export function getCellBoundsGLB(model: ModelGeometry): CellBoundsGLB[] {
+  if (!model.cells || !model.ribs || model.glbLeZ == null || model.glbTeZ == null) return []
+
+  const ribs = model.ribs
+  // Build rib lookup by index for O(1) access
+  const ribByIdx = new Map<number, CanopyRibGLB>()
+  for (const r of ribs) ribByIdx.set(r.index, r)
+
+  // Load-bearing rib indices define cell boundaries, sorted by position
+  const lbRibs = ribs.filter(r => r.loadBearing).sort((a, b) => a.glbX - b.glbX)
+
+  const results: CellBoundsGLB[] = []
+  const zLE = model.glbLeZ
+  const zBottomLE = model.glbBottomLeZ ?? model.glbLeZ  // fall back to top skin LE
+  const zTE = model.glbTeZ
+
+  /** A-line LE attachment X for a rib — falls back to rib glbX if not specified. */
+  const xBLE = (rib: CanopyRibGLB) => rib.glbXBottomLE ?? rib.glbX
+  /** A-line LE attachment Y for a rib — falls back to rib yMin if not specified. */
+  const yBLE = (rib: CanopyRibGLB) => rib.glbYBottomLE ?? rib.glbYMin
+  /** TE cell boundary X — falls back to rib glbX if not specified. */
+  const xBTE = (rib: CanopyRibGLB) => rib.glbXBottomTE ?? rib.glbX
+  /** TE cell boundary Y — falls back to rib yMin if not specified. */
+  const yBTE = (rib: CanopyRibGLB) => rib.glbYBottomTE ?? rib.glbYMin
+  /** Chord-line LE Y — true nose vertex (max Z on rib mesh). */
+  const yCLE = (rib: CanopyRibGLB) => rib.glbYChordLE
+  /** Nose vertex X — slightly inboard of rib edge. */
+  const xNose = (rib: CanopyRibGLB) => rib.glbXNose
+  /** Nose vertex Z — rib mesh LE, slightly aft of top skin. */
+  const zNose = (rib: CanopyRibGLB) => rib.glbZNose
+
+  // Cell 1 (center): spans from −Rib_2 to +Rib_2
+  const centerRib = ribByIdx.get(1)  // Rib_1 (non-load-bearing center)
+  const firstLB = lbRibs[0]          // Rib_2 (first load-bearing)
+  if (centerRib && firstLB) {
+    results.push({
+      cellIndex: 1,
+      side: 'center',
+      xInner: -firstLB.glbX,
+      xOuter: firstLB.glbX,
+      yMinInner: firstLB.glbYMin,
+      yMaxInner: firstLB.glbYMax,
+      yMinOuter: firstLB.glbYMin,
+      yMaxOuter: firstLB.glbYMax,
+      xBottomLEInner: -xBLE(firstLB),
+      xBottomLEOuter: xBLE(firstLB),
+      yBottomLEInner: yBLE(firstLB),
+      yBottomLEOuter: yBLE(firstLB),
+      xBottomTEInner: -xBTE(firstLB),
+      xBottomTEOuter: xBTE(firstLB),
+      yBottomTEInner: yBTE(firstLB),
+      yBottomTEOuter: yBTE(firstLB),
+      yChordLEInner: yCLE(firstLB),
+      yChordLEOuter: yCLE(firstLB),
+      xNoseInner: -xNose(firstLB),
+      xNoseOuter: xNose(firstLB),
+      zNose: zNose(firstLB),
+      zLE, zBottomLE, zTE,
+    })
+  }
+
+  // Paired cells: each spans between consecutive load-bearing ribs
+  for (let i = 0; i < lbRibs.length - 1; i++) {
+    const inner = lbRibs[i]
+    const outer = lbRibs[i + 1]
+    const cellIndex = i + 2  // cell 2, 3, 4
+
+    // Right side (+X)
+    results.push({
+      cellIndex,
+      side: 'right',
+      xInner: inner.glbX,
+      xOuter: outer.glbX,
+      yMinInner: inner.glbYMin,
+      yMaxInner: inner.glbYMax,
+      yMinOuter: outer.glbYMin,
+      yMaxOuter: outer.glbYMax,
+      xBottomLEInner: xBLE(inner),
+      xBottomLEOuter: xBLE(outer),
+      yBottomLEInner: yBLE(inner),
+      yBottomLEOuter: yBLE(outer),
+      xBottomTEInner: xBTE(inner),
+      xBottomTEOuter: xBTE(outer),
+      yBottomTEInner: yBTE(inner),
+      yBottomTEOuter: yBTE(outer),
+      yChordLEInner: yCLE(inner),
+      yChordLEOuter: yCLE(outer),
+      xNoseInner: xNose(inner),
+      xNoseOuter: xNose(outer),
+      zNose: (zNose(inner) + zNose(outer)) / 2,
+      zLE, zBottomLE, zTE,
+    })
+
+    // Left side (−X, mirrored)
+    results.push({
+      cellIndex,
+      side: 'left',
+      xInner: -inner.glbX,
+      xOuter: -outer.glbX,
+      yMinInner: inner.glbYMin,
+      yMaxInner: inner.glbYMax,
+      yMinOuter: outer.glbYMin,
+      yMaxOuter: outer.glbYMax,
+      xBottomLEInner: -xBLE(inner),
+      xBottomLEOuter: -xBLE(outer),
+      yBottomLEInner: yBLE(inner),
+      yBottomLEOuter: yBLE(outer),
+      xBottomTEInner: -xBTE(inner),
+      xBottomTEOuter: -xBTE(outer),
+      yBottomTEInner: yBTE(inner),
+      yBottomTEOuter: yBTE(outer),
+      yChordLEInner: yCLE(inner),
+      yChordLEOuter: yCLE(outer),
+      xNoseInner: -xNose(inner),
+      xNoseOuter: -xNose(outer),
+      zNose: (zNose(inner) + zNose(outer)) / 2,
+      zLE, zBottomLE, zTE,
+    })
+  }
+
   return results
 }
 
@@ -464,9 +809,11 @@ export const CANOPY_GEOMETRY: ModelGeometry = {
   ],
 
   // ── chord geometry ──
-  glbChord: 3.529,   // LE top (+0.655) to TE (−2.874)
-  glbLeZ: 0.655,     // leading edge Z
-  glbTeZ: -2.874,    // trailing edge Z
+  glbChord: 3.529,        // LE top (+0.655) to TE (−2.874)
+  glbLeZ: 0.655,          // leading edge Z (top skin)
+  glbBottomLeZ: 0.308,    // leading edge Z (bottom skin / A-line attachment)
+                          // from a2_upper zMax=0.308, a4_upper zMax=0.307
+  glbTeZ: -2.874,         // trailing edge Z
 
   // ── line row Z positions (chordwise) ──
   lineRows: {
@@ -476,18 +823,110 @@ export const CANOPY_GEOMETRY: ModelGeometry = {
     D: -1.567,    // 63% chord — rear (not at TE)
   },
 
-  // ── 7 cells: QC and TE positions in GLB units ──
-  // QC Z = LE (+0.655) − 0.25 × 3.529 = −0.227
-  // Center cell uses X=0 (symmetry plane); X is the right-side half-cell center
+  // ── 4 full cells: QC and TE positions in GLB units ──
+  //
+  // A paraglider cell spans two mesh bays, bounded by load-bearing ribs
+  // (which carry A/B/C/D suspension lines) with a non-load-bearing rib
+  // in the center for shape.  The GLB has 8 ribs per half-span:
+  //   Load-bearing (with lines): Rib_2 (0.459), Rib_4 (1.412), Rib_6 (2.329), Rib_8 (3.133)
+  //   Non-load-bearing (center): Rib_1 (0.000), Rib_3 (0.928), Rib_5 (1.882), Rib_7 (2.749)
+  //
+  // Cell glbX/glbY/glbQcZ use the non-load-bearing rib's true nose vertex
+  // (glbXNose, glbYChordLE, glbZNose) for the chord-plane aerodynamic center.
+  // QC Z = noseZ + 0.25 × (teZ − noseZ) ≈ 0.627 + 0.25 × (−3.501) ≈ −0.248
+  // Previously used top-skin LE (0.655) giving QC Z = −0.227 — ~19 mm too far forward.
   cells: [
-    { index: 1, glbX: 0.230, glbY: 4.377, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 2, glbX: 0.694, glbY: 4.362, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 3, glbX: 1.170, glbY: 4.315, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 4, glbX: 1.647, glbY: 4.215, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 5, glbX: 2.106, glbY: 4.057, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 6, glbX: 2.539, glbY: 3.852, glbQcZ: -0.227, glbTeZ: -2.874 },
-    { index: 7, glbX: 2.941, glbY: 3.600, glbQcZ: -0.227, glbTeZ: -2.874 },
+    { index: 1, glbX: 0.000, glbY: 4.337, glbQcZ: -0.248, glbTeZ: -2.874 },  // center cell  (Rib_1 nose)
+    { index: 2, glbX: 0.895, glbY: 4.305, glbQcZ: -0.249, glbTeZ: -2.874 },  // inner pair   (Rib_3 nose)
+    { index: 3, glbX: 1.763, glbY: 4.107, glbQcZ: -0.249, glbTeZ: -2.874 },  // mid pair     (Rib_5 nose)
+    { index: 4, glbX: 2.555, glbY: 3.699, glbQcZ: -0.249, glbTeZ: -2.874 },  // outer pair   (Rib_7 nose)
   ],
+
+  // ── rib geometry: Y extents + LE/TE attachment positions from GLB ──
+  //
+  // glbYMin/glbYMax: full airfoil profile bounds from Rib_N_L meshes.
+  // glbXBottomLE/glbYBottomLE: A-line attachment at LE (a_N_upper xMax/yMax).
+  // glbXBottomTE: bottom skin X at TE cell boundary (Bottom_N_L xMax,
+  //   the outer panel whose outer edge is at that rib).
+  // glbYBottomTE: TE seam Y (Top_N_L yMin — the trailing edge is thin,
+  //   so the bottom surface sits well above yMin at max thickness).
+  // Only load-bearing ribs have LE/TE attachment data.
+  // glbYChordLE / glbXNose / glbZNose: extracted from actual rib mesh vertex
+  //   with maximum Z (the airfoil nose), using extract-rib-noses.cjs.
+  ribs: [
+    { index: 1, glbX: 0.000, glbYMin: 4.155, glbYMax: 4.681, glbYChordLE: 4.337, glbXNose: 0.000, glbZNose: 0.627, loadBearing: false },  // center rib (no lines)
+    { index: 2, glbX: 0.459, glbYMin: 4.149, glbYMax: 4.675, glbYChordLE: 4.331, glbXNose: 0.448, glbZNose: 0.626, glbXBottomLE: 0.447, glbYBottomLE: 4.151, glbXBottomTE: 0.448, glbYBottomTE: 4.331, loadBearing: true  },  // LE: a2_upper, TE: Bottom_1_L xMax / Top_1_L yMin
+    { index: 3, glbX: 0.928, glbYMin: 4.123, glbYMax: 4.646, glbYChordLE: 4.305, glbXNose: 0.895, glbZNose: 0.626, loadBearing: false },  // cell 2 center (no lines)
+    { index: 4, glbX: 1.412, glbYMin: 4.058, glbYMax: 4.571, glbYChordLE: 4.236, glbXNose: 1.336, glbZNose: 0.626, glbXBottomLE: 1.300, glbYBottomLE: 4.061, glbXBottomTE: 1.336, glbYBottomTE: 4.236, loadBearing: true  },  // LE: a4_upper, TE: Bottom_3_L xMax / Top_3_L yMin
+    { index: 5, glbX: 1.882, glbYMin: 3.936, glbYMax: 4.429, glbYChordLE: 4.107, glbXNose: 1.763, glbZNose: 0.626, loadBearing: false },  // cell 3 center (no lines)
+    { index: 6, glbX: 2.329, glbYMin: 3.766, glbYMax: 4.233, glbYChordLE: 3.928, glbXNose: 2.172, glbZNose: 0.626, glbXBottomLE: 2.092, glbYBottomLE: 3.769, glbXBottomTE: 2.172, glbYBottomTE: 3.928, loadBearing: true  },  // LE: a6_upper, TE: Bottom_5_L xMax / Top_5_L yMin
+    { index: 7, glbX: 2.749, glbYMin: 3.549, glbYMax: 3.983, glbYChordLE: 3.699, glbXNose: 2.555, glbZNose: 0.626, loadBearing: false },  // cell 4 center (no lines)
+    { index: 8, glbX: 3.133, glbYMin: 3.289, glbYMax: 3.688, glbYChordLE: 3.427, glbXNose: 2.910, glbZNose: 0.627, glbXBottomLE: 2.795, glbYBottomLE: 3.293, glbXBottomTE: 2.909, glbYBottomTE: 3.427, loadBearing: true  },  // LE: a8_upper, TE: Bottom_7_L xMax / Top_7_L yMin
+  ],
+
+  // ── suspension line set: per-rib attachments, cascades, risers ──
+  //
+  // Extracted from cp2.gltf mesh vertices using extract-lines.cjs.
+  // All positions are right-side GLB coordinates (+X = right).
+  // Canopy attachment = top vertex (yMax) of upper segment.
+  // Cascade = top vertex (yMax) of lower segment (start of combined line).
+  // Riser end = bottom vertex (yMin) of lower segment.
+  lineSet: {
+    ribs: [
+      {
+        ribIndex: 2,
+        aCanopy:    { glbX: 0.442, glbY: 4.151, glbZ:  0.299 },
+        bCanopy:    { glbX: 0.443, glbY: 4.186, glbZ: -0.472 },
+        cCanopy:    { glbX: 0.444, glbY: 4.223, glbZ: -1.271 },
+        dCanopy:    { glbX: 0.446, glbY: 4.261, glbZ: -1.943 },
+        abCascade:  { glbX: 0.440, glbY: 3.067, glbZ: -0.059 },
+        cdCascade:  { glbX: 0.438, glbY: 3.110, glbZ: -1.181 },
+        abRiserEnd: { glbX: 0.435, glbY: 0.500, glbZ: -0.016 },
+        cdRiserEnd: { glbX: 0.422, glbY: 0.465, glbZ: -0.197 },
+      },
+      {
+        ribIndex: 4,
+        aCanopy:    { glbX: 1.293, glbY: 4.061, glbZ:  0.299 },
+        bCanopy:    { glbX: 1.301, glbY: 4.094, glbZ: -0.473 },
+        cCanopy:    { glbX: 1.307, glbY: 4.131, glbZ: -1.275 },
+        dCanopy:    { glbX: 1.318, glbY: 4.168, glbZ: -1.944 },
+        abCascade:  { glbX: 1.035, glbY: 3.004, glbZ: -0.064 },
+        cdCascade:  { glbX: 1.045, glbY: 3.045, glbZ: -1.182 },
+        abRiserEnd: { glbX: 0.439, glbY: 0.499, glbZ: -0.012 },
+        cdRiserEnd: { glbX: 0.424, glbY: 0.464, glbZ: -0.197 },
+      },
+      {
+        ribIndex: 6,
+        aCanopy:    { glbX: 2.085, glbY: 3.769, glbZ:  0.301 },
+        bCanopy:    { glbX: 2.101, glbY: 3.799, glbZ: -0.474 },
+        cCanopy:    { glbX: 2.118, glbY: 3.834, glbZ: -1.276 },
+        dCanopy:    { glbX: 2.136, glbY: 3.866, glbZ: -1.944 },
+        abCascade:  { glbX: 1.593, glbY: 2.799, glbZ: -0.064 },
+        cdCascade:  { glbX: 1.615, glbY: 2.836, glbZ: -1.184 },
+        abRiserEnd: { glbX: 0.439, glbY: 0.498, glbZ: -0.011 },
+        cdRiserEnd: { glbX: 0.425, glbY: 0.464, glbZ: -0.195 },
+      },
+      {
+        ribIndex: 8,
+        aCanopy:    { glbX: 2.788, glbY: 3.293, glbZ:  0.303 },
+        bCanopy:    { glbX: 2.811, glbY: 3.319, glbZ: -0.475 },
+        cCanopy:    { glbX: 2.835, glbY: 3.348, glbZ: -1.276 },
+        dCanopy:    { glbX: 2.860, glbY: 3.376, glbZ: -1.945 },
+        abCascade:  { glbX: 2.088, glbY: 2.465, glbZ: -0.063 },
+        cdCascade:  { glbX: 2.119, glbY: 2.494, glbZ: -1.184 },
+        abRiserEnd: { glbX: 0.438, glbY: 0.497, glbZ: -0.011 },
+        cdRiserEnd: { glbX: 0.425, glbY: 0.463, glbZ: -0.195 },
+      },
+    ],
+    frontRiser: {
+      top:    { glbX: 0.429, glbY: 0.502, glbZ: -0.011 },
+      bottom: { glbX: 0.255, glbY: -0.002, glbZ: -0.000 },
+    },
+    rearRiser: {
+      top:    { glbX: 0.419, glbY: 0.469, glbZ: -0.190 },
+      bottom: { glbX: 0.253, glbY: -0.002, glbZ: -0.003 },
+    },
+  },
 }
 
 /**
@@ -637,13 +1076,20 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
 
   parentScale: 1.5,  // CANOPY_SCALE — visual fit
 
-  // Pilot position in parent GLB coords (after parent scaling)
-  // From PILOT_OFFSET in model-loader.ts: position (0, −0.540, 0)
-  childOffset: { x: 0, y: -0.540, z: 0 },
+  // childScale: parentScale × wingsuit_glbToMeters / canopy_glbToMeters
+  //   = 1.5 × (1.875/3.550) / (3.29/3.529) = 0.850
+  // Without this the pilot body renders 17.6% too large relative to the canopy.
+  childScale: 0.850,
+
+  // Pilot position in parent GLB coords.
+  // Derived: -(shoulder_glbZ × childScale) = -(0.560 × 0.850) = -0.476
+  // Places the shoulder (riser attachment) at canopy Y = 0 (harness point).
+  childOffset: { x: 0, y: -0.476, z: 0 },
   // −90° X rotation: prone → hanging
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
-  shoulderOffsetFraction: 0.10,   // 10% of body extent
+  // shoulder_left glbZ (0.560) / maxDim (3.550) = 0.158
+  shoulderOffsetFraction: 0.158,
   trailingEdgeShift: -0.30,       // bridle attachment shift toward canopy TE
 
   deployScales: {
@@ -654,8 +1100,8 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
 
   // Physics
   trimAngleDeg: 6,
-  pilotFwdShift: 0.28,       // NED normalized
-  pilotDownShift: 0.163,     // NED normalized
+  pilotFwdShift: 0,          // positions are absolute NED relative to riser
+  pilotDownShift: 0,         // positions are absolute NED relative to riser
 }
 
 /**
@@ -672,17 +1118,23 @@ export const CANOPY_SLICK_ASSEMBLY: VehicleAssembly = {
 
   parentScale: 1.5,
 
-  childOffset: { x: 0, y: -0.540, z: 0 },
+  // childScale: parentScale × slick_glbToMeters / canopy_glbToMeters
+  //   = 1.5 × (1.875/3.384) / (3.29/3.529) = 0.891
+  childScale: 0.891,
+
+  // -(shoulder_glbZ × childScale) = -(0.560 × 0.891) = -0.499
+  childOffset: { x: 0, y: -0.499, z: 0 },
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
-  shoulderOffsetFraction: 0.10,
+  // shoulder_glbZ (0.560) / maxDim (3.384) = 0.166
+  shoulderOffsetFraction: 0.166,
   trailingEdgeShift: -0.30,
 
   deployScales: undefined,  // slick has no deployment sequence
 
   trimAngleDeg: 6,
-  pilotFwdShift: 0.28,
-  pilotDownShift: 0.163,
+  pilotFwdShift: 0,
+  pilotDownShift: 0,
 }
 
 // ─────────────────────────────────────────────────────────────────────

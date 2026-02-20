@@ -415,6 +415,14 @@ Lines use a **{row}{rib-number}_{cascade}** naming pattern:
 Not all rows cascade: **A and C lines have upper+lower** (two-stage cascade),
 while **B and D lines only have upper** (single stage, direct to riser).
 
+**✅ LineSetGLB extraction (Feb 2026):**  
+Complete suspension line geometry extracted from cp2.gltf mesh vertices using `extract-lines.cjs` and stored in `CANOPY_GEOMETRY.lineSet`. Per-rib data structure captures:
+- **Canopy attachments** (A/B/C/D) — top vertex (yMax) of each upper line segment
+- **Cascade junctions** (A/B→front, C/D→rear) — where upper lines merge into lower
+- **Riser endpoints** (front/rear) — bottom of lower line segments at harness attachment
+
+All positions in right-side GLB coordinates (+X = right). Ready for future line drag modeling, tension visualization, and asymmetric loading in turns.
+
 Line attachment Z positions (chordwise, as fraction of chord from LE):
 
 | Line row | Z (GLB, upper center) | Chord fraction | Physical meaning |
@@ -612,6 +620,15 @@ have no dedicated physics cell.
 
 Trailing edge of each non-center cell. Position = TE of parent cell.
 
+**✅ Brake flaps as separate segments (Feb 2026):**  
+Flaps are now independent `AeroSegment` instances (not just drag modifiers on parent cells). Benefits:
+- Physically accurate progressive braking (outer flaps deflect more: inner 0.4, mid 0.7, outer 1.0 brake sensitivity)
+- Correct moment arms (flap CP is aft of cell quarter-chord)
+- Cell area conservation (parent cell shrinks when flap deploys: `cellArea × (1 - flapAreaFraction)`)
+- Visual clarity (separate colored arrows per flap in `vectors.ts`)
+
+Flap area and chord controlled by brake input (0–100%). Outer flaps deflect more than inner (realistic progressive braking).
+
 | Segment | θ (deg) | NED x | NED y | NED z | Side | Brake Sens. | Chord Frac. | Parent Cell S | Parent Cell Chord | Parent Cell X |
 |---------|---------|-------|-------|-------|------|-------------|-------------|---------------|-------------------|---------------|
 | flap_r1 | +12 | −0.664 | +0.358 | −1.162 | right | 0.4 | 0.10 | 2.92 | 3.29 | 0.170 |
@@ -626,7 +643,13 @@ Trailing edge of each non-center cell. Position = TE of parent cell.
 | Segment | NED x | NED y | NED z | S (m²) | Chord (m) | CD | Description |
 |---------|-------|-------|-------|--------|-----------|-----|-------------|
 | lines | +0.23 | 0 | −0.40 | 0.35 | 0.01 | 1.0 | Suspension lines (midpoint between canopy and pilot) |
-| pc | +0.10 | 0 | −1.30 | 0.732 | 0.01 | 1.0 | Pilot chute (above canopy, trailing) |
+| pc | ✅ `_bridleTop()` | ✅ `_bridleTop()` | ✅ `_bridleTop()` | 0.732 | 0.01 | 1.0 | **Pilot chute** — position from `CANOPY_GEOMETRY.attachments.bridleTop` |
+
+**✅ PC registry integration (Feb 2026):**  
+PC aero segment position now sourced from `_bridleTop()` helper in `polar-data.ts`, which extracts the `bridleTop` attachment from `CANOPY_GEOMETRY` and converts GLB → NED normalized. Automatically synchronizes with the bridle GLB model attachment point. When the deployment slider changes, the PC position scales by `(x × chordScale, y × spanScale, z)` before CP offset calculation in `vectors.ts`, keeping the drag arrow glued to the bridle tip throughout the inflation sequence.
+
+**Old positioning (pre-registry):**  
+PC used hardcoded position `{ x: +0.10, y: 0, z: −1.30 }` (manually tuned above canopy, trailing). Required re-tuning whenever canopy position changed.
 
 #### Mass Segments — Canopy Structure (7)
 
@@ -757,8 +780,8 @@ Minimal — single-body polar, no segments. CG placed at GLB origin (normalized)
 
 ### bridalandpc.gltf — Bridle + Pilot Chute (Canopy Deployment)
 
-> Pure drag elements — no aerodynamic surfaces. Attachment positions TBD from
-> assembled vehicle measurement.
+> Pure drag elements — no aerodynamic surfaces. Attachment position sourced
+> from `CANOPY_GEOMETRY.attachments.bridleTop` (76% chord, center span, top skin).
 
 #### Raw GLB Properties
 
@@ -772,6 +795,7 @@ Minimal — single-body polar, no segments. CG placed at GLB origin (normalized)
 | BBox max | { x: 0.240, y: 0.240, z: 0.030 } | World-space |
 | BBox size | { x: 0.480, y: 0.480, z: 3.690 } | World-space |
 | Max dimension | Z (3.690) | Bridle length dominates |
+| **Attachment** | `CANOPY_GEOMETRY.attachments.bridleTop` | ✅ **Registry-based positioning** (replaces old bbox-derived +TE shift) |
 
 #### Internal Mesh Structure
 
@@ -815,9 +839,16 @@ bridalandpc.gltf (Group)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| Scale | `1.5 × normalizationScale` | Matches canopy scale |
-| Position | Canopy top Y + trailing edge shift (−0.30 Z) | In normalized coords — TBD from assembled measurement |
-| Rotation | Aligned to wind direction via quaternion | Updated per-frame |
+| Scale | `1.5 × normalizationScale` | Matches canopy scale (`assembly.deployScales.bridle`) |
+| Position | `CANOPY_GEOMETRY.attachments.bridleTop` | ✅ **Registry landmark** (76% chord, GLB coords → Three.js transform) |
+| Rotation | Aligned to wind direction via quaternion | Updated per-frame (`updateBridleOrientation()`) |
+| Deployment scaling | `(x × spanScale, y, z × chordScale)` | ✅ **Scales with canopy mesh** during deploy slider (0–100%) |
+
+**Registry integration (Feb 2026):**  
+Bridle position is now sourced from `CANOPY_GEOMETRY.attachments` (measured in GLB coords, transformed through the same pipeline as the canopy mesh including X-flip). The `bridleTop` landmark sits at 76% chord from leading edge, on the centerline, at the top skin surface. When the deployment slider changes, the bridle position scales horizontally (spanScale = 0.1→1.0×, chordScale = 0.3→1.0×) matching the canopy mesh deformation, automatically maintaining correct attachment throughout the inflation sequence.
+
+**Old positioning (pre-registry):**  
+Previously used canopy bbox top Y + manual trailing-edge shift (−0.30 Z in normalized coords). Required re-tuning whenever canopy mesh changed.
 
 ---
 
@@ -907,8 +938,18 @@ The most complex assembly — canopy + pilot as separate GLBs with articulation.
 |-------------|-----------|-------|---------|-------------|-------|
 | Pilot pitch | pilot | riser_pitch | `pilotPitch` | 1°/unit | ±30° |
 | Deploy span | canopy | — | `deploy` | y × (0.1 + 0.9 × deploy) | 0–1 |
-| Deploy chord | canopy | — | `deploy` | x + DEPLOY_CHORD_OFFSET × (1 − deploy) | 0–1 |
+| Deploy chord | canopy | — | `deploy` | z × (0.3 + 0.7 × deploy) | 0–1 |
+| **✅ Deploy bridle** | **bridle** | — | **`deploy`** | **`(x × spanScale, y, z × chordScale)`** | **0–1** |
+| **✅ Deploy PC/cells** | **aero segments** | — | **`deploy`** | **segment positions scaled before CP offset** | **0–1** |
 | Bridle wind align | bridle | canopy_top | α, β | quaternion | continuous |
+
+**✅ Deployment scaling (Feb 2026):**  
+Three systems now scale together during the deployment slider (0–100%):
+1. **Canopy GLB mesh** — horizontal deformation (`canopyModel.scale.set(-CANOPY_SCALE × spanScale, CANOPY_SCALE, CANOPY_SCALE × chordScale)`)
+2. **Bridle position** — `baseBridlePos` scaled by spanScale/chordScale, then CG-adjusted (`main.ts` lines 596–604)
+3. **Aero segment positions** — PC, cells, flaps scaled before CP offset calculation (`vectors.ts` deploy parameter)
+
+All three use identical scale formulas (spanScale = 0.1→1.0×, chordScale = 0.3→1.0×), so the PC drag arrow stays attached to the bridle tip and cell arrows stay centered on their respective cell volumes throughout the entire deployment range. Minimum scale factors prevent extreme mesh thinning at low deployment.
 
 #### Rendering Pipeline
 
