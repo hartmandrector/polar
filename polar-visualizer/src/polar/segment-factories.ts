@@ -205,13 +205,20 @@ export function makeCanopyCellSegment(
  * @param pitchOffset_deg Pitch rotation of this body relative to the canopy body
  *                        frame [deg]. A canopy pilot hanging vertically has +90°.
  *                        Default: 0 (prone/aligned with body frame).
+ * @param pivot           Optional NED pivot point for position rotation when
+ *                        pilotPitch changes (e.g. riser attachment point).
  */
 export function makeLiftingBodySegment(
   name: string,
   position: { x: number; y: number; z: number },
   bodyPolar: ContinuousPolar,
   pitchOffset_deg: number = 0,
+  pivot?: { x: number; z: number },
 ): AeroSegment {
+  // Store neutral position for pivot-based rotation
+  const neutralX = position.x
+  const neutralZ = position.z
+
   return {
     name,
     position: { ...position },
@@ -225,11 +232,31 @@ export function makeLiftingBodySegment(
       // Use this.polar so debug overrides applied to seg.polar take effect
       const polar = this.polar ?? bodyPolar
 
-      // Dynamic pilot pitch — adds to the fixed pitch offset.
-      // Position stays fixed (consistent with no-mass-rotation decision);
-      // only the effective pitch changes for coefficient evaluation.
+      // Dynamic pilot pitch — adds to the fixed pitch offset for coefficient eval.
+      // pitchOffset_deg stays at the base value (used for chord direction in rendering).
+      // The additional rotation is stored in _chordRotationRad for CP computation.
       const effectivePitchOffset = pitchOffset_deg + controls.pilotPitch
-      this.pitchOffset_deg = effectivePitchOffset
+
+      // Store chord rotation for rendering/physics CP computation.
+      // The AC position rotates by δ around the pivot; the chord offset
+      // must also be rotated by δ so the full chord line swings rigidly.
+      ;(this as any)._chordRotationRad = controls.pilotPitch * Math.PI / 180
+
+      // Rotate position around pivot when pilot pitches.
+      // Same rotation as rotatePilotMass() — the AC
+      // swings around the riser attachment point.
+      if (pivot && Math.abs(controls.pilotPitch) > 0.01) {
+        const delta = controls.pilotPitch * Math.PI / 180
+        const cos_d = Math.cos(delta)
+        const sin_d = Math.sin(delta)
+        const dx = neutralX - pivot.x
+        const dz = neutralZ - pivot.z
+        this.position.x = dx * cos_d - dz * sin_d + pivot.x
+        this.position.z = dx * sin_d + dz * cos_d + pivot.z
+      } else {
+        this.position.x = neutralX
+        this.position.z = neutralZ
+      }
 
       // Transform freestream α to the segment's local frame.
       const localAlpha = alpha_deg - effectivePitchOffset
@@ -257,6 +284,8 @@ export function makeLiftingBodySegment(
  * @param zippedPolar      Full ContinuousPolar when zipped (wingsuit)
  * @param unzippedPolar    Full ContinuousPolar when unzipped (slick)
  * @param pitchOffset_deg  Pitch rotation relative to canopy body frame [deg]
+ * @param pivot            Optional NED pivot point for position rotation when
+ *                         pilotPitch changes (e.g. riser attachment point).
  */
 export function makeUnzippablePilotSegment(
   name: string,
@@ -264,7 +293,12 @@ export function makeUnzippablePilotSegment(
   zippedPolar: ContinuousPolar,
   unzippedPolar: ContinuousPolar,
   pitchOffset_deg: number = 0,
+  pivot?: { x: number; z: number },
 ): AeroSegment {
+  // Store neutral position for pivot-based rotation
+  const neutralX = position.x
+  const neutralZ = position.z
+
   return {
     name,
     position: { ...position },
@@ -286,11 +320,28 @@ export function makeUnzippablePilotSegment(
       this.S = blended.s
       this.chord = blended.chord
 
-      // Dynamic pilot pitch — adds to the fixed pitch offset.
-      // Position stays fixed (consistent with no-mass-rotation decision);
-      // only the effective pitch changes for coefficient evaluation.
+      // Dynamic pilot pitch — adds to the fixed pitch offset for coefficient eval.
+      // pitchOffset_deg stays at the base value (used for chord direction in rendering).
       const effectivePitchOffset = pitchOffset_deg + controls.pilotPitch
-      this.pitchOffset_deg = effectivePitchOffset
+
+      // Store chord rotation for rendering/physics CP computation.
+      ;(this as any)._chordRotationRad = controls.pilotPitch * Math.PI / 180
+
+      // Rotate position around pivot when pilot pitches.
+      // Same rotation as rotatePilotMass() — the AC
+      // swings around the riser attachment point.
+      if (pivot && Math.abs(controls.pilotPitch) > 0.01) {
+        const delta = controls.pilotPitch * Math.PI / 180
+        const cos_d = Math.cos(delta)
+        const sin_d = Math.sin(delta)
+        const dx = neutralX - pivot.x
+        const dz = neutralZ - pivot.z
+        this.position.x = dx * cos_d - dz * sin_d + pivot.x
+        this.position.z = dx * sin_d + dz * cos_d + pivot.z
+      } else {
+        this.position.x = neutralX
+        this.position.z = neutralZ
+      }
 
       const localAlpha = alpha_deg - effectivePitchOffset
       const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, blended, controls.dirty)

@@ -26,6 +26,9 @@ export interface FullCoefficients {
   cl_roll: number // roll moment coefficient (+ right wing down)
   cp: number
   f: number   // separation function value
+  /** 3D system CP in height-normalised NED coordinates (from M×F/|F|²).
+   *  Only populated by segment-summed path (computeSegmentReadout). */
+  cpNED?: { x: number; y: number; z: number }
 }
 
 /**
@@ -183,12 +186,27 @@ export interface AeroSegment {
    * offset before evaluating the segment's polar:
    *   α_local = α_freestream - pitchOffset_deg
    *
-   * Also rotates the CP offset direction: a 90° pitch means the chord
-   * runs along NED z (vertical) instead of NED x (forward).
+   * Also determines the BASE chord direction for CP rendering:
+   *   0°  → chord along +x (forward)  90° → chord along −z (upward)
+   * When the body has an additional pilotPitch rotation, that rotation
+   * is stored separately in _chordRotationRad.
    *
    * Default: 0 (no rotation — segment aligned with body frame).
    */
   pitchOffset_deg?: number
+
+  /**
+   * Additional rotation [rad] to apply to the chord offset vector
+   * when computing CP position from the AC.
+   *
+   * Set by pilot segments when controls.pilotPitch ≠ 0.  The AC position
+   * has already been swung around the riser pivot by this angle; the chord
+   * offset must be rotated by the same amount so that the full chord line
+   * (LE → TE) rotates rigidly with the body.
+   *
+   * Default: 0 (no extra rotation — chord direction = base pitchOffset).
+   */
+  _chordRotationRad?: number
 
   /**
    * This segment's own ContinuousPolar, if applicable.

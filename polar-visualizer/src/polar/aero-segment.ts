@@ -239,14 +239,26 @@ export function sumAllSegments(
     // CP is a chord fraction from LE — offset from quarter-chord (AC at 0.25c).
     // In NED, chord runs from LE (+x, forward) to TE (-x, aft), so
     // CP aft of QC (cp > 0.25) → negative x offset (negate the fraction).
-    // The chord direction rotates with pitchOffset_deg in the x-z plane:
-    //   0° → chord along −x (prone body: LE=head +x, TE=feet −x)
+    // The chord direction rotates with pitchOffset_deg in the x-z plane.
+    // NED pitch-up rotates +x toward −z, so we negate the angle:
+    //   0° → chord along +x (prone body: LE=head +x, TE=feet −x)
     //  90° → chord along −z (upright pilot: LE=head −z, TE=feet +z)
     const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
-    const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
-    const cpX = (seg.position.x + cpOffsetNorm * Math.cos(pitchRad)) * height
+    const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
+    // Base offset at segment's static pitchOffset
+    let offX = cpOffsetNorm * Math.cos(basePitchRad)
+    let offZ = cpOffsetNorm * Math.sin(basePitchRad)
+    // Rotate offset by pilotPitch delta — rigid body rotation of the chord line
+    const cRot = (seg as any)._chordRotationRad ?? 0
+    if (Math.abs(cRot) > 1e-6) {
+      const cos_d = Math.cos(cRot), sin_d = Math.sin(cRot)
+      const ox = offX, oz = offZ
+      offX = ox * cos_d - oz * sin_d
+      offZ = ox * sin_d + oz * cos_d
+    }
+    const cpX = (seg.position.x + offX) * height
     const cpY = seg.position.y * height
-    const cpZ = (seg.position.z + cpOffsetNorm * Math.sin(pitchRad)) * height
+    const cpZ = (seg.position.z + offZ) * height
 
     // Lever arm: segment CP (meters) minus system CG (meters)
     const rx = cpX - cgMeters.x
@@ -368,11 +380,20 @@ export function evaluateAeroForcesDetailed(
     totalFz += fz
 
     // CP position in meters (same logic as sumAllSegments)
-    const pitchRad = (seg.pitchOffset_deg ?? 0) * Math.PI / 180
+    const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
     const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
-    const cpX = (seg.position.x + cpOffsetNorm * Math.cos(pitchRad)) * height
+    let off2X = cpOffsetNorm * Math.cos(basePitchRad)
+    let off2Z = cpOffsetNorm * Math.sin(basePitchRad)
+    const cRot2 = (seg as any)._chordRotationRad ?? 0
+    if (Math.abs(cRot2) > 1e-6) {
+      const cos_d = Math.cos(cRot2), sin_d = Math.sin(cRot2)
+      const ox = off2X, oz = off2Z
+      off2X = ox * cos_d - oz * sin_d
+      off2Z = ox * sin_d + oz * cos_d
+    }
+    const cpX = (seg.position.x + off2X) * height
     const cpY = seg.position.y * height
-    const cpZ = (seg.position.z + cpOffsetNorm * Math.sin(pitchRad)) * height
+    const cpZ = (seg.position.z + off2Z) * height
 
     // Lever arm from CG to CP
     const cpRx = cpX - cgMeters.x

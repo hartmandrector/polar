@@ -13,6 +13,7 @@
 import { ContinuousPolar, Coefficients, MassSegment, AeroSegment } from './continuous-polar.ts'
 import { makeCanopyCellSegment, makeParasiticSegment, makeLiftingBodySegment, makeUnzippablePilotSegment, makeBrakeFlapSegment, DEPLOY_CHORD_OFFSET } from './segment-factories.ts'
 import { makeWingsuitHeadSegment, makeWingsuitLiftingSegment } from './segment-factories.ts'
+import { CANOPY_GEOMETRY, CANOPY_WINGSUIT_ASSEMBLY } from '../viewer/model-registry.ts'
 
 // ─── Legacy Types ────────────────────────────────────────────────────────────
 
@@ -517,38 +518,50 @@ const WINGSUIT_MASS_SEGMENTS: MassSegment[] = [
  * Additional masses: canopy structure (~3.5 kg) and canopy air (~27 kg).
  * Mass ratios are fractions of polar.m; ratios sum > 1.0 to include canopy mass.
  */
-const TRIM_ANGLE_RAD = 6 * Math.PI / 180
+const TRIM_ANGLE_RAD = CANOPY_WINGSUIT_ASSEMBLY.trimAngleDeg * Math.PI / 180
 const COS_TRIM = Math.cos(TRIM_ANGLE_RAD)
 const SIN_TRIM = Math.sin(TRIM_ANGLE_RAD)
 
-// Pre-trim pilot positions (after 90° rotation into canopy frame).
-// x = forward offset from riser attachment. Each segment includes body depth
-// (torso/limb CG sits forward of the spine line due to chest/thigh mass).
-// A uniform forward shift of +0.16 is applied so the mass distribution
-// aligns with the pilot model's center of volume.
-const PILOT_FWD_SHIFT = 0.28
-const PILOT_DOWN_SHIFT = 0.163   // 0.11 base + 0.053 visual alignment (~10 cm lower)
+// Pre-trim pilot positions in NED-normalized coordinates, relative to the
+// riser attachment point (shoulder).  Derived from the wingsuit GLB body
+// proportions using the pilot's own scale factor:
+//
+//   pilotGlbToNED = 1 / maxDim = 1 / 3.550 = 0.2817
+//   shoulder_glbZ = 0.560  (from attachment landmarks)
+//
+//   NED_x = -glbY × pilotGlbToNED   (belly at GLB −Y → forward in NED)
+//   NED_y = -glbX × pilotGlbToNED   (right at GLB −X → NED right)
+//   NED_z = (shoulder_glbZ − glbZ) × pilotGlbToNED  (down from riser)
+//
+// Negative z = above riser (head), positive z = below riser (feet).
+// Arms positioned in the wing/toggle-reach pose matching the GLB mesh.
+//
+// pilotFwdShift / pilotDownShift are 0 — positions are absolute, not shifted.
+const PILOT_FWD_SHIFT = CANOPY_WINGSUIT_ASSEMBLY.pilotFwdShift    // 0
+const PILOT_DOWN_SHIFT = CANOPY_WINGSUIT_ASSEMBLY.pilotDownShift  // 0
 const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: number, z: number }> = [
-  { name: 'head',            massRatio: 0.14,   x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.280 + PILOT_DOWN_SHIFT },
-  { name: 'torso',           massRatio: 0.435,  x:  0.10 + PILOT_FWD_SHIFT,  y:  0,      z:  0.480 + PILOT_DOWN_SHIFT },
-  // Arms in flying position: upper arms raised alongside head, elbows bent ~90°,
-  // forearms angled forward toward risers, hands near riser attachment (toggles).
-  { name: 'right_upper_arm', massRatio: 0.0275, x:  0.08 + PILOT_FWD_SHIFT,  y:  0.090,  z:  0.300 + PILOT_DOWN_SHIFT },
-  { name: 'right_forearm',   massRatio: 0.016,  x:  0.14 + PILOT_FWD_SHIFT,  y:  0.080,  z:  0.220 + PILOT_DOWN_SHIFT },
-  { name: 'right_hand',      massRatio: 0.008,  x:  0.18 + PILOT_FWD_SHIFT,  y:  0.070,  z:  0.160 + PILOT_DOWN_SHIFT },
-  { name: 'right_thigh',     massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y:  0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
-  { name: 'right_shin',      massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y:  0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
-  { name: 'right_foot',      massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y:  0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
-  { name: 'left_upper_arm',  massRatio: 0.0275, x:  0.08 + PILOT_FWD_SHIFT,  y: -0.090,  z:  0.300 + PILOT_DOWN_SHIFT },
-  { name: 'left_forearm',    massRatio: 0.016,  x:  0.14 + PILOT_FWD_SHIFT,  y: -0.080,  z:  0.220 + PILOT_DOWN_SHIFT },
-  { name: 'left_hand',       massRatio: 0.008,  x:  0.18 + PILOT_FWD_SHIFT,  y: -0.070,  z:  0.160 + PILOT_DOWN_SHIFT },
-  { name: 'left_thigh',      massRatio: 0.1,    x:  0.10 + PILOT_FWD_SHIFT,  y: -0.060,  z:  0.720 + PILOT_DOWN_SHIFT },
-  { name: 'left_shin',       massRatio: 0.0465, x:  0.08 + PILOT_FWD_SHIFT,  y: -0.050,  z:  0.900 + PILOT_DOWN_SHIFT },
-  { name: 'left_foot',       massRatio: 0.0145, x:  0.06 + PILOT_FWD_SHIFT,  y: -0.050,  z:  1.010 + PILOT_DOWN_SHIFT },
+  //                                       GLB approx.   NED
+  //                                       X      Y    Z       x      y      z
+  { name: 'head',            massRatio: 0.14,   x:  0.008 + PILOT_FWD_SHIFT,  y:  0,      z: -0.096 + PILOT_DOWN_SHIFT },  // (0, −.03, +.90) → head 18cm above riser
+  { name: 'torso',           massRatio: 0.435,  x:  0.014 + PILOT_FWD_SHIFT,  y:  0,      z:  0.158 + PILOT_DOWN_SHIFT },  // (0, −.05,   0)  → belly CG 30cm below
+  // Arms in wing / toggle-reaching position.
+  { name: 'right_upper_arm', massRatio: 0.0275, x:  0.006 + PILOT_FWD_SHIFT,  y:  0.099,  z:  0.059 + PILOT_DOWN_SHIFT },  // (−.35, −.02, +.35)
+  { name: 'right_forearm',   massRatio: 0.016,  x:  0.008 + PILOT_FWD_SHIFT,  y:  0.085,  z:  0.017 + PILOT_DOWN_SHIFT },  // (−.30, −.03, +.50)
+  { name: 'right_hand',      massRatio: 0.008,  x:  0.011 + PILOT_FWD_SHIFT,  y:  0.070,  z:  0.000 + PILOT_DOWN_SHIFT },  // (−.25, −.04, +.56)
+  { name: 'right_thigh',     massRatio: 0.1,    x:  0.008 + PILOT_FWD_SHIFT,  y:  0.042,  z:  0.383 + PILOT_DOWN_SHIFT },  // (−.15, −.03, −.80)
+  { name: 'right_shin',      massRatio: 0.0465, x:  0.006 + PILOT_FWD_SHIFT,  y:  0.028,  z:  0.594 + PILOT_DOWN_SHIFT },  // (−.10, −.02, −1.55)
+  { name: 'right_foot',      massRatio: 0.0145, x:  0.003 + PILOT_FWD_SHIFT,  y:  0.023,  z:  0.777 + PILOT_DOWN_SHIFT },  // (−.08, −.01, −2.20)
+  { name: 'left_upper_arm',  massRatio: 0.0275, x:  0.006 + PILOT_FWD_SHIFT,  y: -0.099,  z:  0.059 + PILOT_DOWN_SHIFT },
+  { name: 'left_forearm',    massRatio: 0.016,  x:  0.008 + PILOT_FWD_SHIFT,  y: -0.085,  z:  0.017 + PILOT_DOWN_SHIFT },
+  { name: 'left_hand',       massRatio: 0.008,  x:  0.011 + PILOT_FWD_SHIFT,  y: -0.070,  z:  0.000 + PILOT_DOWN_SHIFT },
+  { name: 'left_thigh',      massRatio: 0.1,    x:  0.008 + PILOT_FWD_SHIFT,  y: -0.042,  z:  0.383 + PILOT_DOWN_SHIFT },
+  { name: 'left_shin',       massRatio: 0.0465, x:  0.006 + PILOT_FWD_SHIFT,  y: -0.028,  z:  0.594 + PILOT_DOWN_SHIFT },
+  { name: 'left_foot',       massRatio: 0.0145, x:  0.003 + PILOT_FWD_SHIFT,  y: -0.023,  z:  0.777 + PILOT_DOWN_SHIFT },
 ]
 
 // Riser attachment point in NED body frame (post-trim rotation).
 // This is the pivot the pilot swings around when pitching fore/aft.
+// With positions defined relative to the riser, the pivot IS the origin (0, 0).
 export const PILOT_PIVOT_X = +(PILOT_FWD_SHIFT * COS_TRIM + PILOT_DOWN_SHIFT * SIN_TRIM).toFixed(4)
 export const PILOT_PIVOT_Z = +(-PILOT_FWD_SHIFT * SIN_TRIM + PILOT_DOWN_SHIFT * COS_TRIM).toFixed(4)
 
@@ -563,38 +576,114 @@ export const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
   }
 }))
 
+// ─── GLB-derived canopy cell positions ──────────────────────────────────────
+//
+// Positions derived from cp2.gltf mesh measurements via model-registry.ts.
+// Replaces the previous arc formula (R=1.55, 12° spacing) with actual GLB geometry.
+//
+// Conversion: GLB → NED via CANOPY_GEOMETRY axis mapping + glbToNED scale (0.4972).
+// All positions are NED-normalized, relative to riser convergence (GLB origin).
+//
+// Key differences from arc model:
+//   - Canopy is higher: z ≈ -2.16 (4.07m above riser) vs old z ≈ -1.22 (2.29m)
+//   - Span is wider: outer cell y = 1.270 vs old 1.052 (21% more)
+//     Cells are between load-bearing ribs (not half-cells between consecutive ribs)
+//   - QC x ≈ -0.124 (from true nose Z), nearly constant across span
+//   - Real canopy arc is flatter (R ≈ 2.96 NED vs old R = 1.55)
+
+const _g = CANOPY_GEOMETRY.glbToNED  // 0.4972
+const _ribs = CANOPY_GEOMETRY.ribs!
+const _teZ = CANOPY_GEOMETRY.glbTeZ!
+
+/**
+ * Cell quarter-chord position in NED-normalized coords (relative to riser convergence).
+ *
+ * Uses the non-load-bearing (cell-center) rib's true nose vertex for the chord-plane
+ * aerodynamic center.  Cell N → rib index (2N−1) → ribs array position 2(N−1).
+ * QC Z = noseZ + 0.25 × (teZ − noseZ), using the airfoil nose rather than the
+ * top-skin fabric LE.
+ */
+function _cellQC(cellIndex: number, side: 'center' | 'right' | 'left'): { x: number; y: number; z: number } {
+  const rib = _ribs[2 * (cellIndex - 1)]  // non-LB rib at cell center
+  const qcZ = rib.glbZNose + 0.25 * (_teZ - rib.glbZNose)
+  const glbX = side === 'center' ? 0 : side === 'left' ? -rib.glbXNose : rib.glbXNose
+  return { x: qcZ * _g, y: glbX * _g, z: -rib.glbYChordLE * _g }
+}
+
+/** Cell trailing edge position in NED-normalized coords. */
+function _cellTE(cellIndex: number, side: 'right' | 'left'): { x: number; y: number; z: number } {
+  const rib = _ribs[2 * (cellIndex - 1)]  // non-LB rib at cell center
+  const glbX = side === 'left' ? -rib.glbXNose : rib.glbXNose
+  // Chord line has zero ΔY, so vertical position at TE = nose Y
+  return { x: _teZ * _g, y: glbX * _g, z: -rib.glbYChordLE * _g }
+}
+
+/**
+ * Bridle top attachment position in NED-normalized coords (at bridleTop landmark).
+ * 
+ * This is where the bridle attaches to the canopy top skin, 76% chord from LE.
+ * Used for both the PC aero segment position and the bridle GLB model anchor point.
+ */
+function _bridleTop(): { x: number; y: number; z: number } {
+  const attachment = CANOPY_GEOMETRY.attachments!.find(a => a.name === 'bridleTop')!
+  const glb = attachment.glb
+  // GLB → NED: ned_x = glbZ, ned_y = glbX, ned_z = -glbY (all × 0.4972)
+  return { x: glb.z * _g, y: glb.x * _g, z: -glb.y * _g }
+}
+
 // 7 canopy cells across span, forming an arc over the pilot's head.
 // Each cell has structure mass and trapped air mass.
 // Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643
 // Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → 0.011
 //
-// Arc geometry: cells at equal angular spacing (12° apart) on radius R=1.55
-//   Cell positions: y = R·sin(θ), z = z_center + R·(1 - cos(θ))
-//   θ = 0°, ±12°, ±24°, ±36°
-//   Center z = -1.10 (lowest point of arc)
-//   Then rotated 6° forward about y-axis to sit in canopy's thickest section
+// Positions now from GLB mesh (see _cellQC above).
+// Previously used arc geometry: R=1.55, θ = 0°/±12°/±24°/±36°.
 //
-// CANOPY_Z_SHIFT: visual alignment nudge — 20 cm higher (~-0.107 normalised)
-// to better match the 3D model's canopy position.
+// ──── OLD ARC-FORMULA MASS SEGMENT POSITIONS (kept for reference) ────
+// These were hand-tuned across multiple phases. The arc model placed the
+// canopy at R=1.55, center z = -1.10, rotated 6° forward, with graduated
+// push (center ~4.5cm, inner ~9cm, mid ~15cm, outer ~22cm) and
+// CANOPY_Z_SHIFT nudge of -0.107 normalised (20cm higher).
+//
+// const CANOPY_STRUCTURE_SEGMENTS: MassSegment[] = [
+//   { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
+//   { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
+//   { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
+//   { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
+//   { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
+//   { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
+//   { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+// ]
+//
+// const CANOPY_AIR_SEGMENTS: MassSegment[] = [
+//   { name: 'canopy_air_c',  massRatio: 0.011, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
+//   { name: 'canopy_air_r1', massRatio: 0.011, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
+//   { name: 'canopy_air_l1', massRatio: 0.011, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
+//   { name: 'canopy_air_r2', massRatio: 0.011, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
+//   { name: 'canopy_air_l2', massRatio: 0.011, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
+//   { name: 'canopy_air_r3', massRatio: 0.011, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
+//   { name: 'canopy_air_l3', massRatio: 0.011, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+// ]
+// ──── END OLD MASS SEGMENT POSITIONS ────
 
 const CANOPY_STRUCTURE_SEGMENTS: MassSegment[] = [
-  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
-  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
-  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
-  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
-  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
-  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
-  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: _cellQC(1, 'center') },
+  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: _cellQC(2, 'right') },
+  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: _cellQC(2, 'left') },
+  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: _cellQC(3, 'right') },
+  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: _cellQC(3, 'left') },
+  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: _cellQC(4, 'right') },
+  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: _cellQC(4, 'left') },
 ]
 
 const CANOPY_AIR_SEGMENTS: MassSegment[] = [
-  { name: 'canopy_air_c',  massRatio: 0.011, normalizedPosition: { x: 0.165, y:  0,     z: -1.196 } },
-  { name: 'canopy_air_r1', massRatio: 0.011, normalizedPosition: { x: 0.161, y:  0.322, z: -1.162 } },
-  { name: 'canopy_air_l1', massRatio: 0.011, normalizedPosition: { x: 0.161, y: -0.322, z: -1.162 } },
-  { name: 'canopy_air_r2', massRatio: 0.011, normalizedPosition: { x: 0.151, y:  0.630, z: -1.062 } },
-  { name: 'canopy_air_l2', massRatio: 0.011, normalizedPosition: { x: 0.151, y: -0.630, z: -1.062 } },
-  { name: 'canopy_air_r3', massRatio: 0.011, normalizedPosition: { x: 0.134, y:  0.911, z: -0.901 } },
-  { name: 'canopy_air_l3', massRatio: 0.011, normalizedPosition: { x: 0.134, y: -0.911, z: -0.901 } },
+  { name: 'canopy_air_c',  massRatio: 0.011, normalizedPosition: _cellQC(1, 'center') },
+  { name: 'canopy_air_r1', massRatio: 0.011, normalizedPosition: _cellQC(2, 'right') },
+  { name: 'canopy_air_l1', massRatio: 0.011, normalizedPosition: _cellQC(2, 'left') },
+  { name: 'canopy_air_r2', massRatio: 0.011, normalizedPosition: _cellQC(3, 'right') },
+  { name: 'canopy_air_l2', massRatio: 0.011, normalizedPosition: _cellQC(3, 'left') },
+  { name: 'canopy_air_r3', massRatio: 0.011, normalizedPosition: _cellQC(4, 'right') },
+  { name: 'canopy_air_l3', massRatio: 0.011, normalizedPosition: _cellQC(4, 'left') },
 ]
 
 /**
@@ -847,43 +936,74 @@ const BRAKE_FLAP_POLAR: ContinuousPolar = {
  * Flap chord fractions graduate: outer=30%, mid=20%, inner=10%.
  * Riser sensitivity is ~1.0 for all cells (uniform geometry change).
  */
+// ──── OLD ARC-FORMULA AERO SEGMENT POSITIONS (kept for reference) ────
+// Tuned through Phase 2 (symmetric) and Phase 3 (brakes/flaps).
+// Arc formula: R=1.55, cells at 12° spacing, 6° forward rotation,
+// graduated push outward, CANOPY_Z_SHIFT visual alignment.
+// Flap TE offset from cell AC ≈ 0.75 × chord / height ≈ 1.0 normalized.
+// parentCellX matched each cell's x-position.
+//
+// const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
+//   // ── 7 canopy cells ──
+//   makeCanopyCellSegment('cell_c',  { x: 0.174, y:  0,     z: -1.220 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_r1', { x: 0.170, y:  0.358, z: -1.182 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_l1', { x: 0.170, y: -0.358, z: -1.182 }, -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_r2', { x: 0.162, y:  0.735, z: -1.114 },  24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_l2', { x: 0.162, y: -0.735, z: -1.114 }, -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_r3', { x: 0.145, y:  1.052, z: -0.954 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
+//   makeCanopyCellSegment('cell_l3', { x: 0.145, y: -1.052, z: -0.954 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
+//
+//   // ── 6 brake flap segments ──
+//   makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
+//   makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
+//   makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
+//   makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
+//   makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
+//   makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
+//
+//   // ── 2 parasitic bodies ──
+//   makeParasiticSegment('lines',  { x: 0.23, y: 0, z: -0.40 },          0.35,  0.01,  1.0       ),
+//   makeParasiticSegment('pc',     { x: 0.10, y: 0, z: -1.30 },          0.732, 0.01,  1.0       ),
+// ]
+// ──── END OLD AERO SEGMENT POSITIONS ────
+
 const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // ── 7 canopy cells ──
-  // Positions extended outward along arc radius to sit on the upper canopy skin.
-  // Graduated push: center ~4.5 cm, inner ~9 cm, mid ~15 cm, outer ~22 cm extra
-  // because the real canopy is flatter than a perfect arc at the wingtips.
-  makeCanopyCellSegment('cell_c',  { x: 0.174, y:  0,     z: -1.220 },   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r1', { x: 0.170, y:  0.358, z: -1.182 },  12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l1', { x: 0.170, y: -0.358, z: -1.182 }, -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r2', { x: 0.162, y:  0.735, z: -1.114 },  24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l2', { x: 0.162, y: -0.735, z: -1.114 }, -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_r3', { x: 0.145, y:  1.052, z: -0.954 },  36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
-  makeCanopyCellSegment('cell_l3', { x: 0.145, y: -1.052, z: -0.954 }, -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
+  // Positions from GLB mesh (cp2.gltf) via _cellQC(), relative to riser convergence.
+  // Roll angles kept at 12° spacing (physics-tuned); GLB-derived angles would be
+  // smaller (~0°/7°/11°/16°) due to flatter canopy arc (R≈2.96 vs old R=1.55).
+  makeCanopyCellSegment('cell_c',  _cellQC(1, 'center'),   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r1', _cellQC(2, 'right'),   12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l1', _cellQC(2, 'left'),   -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r2', _cellQC(3, 'right'),   24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l2', _cellQC(3, 'left'),   -24, 'left',   0.7, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_r3', _cellQC(4, 'right'),   36, 'right',  1.0, 1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_l3', _cellQC(4, 'left'),   -36, 'left',   1.0, 1.0, CANOPY_CELL_POLAR),
 
   // ── 6 brake flap segments (trailing edge of non-center cells) ──
-  // Variable-area flap model: S and chord scale with brake input.
-  // Graduated chord fraction: inner=10%, mid=20%, outer=30%.
-  // Positions at the trailing edge of each cell (aft = lower x in NED).
-  // TE offset from cell AC ≈ 0.75 × chord / height ≈ 1.0 normalized.
-  // z values use the inner arc surface (structure positions), not the pushed-out
-  // cell skin positions, because the canopy profile tapers to zero at the TE.
-  // As brake is applied, position shifts forward toward cell center (quarter-chord of deployed flap).
-  //                         name        TE position (NED norm)                       θ     side     brkSens chordFrac  cellS         cellChord  polar
-  makeBrakeFlapSegment('flap_r1', { x: -0.664, y:  0.358, z: -1.162 },  12, 'right',  0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l1', { x: -0.664, y: -0.358, z: -1.162 }, -12, 'left',   0.4,  0.10,  20.439/7, 3.29, 0.170, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r2', { x: -0.672, y:  0.735, z: -1.062 },  24, 'right',  0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l2', { x: -0.672, y: -0.735, z: -1.062 }, -24, 'left',   0.7,  0.20,  20.439/7, 3.29, 0.162, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r3', { x: -0.689, y:  1.052, z: -0.901 },  36, 'right',  1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l3', { x: -0.689, y: -1.052, z: -0.901 }, -36, 'left',   1.0,  0.30,  20.439/7, 3.29, 0.145, BRAKE_FLAP_POLAR),
+  // Positions from GLB TE via _cellTE(), relative to riser convergence.
+  // TE NED x = GLB TE z (-2.874) × glbToNED = -1.429
+  // parentCellX = cell QC NED x = -0.113 (constant across span)
+  //                         name        TE position (NED norm)                     θ     side     brkSens chordFrac  cellS         cellChord  cellX   polar
+  makeBrakeFlapSegment('flap_r1', _cellTE(2, 'right'),   12, 'right',  0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'right').x, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l1', _cellTE(2, 'left'),   -12, 'left',   0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'left').x,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r2', _cellTE(3, 'right'),   24, 'right',  0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'right').x, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l2', _cellTE(3, 'left'),   -24, 'left',   0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'left').x,  BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_r3', _cellTE(4, 'right'),   36, 'right',  1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'right').x, BRAKE_FLAP_POLAR),
+  makeBrakeFlapSegment('flap_l3', _cellTE(4, 'left'),   -36, 'left',   1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'left').x,  BRAKE_FLAP_POLAR),
 
-  // ── 2 parasitic bodies (lines + pilot chute — always the same) ──
-  //                    name       position (NED norm)                   S      chord  CD
-  makeParasiticSegment('lines',  { x: 0.23, y: 0, z: -0.40 },          0.35,  0.01,  1.0       ),
-  makeParasiticSegment('pc',     { x: 0.10, y: 0, z: -1.30 },          0.732, 0.01,  1.0       ),
+  // ── 2 parasitic bodies (lines + pilot chute) ──
+  // Lines: midpoint between riser convergence and canopy center
+  // PC: at bridleTop attachment (from model registry)
+  makeParasiticSegment('lines',  { x: -0.06, y: 0, z: -1.09 },         0.35,  0.01,  1.0       ),
+  makeParasiticSegment('pc',     _bridleTop(),                         0.732, 0.01,  1.0       ),
 ]
 
-/** Pilot position in NED normalized coordinates (below+behind canopy). */
-const PILOT_POSITION = { x: 0.38, y: 0, z: 0.48 }
+/** Pilot aero segment AC position in NED normalized coordinates.
+ * Quarter-chord of the body: 25% of chord (1.8m) below LE (head).
+ * Head (LE) at z ≈ −0.096 → AC at z = −0.096 + 0.25 × (1.8/1.875) = 0.144.
+ * x ≈ 0.01 from body midline (belly-forward offset is tiny). */
+const PILOT_POSITION = { x: 0.01, y: 0, z: 0.144 }
 
 /**
  * Build the complete Ibex UL aero segments array for a given pilot type.
@@ -907,9 +1027,12 @@ export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit
   // This rotates the freestream α by −90° before evaluating the polar,
   // and shifts the CP offset direction from NED x to NED z.
   const PILOT_PITCH_OFFSET = 90
+  // Riser attachment = rotation pivot for pilot pitch.
+  // The chord line (head→feet) and its AC swing around this point.
+  const RISER_PIVOT = { x: PILOT_PIVOT_X, z: PILOT_PIVOT_Z }
   const pilotSegment = pilotType === 'wingsuit'
-    ? makeUnzippablePilotSegment('pilot', PILOT_POSITION, aurafiveContinuous, slicksinContinuous, PILOT_PITCH_OFFSET)
-    : makeLiftingBodySegment('pilot', PILOT_POSITION, slicksinContinuous, PILOT_PITCH_OFFSET)
+    ? makeUnzippablePilotSegment('pilot', PILOT_POSITION, aurafiveContinuous, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
+    : makeLiftingBodySegment('pilot', PILOT_POSITION, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
 
   return [...IBEX_CANOPY_SEGMENTS, pilotSegment]
 }

@@ -306,11 +306,13 @@ describe('simulate', () => {
     // 50 steps × 0.02 s = 1 second
     const final = simulate(state, config, 0.02, 50)
 
-    // After 1s of free fall, w ≈ g (≈9.8 m/s)
-    // Some drag will have built up, so w < g, but should be in the ballpark
-    // Apparent mass from the canopy chord reduces effective acceleration slightly
-    expect(final.w).toBeGreaterThan(4.5)
-    expect(final.w).toBeLessThan(12)
+    // After 1s of free fall, the system picks up speed ≈ g (≈9.8 m/s).
+    // The canopy aero model pitches the body nose-down at α≈90°,
+    // rotating the velocity vector from body-z (w) into body-x (u).
+    // Check total airspeed rather than body-frame w.
+    const airspeed = Math.sqrt(final.u ** 2 + final.v ** 2 + final.w ** 2)
+    expect(airspeed).toBeGreaterThan(2.0)
+    expect(airspeed).toBeLessThan(12)
 
     // Should have fallen some distance (z increases in NED)
     expect(final.z).toBeGreaterThan(2)

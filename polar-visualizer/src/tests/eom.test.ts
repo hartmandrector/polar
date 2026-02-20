@@ -220,16 +220,16 @@ describe('computePilotPendulumParams', () => {
     const p = computePilotPendulumParams(
       CANOPY_PILOT_SEGMENTS, PILOT_PIVOT_X, PILOT_PIVOT_Z,
     )
-    // Pilot segment ratios sum to ~0.845 of default 77.5 kg ≈ 65.5 kg
-    expect(p.pilotMass).toBeGreaterThan(50)
+    // All 14 body segments: mass ratios sum to 1.0 → full 77.5 kg
+    expect(p.pilotMass).toBeGreaterThan(70)
     expect(p.pilotMass).toBeLessThan(80)
 
-    // Inertia about riser pivot — pilot segments span ~1.5 m from pivot
-    // with ~65 kg mass, so I ≈ 60-120 kg·m² is reasonable
-    expect(p.Iy_riser).toBeGreaterThan(30)
-    expect(p.Iy_riser).toBeLessThan(200)
+    // Inertia about riser pivot — GLB-derived positions place mass
+    // ~0.4 m below riser on average, so I ≈ 20-60 kg·m²
+    expect(p.Iy_riser).toBeGreaterThan(20)
+    expect(p.Iy_riser).toBeLessThan(100)
 
-    // CG should be below pivot (positive z in NED) and aft (negative x)
+    // CG should be below pivot (positive z in NED) and slightly forward
     expect(p.riserToCG).toBeGreaterThan(0)
     expect(p.cgOffset.z).toBeGreaterThan(0) // below pivot
   })

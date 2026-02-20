@@ -278,8 +278,8 @@ describe('brake flap segments', () => {
     const ctrl = defaultControls()
     computeSegmentForce(flap, 8, 0, ctrl, rho, V)
     // At zero brake, position should be at the stored TE position
-    // flap_r3 TE is at x=-0.689 (well aft of cell_r3 at x=0.145)
-    expect(flap.position.x).toBeCloseTo(-0.689, 3)
+    // flap_r3 TE NED x = GLB TE z (-2.874) × glbToNED (0.4972) = -1.429
+    expect(flap.position.x).toBeCloseTo(-1.429, 2)
   })
 
   it('flap position moves forward with brake input', () => {
