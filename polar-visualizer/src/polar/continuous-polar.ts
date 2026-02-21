@@ -117,6 +117,10 @@ export interface ContinuousPolar {
   s: number               // Reference area [m²]
   m: number               // Mass [kg]
   chord: number           // Reference chord / body length [m]
+  referenceLength: number // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
+                          // For wingsuits: head-to-tail chord in flight (~1.93m)
+                          // For canopies: pilot height (1.875m) or system chord
+                          // For skydivers: pilot height
 
   // Control dimension (optional — δ morphs these derivatives)
   controls?: {

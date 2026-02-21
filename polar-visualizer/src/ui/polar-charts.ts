@@ -396,6 +396,7 @@ export function updateChartSweep(
   legacyPolar?: WSEQPolar,
   segments?: AeroSegment[],
   controls?: SegmentControls,
+  massReference_m?: number,
 ): void {
   state.currentAlpha = currentAlpha
   state.minAlpha = config.minAlpha ?? -10
@@ -403,7 +404,8 @@ export function updateChartSweep(
 
   // Use segment-summed sweep when segments are available, otherwise single-airfoil
   if (segments && segments.length > 0 && controls) {
-    state.points = sweepSegments(segments, polar, controls, {
+    const massReference = massReference_m ?? polar.referenceLength
+    state.points = sweepSegments(segments, polar, massReference, controls, {
       minAlpha: state.minAlpha,
       maxAlpha: state.maxAlpha,
       step: 0.5,

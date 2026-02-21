@@ -2,6 +2,8 @@
  * UI controls — reads slider/dropdown values and provides a typed state object.
  */
 
+import { DEFAULT_VEHICLE_ID, getVehicleModelType, getVehicleOptions } from '../viewer/vehicle-registry.ts'
+
 export interface FlightState {
   alpha_deg: number
   beta_deg: number
@@ -43,14 +45,6 @@ export interface FlightState {
 }
 
 export type StateChangeCallback = (state: FlightState) => void
-
-const POLAR_TO_MODEL: Record<string, 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'> = {
-  aurafive: 'wingsuit',
-  a5segments: 'wingsuit',
-  ibexul: 'canopy',
-  slicksin: 'skydiver',
-  caravan: 'airplane'
-}
 
 export function setupControls(onChange: StateChangeCallback): FlightState {
   const alphaSlider = document.getElementById('alpha-slider') as HTMLInputElement
@@ -119,6 +113,44 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const pitchLabel = document.getElementById('pitch-value')!
   const yawLabel = document.getElementById('yaw-value')!
 
+  const vehicleOptions = getVehicleOptions()
+  if (polarSelect && vehicleOptions.length > 0) {
+    const previous = polarSelect.value
+    polarSelect.innerHTML = ''
+
+    const groupOrder: FlightState['modelType'][] = ['wingsuit', 'canopy', 'skydiver', 'airplane']
+    const groupLabels: Record<FlightState['modelType'], string> = {
+      wingsuit: 'Wingsuits',
+      canopy: 'Canopies',
+      skydiver: 'Skydivers',
+      airplane: 'Airplanes',
+    }
+
+    const grouped = new Map<FlightState['modelType'], typeof vehicleOptions>()
+    for (const option of vehicleOptions) {
+      const key = option.modelType
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key)!.push(option)
+    }
+
+    for (const key of groupOrder) {
+      const options = grouped.get(key)
+      if (!options || options.length === 0) continue
+      const optGroup = document.createElement('optgroup')
+      optGroup.label = groupLabels[key]
+      for (const option of options) {
+        const el = document.createElement('option')
+        el.value = option.id
+        el.textContent = option.name
+        optGroup.appendChild(el)
+      }
+      polarSelect.appendChild(optGroup)
+    }
+
+    const hasPrevious = previous && vehicleOptions.some((opt) => opt.id === previous)
+    polarSelect.value = hasPrevious ? previous : DEFAULT_VEHICLE_ID
+  }
+
   function readState(): FlightState {
     const alpha = parseFloat(alphaSlider.value)
     const beta = parseFloat(betaSlider.value)
@@ -127,7 +159,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const airspeed = parseFloat(airspeedSlider.value)
     const rho = parseFloat(rhoSlider.value) / 1000
     const polarKey = polarSelect.value
-    const modelType = POLAR_TO_MODEL[polarKey] || 'wingsuit'
+    const modelType = getVehicleModelType(polarKey)
     const frameMode = frameSelect.value as 'body' | 'inertial'
     const canopyPilotType = (canopyPilotSelect?.value || 'wingsuit') as 'wingsuit' | 'slick'
 

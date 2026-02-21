@@ -12,9 +12,10 @@ import { windDirectionBody } from './frames.ts'
 import {
   CANOPY_WINGSUIT_ASSEMBLY, CANOPY_SLICK_ASSEMBLY,
   WINGSUIT_GEOMETRY, SLICK_GEOMETRY, CANOPY_GEOMETRY,
-  MODEL_REGISTRY, TARGET_SIZE,
+  MODEL_REGISTRY, TARGET_SIZE, deriveAssemblyOffsets,
   type VehicleAssembly, type ModelGeometry,
 } from './model-registry.ts'
+import type { VehicleDefinition, GLBMetadata } from './vehicle-registry.ts'
 
 export type ModelType = 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
 export type PilotType = 'wingsuit' | 'slick'
@@ -24,6 +25,14 @@ const MODEL_PATHS: Record<ModelType, string> = {
   canopy: CANOPY_GEOMETRY.path,
   skydiver: SLICK_GEOMETRY.path,
   airplane: MODEL_REGISTRY['airplane'].path,
+}
+
+interface ModelOverrides {
+  mainPath?: string
+  pilotPath?: string
+  mainScale?: number
+  pilotScale?: number
+  assembly?: VehicleAssembly
 }
 
 /** Pilot sub-model GLB paths (reuses same assets as standalone models) */
@@ -41,6 +50,83 @@ const PILOT_GEOMETRY: Record<PilotType, ModelGeometry> = {
 /** Look up the vehicle assembly for a given pilot type under the canopy. */
 function getAssembly(pilotType: PilotType): VehicleAssembly {
   return pilotType === 'slick' ? CANOPY_SLICK_ASSEMBLY : CANOPY_WINGSUIT_ASSEMBLY
+}
+
+function getCanopyAssemblyScales(assembly: VehicleAssembly): { parentScale: number; childScale: number } {
+  return {
+    parentScale: assembly.parentScale,
+    childScale: assembly.childScale ?? 1,
+  }
+}
+
+function getComponentScale(component?: VehicleDefinition['equipment'][number] | VehicleDefinition['pilot']): number {
+  return component?.scale ?? 1
+}
+
+function getCanopyComponent(vehicle: VehicleDefinition): VehicleDefinition['equipment'][number] | undefined {
+  return vehicle.equipment.find((component) => component.glb?.filePath === CANOPY_GEOMETRY.path)
+    ?? vehicle.equipment.find((component) => component.id.startsWith('canopy'))
+    ?? vehicle.equipment[0]
+}
+
+function resolveVehicleAssembly(vehicle: VehicleDefinition, pilotType: PilotType): VehicleAssembly {
+  const base = getAssembly(pilotType)
+  const canopyComponent = getCanopyComponent(vehicle)
+  const canopyComponentScale = getComponentScale(canopyComponent)
+  const pilotComponentScale = getComponentScale(vehicle.pilot)
+
+  // Derive baseline proportions using the original base.parentScale (without
+  // component multipliers).  This gives us the childScale that makes the pilot
+  // render at the correct physical size at the base canopy scale.
+  const baseDerived = deriveAssemblyOffsets(PILOT_GEOMETRY[pilotType], CANOPY_GEOMETRY, base.parentScale)
+
+  // Apply component scales independently so canopy and pilot are decoupled.
+  const fullCanopyScale = base.parentScale * canopyComponentScale
+
+  if (!baseDerived) {
+    return { ...base, parentScale: fullCanopyScale, baseParentScale: base.parentScale }
+  }
+
+  const finalChildScale = baseDerived.childScale * pilotComponentScale
+
+  return {
+    ...base,
+    parentScale: fullCanopyScale,
+    baseParentScale: base.parentScale,
+    childScale: finalChildScale,
+    childOffset: {
+      x: baseDerived.childOffset.x,
+      y: baseDerived.childOffset.y * pilotComponentScale,
+      z: baseDerived.childOffset.z,
+    },
+    shoulderOffsetFraction: baseDerived.shoulderOffsetFraction,
+  }
+}
+
+function resolveGlbScale(glb?: GLBMetadata): number | undefined {
+  if (!glb) return undefined
+  if (glb.physicalReference) {
+    return glb.physicalReference.meters / glb.physicalReference.glbExtent
+  }
+  if (glb.glbMaxDim) {
+    const meters = glb.physicalSize.height ?? glb.physicalSize.chord ?? glb.physicalSize.span
+    if (meters) return meters / glb.glbMaxDim
+  }
+  return undefined
+}
+
+function resolveMainPath(vehicle: VehicleDefinition, modelType: ModelType): string {
+  if (modelType === 'canopy' || modelType === 'airplane') {
+    const glb = vehicle.equipment.find((component) => component.glb)?.glb
+    return glb?.filePath ?? MODEL_PATHS[modelType]
+  }
+  return vehicle.pilot.glb?.filePath ?? MODEL_PATHS[modelType]
+}
+
+function resolvePilotPath(vehicle: VehicleDefinition, pilotType?: PilotType): string | undefined {
+  if (!pilotType) return undefined
+  if (pilotType === 'wingsuit') return vehicle.pilot.glb?.filePath ?? PILOT_PATHS[pilotType]
+  return PILOT_PATHS[pilotType]
 }
 
 // ── Legacy constants (now sourced from registry) ────────────────────────────
@@ -77,6 +163,32 @@ function pilotOffset(assembly: VehicleAssembly): { position: THREE.Vector3; rota
 export const CANOPY_SCALE = CANOPY_WINGSUIT_ASSEMBLY.parentScale  // 1.5
 
 /**
+ * Empirical calibration factor for canopy aero position alignment.
+ *
+ * At the base canopy scale (component scale = 1.0), aero segment NED positions
+ * need to be divided by this factor to align with the GLB mesh.  This corrects
+ * accumulated precision offsets from rib measurements, glbToNED conversion,
+ * and CG centering.  Tuned by visual matching of brake flap and CP positions
+ * to trailing-edge wireframes and chord-fraction landmarks.
+ *
+ * Diagnostic data confirmed:
+ *   calibration=1.776 → arrow/mesh ratio = 0.563 (arrows at 56% of mesh height)
+ *   calibration=1.0   → arrow/mesh ratio = 1.000 (arrows exactly on mesh surface)
+ *
+ * Algebraic proof (see diagnostic output for runtime verification):
+ *   mesh_pos  = glb × fullPS × s
+ *   arrow_pos = glb × glbToNED × canopyScaleRatio × pilotScale × massRef
+ *             = glb × canopyScaleRatio × basePS × s   (after expansion/cancellation)
+ *   alignment: canopyScaleRatio × basePS = fullPS
+ *            → canopyScaleRatio = componentScale
+ *            → CANOPY_AERO_CALIBRATION = 1.0
+ *
+ * The component scale in vehicle-registry.ts must also be 1.0 so the mesh
+ * represents the correct 220 ft² (20.439 m²) physics area.
+ */
+export const CANOPY_AERO_CALIBRATION = 1.776//1.776
+
+/**
  * Wingsuit deployment visualization group.
  * Contains the PC, snivel, bridle, and lines — all pre-loaded and hidden.
  * Positions and visibility are driven by the wingsuitDeploy slider in main.ts.
@@ -104,6 +216,8 @@ export interface LoadedModel {
   bodyLength: number
   /** Scale factor to convert pilot body meters to model units (for mass overlay) */
   pilotScale: number
+  /** Base canopy scale at full deployment (for dynamic span/chord scaling) */
+  canopyBaseScale?: number
   /** Which pilot sub-model is loaded (only for canopy) */
   pilotType?: PilotType
   /** Pivot group for bridle + pilot chute (only for canopy), rotatable per wind direction */
@@ -133,6 +247,27 @@ export interface LoadedModel {
   massPivotNED?: { x: number; z: number }
   /** Wingsuit deployment visualization (only for wingsuit) */
   deployGroup?: WingsuitDeployGroup
+  /**
+   * Ratio between the visual canopy scale and the physics scale.
+   * When the canopy mesh is enlarged via component scale (e.g. 1.5×), canopy-attached
+   * aero/mass positions need to be multiplied by this ratio so they align with the
+   * enlarged mesh. Pilot-body positions use the base pilotScale (ratio = 1.0).
+   * Default: 1.0 (no enlargement).
+   */
+  canopyScaleRatio: number
+  /**
+   * Current canopy component scale (1.0 = base, 1.5 = 50% enlargement).
+   * Drives both the GLB mesh size and the canopyScaleRatio for aero overlays.
+   * Default: 1.0 for non-canopy models.
+   */
+  canopyComponentScale: number
+  /**
+   * Atomically update the canopy component scale at runtime.
+   * Scales the canopy GLB mesh and recalculates canopyScaleRatio + canopyBaseScale
+   * so that physics overlays stay aligned with the enlarged mesh.
+   * Only available for canopy-type models; undefined for others.
+   */
+  setCanopyScale?: (scale: number) => void
 }
 
 const loader = new GLTFLoader()
@@ -171,19 +306,21 @@ let wingsuitRawMaxDim = 0
  * For canopy models with a pilotType, both the canopy and pilot are loaded
  * and composed in raw GLB coordinates, then normalized together.
  */
-export async function loadModel(type: ModelType, pilotType?: PilotType): Promise<LoadedModel> {
+export async function loadModel(type: ModelType, pilotType?: PilotType, overrides?: ModelOverrides): Promise<LoadedModel> {
   const group = new THREE.Group()
   group.name = `model-${type}`
 
   // Load main model
-  const mainModel = await loadRawGltf(MODEL_PATHS[type])
+  const mainPath = overrides?.mainPath ?? MODEL_PATHS[type]
+  const mainModel = await loadRawGltf(mainPath)
 
   // For canopy + pilot, compose both before normalization
   let compositeRoot: THREE.Group
   let pilotRawHeight = 0  // raw pilot max extent in GLB units (before normalization)
   let referenceDim = 0    // the dimension used for normalization (pilot body size)
+  let canopyBaseScale: number | undefined
   if (type === 'canopy' && pilotType) {
-    const assembly = getAssembly(pilotType)
+    const assembly = overrides?.assembly ?? getAssembly(pilotType)
     const pilotGeo = PILOT_GEOMETRY[pilotType]
     const offset = pilotOffset(assembly)
 
@@ -200,11 +337,14 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     // agree: right = Three.js −X.
     // Three.js WebGLRenderer detects the negative determinant and auto-
     // reverses face winding, so normals and culling remain correct.
-    const cs = assembly.parentScale
+    // Derive assembly scales from measured GLB extents (glbToMeters).
+    const { parentScale, childScale } = getCanopyAssemblyScales(assembly)
+    const cs = parentScale
     mainModel.scale.set(-cs, cs, cs)
     compositeRoot.add(mainModel)
 
-    const pilotModel = await loadRawGltf(PILOT_PATHS[pilotType])
+    const pilotPath = overrides?.pilotPath ?? PILOT_PATHS[pilotType]
+    const pilotModel = await loadRawGltf(pilotPath)
     // Measure pilot's raw bounding box max extent (body length in GLB coords)
     const pilotBox = new THREE.Box3().setFromObject(pilotModel)
     const pilotSize = pilotBox.getSize(new THREE.Vector3())
@@ -214,7 +354,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     // childScale corrects for different GLB-to-meters ratios between canopy
     // and pilot models, so the pilot renders at the correct physical size
     // relative to the canopy mesh (otherwise the pilot appears ~17% too large).
-    const childSc = assembly.childScale ?? 1
+    const childSc = childScale
     pilotModel.scale.setScalar(childSc)
 
     // Wrap pilot in a pivot group at the riser attachment point.
@@ -291,6 +431,11 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
 
   let bodyLength = 2.0
   let pilotScale = 1.0
+  let canopyScaleRatio = 1.0
+  let canopyComponentScale = 1.0
+  // Base values captured for the setCanopyScale closure
+  let _canopyBasePS = 0   // baseParentScale (assembly scale without component multiplier)
+  let _canopyNormS = 0    // TARGET_SIZE / referenceDim normalization factor
   if (referenceDim > 0) {
     const s = TARGET_SIZE / referenceDim
     compositeRoot.scale.multiplyScalar(s)
@@ -305,9 +450,58 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
       // shift by the same offset, keeping alignment.
 
       // pilotScale from the canopy mesh: ensures NED physics positions map to
-      // the exact same Three.js coordinates as the canopy GLB geometry.
-      const canopyMeshScale = Math.abs(mainModel.scale.x) * s  // parentScale × s
-      pilotScale = canopyMeshScale / (CANOPY_GEOMETRY.glbToNED * 1.875)
+      // the correct Three.js coordinates for the canopy GLB geometry.
+      // Use baseParentScale (without component scaling) so physics positions
+      // stay at the correct physical size regardless of canopy visual scaling.
+      // The canopy mesh may be enlarged via component scale for visual clarity,
+      // but forces/mass should render at physically correct positions.
+      const resolvedAssembly: VehicleAssembly | undefined = (compositeRoot as any)._assembly
+      const physicsParentScale = resolvedAssembly?.baseParentScale ?? Math.abs(mainModel.scale.x)
+      canopyBaseScale = Math.abs(mainModel.scale.x) * s  // full visual scale (for deployment)
+      pilotScale = (physicsParentScale * s) / (CANOPY_GEOMETRY.glbToNED * 1.875)
+      // Component scale = visual enlargement factor (fullScale / baseScale)
+      canopyComponentScale = physicsParentScale > 0
+        ? Math.abs(mainModel.scale.x) / physicsParentScale
+        : 1.0
+      // canopyScaleRatio: maps physics positions to match the visually scaled mesh.
+      // Equal to componentScale — derived from fullPS / basePS cancellation.
+      // See CANOPY_AERO_CALIBRATION comment for the algebraic proof.
+      canopyScaleRatio = canopyComponentScale / CANOPY_AERO_CALIBRATION
+      // Capture base values for runtime re-scaling (setCanopyScale closure)
+      _canopyBasePS = physicsParentScale
+      _canopyNormS = s
+
+      // ── DIAGNOSTIC: trace the complete scaling pipeline ──
+      const _glbToNED = CANOPY_GEOMETRY.glbToNED
+      const _glbToMeters = CANOPY_GEOMETRY.glbToMeters
+      const _fullPS = Math.abs(mainModel.scale.x)
+      const _centerRibY = 4.337  // GLB y of center cell chord LE (rib[0].glbYChordLE)
+      const _centerRibZ = -0.248 // GLB z of center cell QC (approx)
+      // Mesh position of center cell chord LE (Three.js y):
+      const meshY = _centerRibY * _fullPS * s
+      // Corresponding NED position from _cellQC:
+      const nedZ = -_centerRibY * _glbToNED  // NED z (normalized)
+      // Arrow position at that NED pos (Three.js y):
+      const arrowY = Math.abs(nedZ) * canopyScaleRatio * pilotScale * 1.875
+      console.log('[CANOPY DIAG] ── scaling pipeline ──')
+      console.log(`  referenceDim (wingsuitRawMaxDim): ${referenceDim}`)
+      console.log(`  TARGET_SIZE: ${TARGET_SIZE}`)
+      console.log(`  s (norm): ${s.toFixed(6)}`)
+      console.log(`  baseParentScale: ${physicsParentScale}`)
+      console.log(`  fullParentScale (|mainModel.scale.x|): ${_fullPS}`)
+      console.log(`  canopyComponentScale: ${canopyComponentScale}`)
+      console.log(`  CANOPY_AERO_CALIBRATION: ${CANOPY_AERO_CALIBRATION}`)
+      console.log(`  canopyScaleRatio: ${canopyScaleRatio.toFixed(6)}`)
+      console.log(`  pilotScale: ${pilotScale.toFixed(6)}`)
+      console.log(`  glbToNED: ${_glbToNED.toFixed(6)}`)
+      console.log(`  glbToMeters: ${_glbToMeters.toFixed(6)}`)
+      console.log(`  compositeRoot.scale: (${compositeRoot.scale.x.toFixed(4)}, ${compositeRoot.scale.y.toFixed(4)}, ${compositeRoot.scale.z.toFixed(4)})`)
+      console.log(`  mainModel.scale: (${mainModel.scale.x.toFixed(4)}, ${mainModel.scale.y.toFixed(4)}, ${mainModel.scale.z.toFixed(4)})`)
+      console.log(`  ── center cell alignment check ──`)
+      console.log(`  Mesh  Three.y for GLB y=${_centerRibY}: ${meshY.toFixed(4)}`)
+      console.log(`  Arrow Three.y for same point:          ${arrowY.toFixed(4)}`)
+      console.log(`  ratio (arrow/mesh): ${(arrowY/meshY).toFixed(6)}  (should be 1.0 for alignment)`)
+      console.log(`  Algebraic: canopyScaleRatio × basePS / fullPS = ${(canopyScaleRatio * physicsParentScale / _fullPS).toFixed(6)}`)
 
     } else {
       // Standalone models: bbox-center at origin (legacy)
@@ -327,7 +521,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     const assembly: VehicleAssembly = (compositeRoot as any)._assembly
     const bridlePCModel = await loadRawGltf('/models/bridalandpc.gltf')
     const s = compositeRoot.scale.x  // normalization scale (should be positive)
-    const bridleScale = assembly.deployScales?.bridle ?? 1.5
+    const bridleScale = assembly.deployScales?.bridle ?? 3.0
     bridlePCModel.scale.setScalar(bridleScale * Math.abs(s))
 
     bridleGroup = new THREE.Group()
@@ -339,7 +533,8 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     const attachment = CANOPY_GEOMETRY.attachments!.find(a => a.name === 'bridleTop')!
     const glb = attachment.glb
     // GLB → Three.js with canopy X-flip: (x, y, z) → (−x × cs × s, y × cs × s, z × cs × s)
-    const cs = assembly.parentScale  // canopy scale (1.5)
+    const { parentScale } = getCanopyAssemblyScales(assembly)
+    const cs = parentScale
     const attachX = -glb.x * cs * s
     const attachY =  glb.y * cs * s
     const attachZ =  glb.z * cs * s
@@ -411,7 +606,47 @@ export async function loadModel(type: ModelType, pilotType?: PilotType): Promise
     }
   }
 
-  return { type, group, model: compositeRoot, bodyLength, pilotScale, pilotType, bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot, canopyModel: type === 'canopy' ? mainModel : undefined, deployGroup }
+  const result: LoadedModel = {
+    type, group, model: compositeRoot, bodyLength, pilotScale, pilotType,
+    bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot,
+    canopyModel: type === 'canopy' ? mainModel : undefined,
+    canopyBaseScale, canopyScaleRatio, canopyComponentScale, deployGroup,
+  }
+
+  // Coupled scaling: setCanopyScale atomically updates the GLB mesh size,
+  // canopyScaleRatio, canopyBaseScale, and canopyComponentScale so that the
+  // visual mesh and physics overlays always stay aligned.
+  if (type === 'canopy' && mainModel && _canopyBasePS > 0) {
+    result.setCanopyScale = (newScale: number) => {
+      const newFull = _canopyBasePS * newScale
+      mainModel.scale.set(-newFull, newFull, newFull)
+      result.canopyScaleRatio = newScale / CANOPY_AERO_CALIBRATION
+      result.canopyBaseScale = newFull * _canopyNormS
+      result.canopyComponentScale = newScale
+    }
+  }
+
+  return result
+}
+
+/**
+ * Load a vehicle using registry GLB metadata, falling back to legacy paths.
+ */
+export async function loadVehicleModel(vehicle: VehicleDefinition, pilotType?: PilotType): Promise<LoadedModel> {
+  const modelType = vehicle.modelType ?? 'wingsuit'
+  const mainPath = resolveMainPath(vehicle, modelType)
+  const pilotPath = resolvePilotPath(vehicle, pilotType)
+  const useOverrides = modelType !== 'canopy'
+  const mainScale = useOverrides
+    ? resolveGlbScale(modelType === 'airplane'
+      ? vehicle.equipment.find((component) => component.glb)?.glb
+      : vehicle.pilot.glb)
+    : undefined
+  const pilotScale = useOverrides ? resolveGlbScale(vehicle.pilot.glb) : undefined
+  const assembly = modelType === 'canopy' && pilotType
+    ? resolveVehicleAssembly(vehicle, pilotType)
+    : undefined
+  return loadModel(modelType, pilotType, { mainPath, pilotPath, mainScale, pilotScale, assembly })
 }
 
 /**

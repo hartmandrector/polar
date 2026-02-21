@@ -289,6 +289,7 @@ export function updateForceVectors(
   inertia: InertiaComponents | null = null,
   gravityDir?: THREE.Vector3,
   pilotScale: number = 1.0,
+  massReference_m: number = polar.referenceLength,
   controls?: SegmentControls,
   cgOffsetThree?: THREE.Vector3,
   cachedSegForces?: SegmentForceResult[],
@@ -296,6 +297,7 @@ export function updateForceVectors(
   bodyQuat?: THREE.Quaternion,
   perSegmentData?: SegmentAeroResult[],
   deploy: number = 1.0,
+  canopyScaleRatio: number = 1.0,
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -329,8 +331,8 @@ export function updateForceVectors(
   // Otherwise fall back to chord-fraction CG.
   let cgOrigin: THREE.Vector3
   if (polar.massSegments && polar.massSegments.length > 0) {
-    const cgNED = computeCenterOfMass(polar.massSegments, 1.875, polar.m)
-    cgOrigin = applyFramePos(shiftPos(nedToThreeJS(cgNED).multiplyScalar(pilotScale)))
+    const cgNED = computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
+    cgOrigin = applyFramePos(shiftPos(nedToThreeJS(cgNED).multiplyScalar(pilotScale * massReference_m)))
   } else {
     cgOrigin = applyFramePos(shiftPos(chordFractionToBody(polar.cg, bodyLength)))
   }
@@ -354,14 +356,18 @@ export function updateForceVectors(
       const sf = segForces[i]
       const sa = vectors.segmentArrows[i]
 
+      // Canopy visual scale: enlarge canopy-attached positions to match the
+      // enlarged canopy mesh (component scale).  Pilot segment stays at 1.0.
+      const posScale = seg.name !== 'pilot' ? canopyScaleRatio : 1.0
+
       // Deployment scaling for canopy-attached segments (PC, cells, flaps).
       // The bridle attachment and canopy surface deform horizontally during deployment.
       // Match the scaling applied to the canopy GLB mesh and bridle position.
       const spanScale = 0.1 + 0.9 * deploy   // lateral (NED y)
       const chordScale = 0.3 + 0.7 * deploy  // fore-aft (NED x)
-      let segPosX = seg.position.x
-      let segPosY = seg.position.y
-      let segPosZ = seg.position.z
+      let segPosX = seg.position.x * posScale
+      let segPosY = seg.position.y * posScale
+      let segPosZ = seg.position.z * posScale
       if (seg.name === 'pc' || seg.name.startsWith('cell_') || seg.name.startsWith('flap_')) {
         segPosX *= chordScale  // chord/forward axis
         segPosY *= spanScale   // span/lateral axis
@@ -376,7 +382,7 @@ export function updateForceVectors(
       //   0° → chord along +x (canopy cell, prone body: LE=forward)
       //  90° → chord along −z (upright pilot: LE=head, up)
       // NED pitch-up rotates +x toward −z, so we negate the angle.
-      const cpOffsetNorm = -(sf.cp - 0.25) * seg.chord / 1.875
+      const cpOffsetNorm = -(sf.cp - 0.25) * seg.chord / massReference_m * posScale
       const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
       // Base chord offset at the segment's static pitchOffset
       let offX = cpOffsetNorm * Math.cos(basePitchRad)
@@ -396,8 +402,24 @@ export function updateForceVectors(
         y: segPosY,
         z: segPosZ + offZ,
       }
-      const posThree = nedToThreeJS(cpNED).multiplyScalar(pilotScale * 1.875)
+      const posThree = nedToThreeJS(cpNED).multiplyScalar(pilotScale * massReference_m)
       const posWorld = applyFramePos(shiftPos(posThree))
+
+      // ── DIAGNOSTIC: log center cell position for alignment verification ──
+      if (seg.name === 'cell_c' && !(vectors as any)._diagLogged) {
+        console.log('[VECTORS DIAG] ── cell_c arrow position ──')
+        console.log(`  seg.position: (${seg.position.x.toFixed(4)}, ${seg.position.y.toFixed(4)}, ${seg.position.z.toFixed(4)})`)
+        console.log(`  canopyScaleRatio: ${canopyScaleRatio}`)
+        console.log(`  posScale: ${posScale}`)
+        console.log(`  segPos (scaled): (${segPosX.toFixed(4)}, ${segPosY.toFixed(4)}, ${segPosZ.toFixed(4)})`)
+        console.log(`  cpNED: (${cpNED.x.toFixed(4)}, ${cpNED.y.toFixed(4)}, ${cpNED.z.toFixed(4)})`)
+        console.log(`  pilotScale: ${pilotScale}`)
+        console.log(`  massReference_m: ${massReference_m}`)
+        console.log(`  posThree (unshifted): (${posThree.x.toFixed(4)}, ${posThree.y.toFixed(4)}, ${posThree.z.toFixed(4)})`)
+        console.log(`  cgOffset: ${cgOffsetThree ? `(${cgOffsetThree.x.toFixed(4)}, ${cgOffsetThree.y.toFixed(4)}, ${cgOffsetThree.z.toFixed(4)})` : 'none'}`)
+        console.log(`  posWorld (final): (${posWorld.x.toFixed(4)}, ${posWorld.y.toFixed(4)}, ${posWorld.z.toFixed(4)})`)
+        ;(vectors as any)._diagLogged = true
+      }
 
       // Lift arrow — flip direction for negative lift
       const liftLen = Math.abs(sf.lift) * FORCE_SCALE
@@ -459,12 +481,13 @@ export function updateForceVectors(
 
     // Sum segment forces for system-level vectors (NED body frame)
     const cgNED = polar.massSegments
-      ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+      ? computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
       : { x: 0, y: 0, z: 0 }
     const windNED = { x: windDir.z, y: -windDir.x, z: -windDir.y }
     const liftNED = { x: liftDir.z, y: -liftDir.x, z: -liftDir.y }
     const sideNED = { x: sideDir.z, y: -sideDir.x, z: -sideDir.y }
-    const system = sumAllSegments(segments, segForces, cgNED, 1.875, windNED, liftNED, sideNED)
+    // TODO(ref-audit): aero reference -> referenceLength_m
+    const system = sumAllSegments(segments, segForces, cgNED, polar.referenceLength, windNED, liftNED, sideNED)
 
     // Total aero force (at CG, from summed segments)
     const totalAeroThree = nedToThreeJS(system.force)

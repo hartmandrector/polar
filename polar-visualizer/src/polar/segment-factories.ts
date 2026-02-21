@@ -353,12 +353,6 @@ export function makeUnzippablePilotSegment(
 // ─── Brake Flap Segment ─────────────────────────────────────────────────────
 
 /**
- * Reference height for position normalization [m].
- * Used to convert physical chord measurements to normalized position offsets.
- */
-const REFERENCE_HEIGHT = 1.875
-
-/**
  * Build a brake flap AeroSegment for the trailing edge of a canopy cell.
  *
  * When brakes are applied, the trailing edge of the cell deflects downward.
@@ -387,7 +381,10 @@ const REFERENCE_HEIGHT = 1.875
  * @param flapChordFraction Maximum flap chord / cell chord at full brake (outer=0.30, inner=0.10)
  * @param parentCellS       Parent cell reference area [m²]
  * @param parentCellChord   Parent cell chord [m]
+ * @param parentCellX       Parent cell x-position [normalized NED]
  * @param flapPolar         ContinuousPolar for the flap panel
+ * @param referenceLength   Reference length for position normalization [m]
+ * @param constants         Optional control constants
  */
 export function makeBrakeFlapSegment(
   name: string,
@@ -400,6 +397,7 @@ export function makeBrakeFlapSegment(
   parentCellChord: number,
   parentCellX: number,
   flapPolar: ContinuousPolar,
+  referenceLength: number,
   constants?: ControlConstants,
 ): AeroSegment {
   const ctrl = constants ?? DEFAULT_CONSTANTS
@@ -408,7 +406,8 @@ export function makeBrakeFlapSegment(
   // Full-flight flap geometry (deploy = 1) — captured at factory time
   const fullMaxFlapS = flapChordFraction * parentCellS
   const fullMaxFlapChord = flapChordFraction * parentCellChord
-  const fullMaxCpShift = 0.25 * fullMaxFlapChord / REFERENCE_HEIGHT
+  // TODO(ref-audit): aero reference -> referenceLength_m
+  const fullMaxCpShift = 0.25 * fullMaxFlapChord / referenceLength
 
   // Roll increment sign — deepens the arc in the same direction as the base roll.
   const rollSign = rollDeg >= 0 ? 1 : -1

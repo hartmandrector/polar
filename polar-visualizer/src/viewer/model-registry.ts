@@ -382,6 +382,15 @@ export interface VehicleAssembly {
   readonly parentScale: number
 
   /**
+   * Base parent scale before component scaling (used for NED→scene conversion).
+   * When component scales enlarge the canopy mesh beyond physical proportions,
+   * pilotScale (NED→scene) should use this base value so physics positions
+   * remain at the correct physical size.
+   * Falls back to parentScale if not set.
+   */
+  readonly baseParentScale?: number
+
+  /**
    * Scale applied to the child model within the composite [dimensionless].
    * Corrects for different GLB-to-meters ratios between parent and child:
    *   childScale = parentScale × childGlbToMeters / parentGlbToMeters
@@ -648,6 +657,7 @@ export function relativeToCG(position: Vec3, cgNED: Vec3): Vec3 {
 // ─────────────────────────────────────────────────────────────────────
 
 // Reference height used throughout the system (pilot height in meters)
+// TODO(ref-audit): keep as render-only; do not mix with aero reference length
 const REF_HEIGHT = 1.875
 
 /**
@@ -789,8 +799,8 @@ export const CANOPY_GEOMETRY: ModelGeometry = {
     glbExtent: 3.529,   // GLB chord (LE top Z +0.655 to TE Z −2.874)
   },
   glbToMeters: 3.29 / 3.529,                       // 0.9322
-  glbToNED: (3.29 / 3.529) / REF_HEIGHT,           // 0.4972
-  referenceHeight: REF_HEIGHT,
+  glbToNED: (3.29 / 3.529) / 1.875,                // derived: glbToMeters / referenceHeight
+  referenceHeight: 1.875,                           // same as pilot height for now
 
   landmarks: [
     { name: 'bboxCenter',      glb: { x: 0, y: 2.366, z: -1.110 },  description: 'Geometric center of BBox' },
@@ -1058,14 +1068,83 @@ export const SNIVEL_GEOMETRY: ModelGeometry = {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Assembly offset derivation
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Derive assembly offsets from measured GLB geometry and current scales.
+ *
+ * **Design Specification (from user measurement):**
+ * - Reference frame: Pilot height (1.875m), not canopy chord
+ * - Shoulder location: 0.1 × pilot height measured from pilot's head/top
+ *   - In GLB coords: shoulder_left.z ≈ 0.560 m (from wingsuit/slick attachments)
+ *   - Physical distance: 0.560 GLB × pilotGeometry.glbToMeters = pilot shoulder position
+ *   - Normalized: shoulder_meters / 1.875 = shoulderOffsetFraction
+ * - Attachment point: Riser convergence (canopy {0, 0.240, −0.050})
+ * - Normalization: Offsets expressed as fractions for scale invariance
+ *
+ * **Implementation:**
+ * 1. childScale = canopyScale × (pilotGeometry.glbToMeters / canopyGeometry.glbToMeters)
+ * 2. shoulderOffsetFraction = (shoulder_glbZ × pilotGeometry.glbToMeters) / REF_HEIGHT
+ * 3. childOffset.y = −(shoulder_glbZ × childScale) to align shoulder with harness
+ *
+ * This allows dynamic recalculation whenever scales change, without hardcoding
+ * assembly geometry.
+ */
+export function deriveAssemblyOffsets(
+  pilotGeometry: ModelGeometry,
+  canopyGeometry: ModelGeometry,
+  canopyScale: number,
+):
+  | {
+      childScale: number
+      childOffset: Vec3
+      shoulderOffsetFraction: number
+    }
+  | undefined {
+  // Only pilot models have shoulder attachments; slick has no shoulder in wingsuit mode
+  const shoulderAttachment = pilotGeometry.attachments?.find(
+    (a) => a.name === 'shoulder_left',
+  )
+  if (!shoulderAttachment) {
+    return undefined
+  }
+
+  const shoulderGlbZ = shoulderAttachment.glb.z
+
+  // Scale pilot to render correctly relative to the post-scaled canopy
+  const childScale = canopyScale * (pilotGeometry.glbToMeters / canopyGeometry.glbToMeters)
+
+  // Shoulder offset normalized by pilot height (1.875m)
+  // For wingsuit: 0.560 × 0.5282 / 1.875 ≈ 0.158 ✓
+  // For slick: 0.560 × 0.5541 / 1.875 ≈ 0.166 ✓
+  const shoulderMeters = Math.abs(shoulderGlbZ) * pilotGeometry.glbToMeters
+  const shoulderOffsetFraction = shoulderMeters / REF_HEIGHT
+
+  // Position pilot so its shoulder aligns with the canopy harness point (y = 0)
+  // Negative because child coords are in pilot's local frame
+  const childOffsetY = -shoulderGlbZ * childScale
+
+  return {
+    childScale,
+    childOffset: { x: 0, y: childOffsetY, z: 0 },
+    shoulderOffsetFraction,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Vehicle assemblies
 // ─────────────────────────────────────────────────────────────────────
 
 /**
  * Ibex UL canopy + wingsuit pilot assembly.
  *
- * The canopy is scaled by 1.5× before compositing with the pilot body.
+ * The canopy is scaled by 3.0× before compositing with the pilot body.
  * See MODEL-GEOMETRY.md § "Assembly: Ibex UL + Wingsuit Pilot".
+ *
+ * **Offset Derivation:** All values below (childScale, childOffset, shoulderOffsetFraction)
+ * are precomputed from deriveAssemblyOffsets() using measured GLB geometry and pilot height
+ * reference (1.875m). See deriveAssemblyOffsets() for design specification and formula.
  */
 export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
   id: 'ibex-wingsuit',
@@ -1074,28 +1153,32 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
   parentId: 'cp2',
   childId: 'tsimwingsuit',
 
-  parentScale: 1.5,  // CANOPY_SCALE — visual fit
+  parentScale: 3,  // CANOPY_SCALE — visual fit (testing decoupling)
 
   // childScale: parentScale × wingsuit_glbToMeters / canopy_glbToMeters
-  //   = 1.5 × (1.875/3.550) / (3.29/3.529) = 0.850
-  // Without this the pilot body renders 17.6% too large relative to the canopy.
-  childScale: 0.850,
+  //   = 3.0 × (1.875/3.550) / (3.29/3.529) = 1.700
+  // Without this the pilot body renders too large relative to the canopy.
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  childScale: 1.7,
 
   // Pilot position in parent GLB coords.
-  // Derived: -(shoulder_glbZ × childScale) = -(0.560 × 0.850) = -0.476
+  // Derived: -(shoulder_glbZ × childScale) = -(0.560 × 1.700) = -0.952
   // Places the shoulder (riser attachment) at canopy Y = 0 (harness point).
-  childOffset: { x: 0, y: -0.476, z: 0 },
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  childOffset: { x: 0, y: -0.952, z: 0 },
   // −90° X rotation: prone → hanging
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
   // shoulder_left glbZ (0.560) / maxDim (3.550) = 0.158
+  // Shoulder position normalized by pilot height (1.875m)
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
   shoulderOffsetFraction: 0.158,
   trailingEdgeShift: -0.30,       // bridle attachment shift toward canopy TE
 
   deployScales: {
-    pc: 0.4,       // PC model × normalization scale
-    snivel: 0.6,   // snivel model × normalization scale
-    bridle: 1.5,   // bridle model × normalization scale
+    pc: 0.8,       // PC model × normalization scale (0.4 × 2.0 for parentScale 3.0)
+    snivel: 1.2,   // snivel model × normalization scale (0.6 × 2.0 for parentScale 3.0)
+    bridle: 3.0,   // bridle model × normalization scale (1.5 × 2.0 for parentScale 3.0)
   },
 
   // Physics
@@ -1108,6 +1191,10 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
  * Ibex UL canopy + slick skydiver assembly.
  *
  * Same assembly rules as wingsuit, different pilot sub-model.
+ *
+ * **Offset Derivation:** All values below (childScale, childOffset, shoulderOffsetFraction)
+ * are precomputed from deriveAssemblyOffsets() using measured GLB geometry and pilot height
+ * reference (1.875m). See deriveAssemblyOffsets() for design specification and formula.
  */
 export const CANOPY_SLICK_ASSEMBLY: VehicleAssembly = {
   id: 'ibex-slick',
@@ -1116,17 +1203,21 @@ export const CANOPY_SLICK_ASSEMBLY: VehicleAssembly = {
   parentId: 'cp2',
   childId: 'tslick',
 
-  parentScale: 1.5,
+  parentScale: 3.0,
 
   // childScale: parentScale × slick_glbToMeters / canopy_glbToMeters
-  //   = 1.5 × (1.875/3.384) / (3.29/3.529) = 0.891
-  childScale: 0.891,
+  //   = 3.0 × (1.875/3.384) / (3.29/3.529) = 1.784
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  childScale: 1.784,
 
-  // -(shoulder_glbZ × childScale) = -(0.560 × 0.891) = -0.499
-  childOffset: { x: 0, y: -0.499, z: 0 },
+  // -(shoulder_glbZ × childScale) = -(0.560 × 1.784) = -0.999
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  childOffset: { x: 0, y: -0.999, z: 0 },
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
   // shoulder_glbZ (0.560) / maxDim (3.384) = 0.166
+  // Shoulder position normalized by pilot height (1.875m)
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
   shoulderOffsetFraction: 0.166,
   trailingEdgeShift: -0.30,
 

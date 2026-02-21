@@ -482,7 +482,7 @@ export const caravanpolar: WSEQPolar = {
  * Body extends from x_norm = -0.530 (feet) to +0.302 (head), span = 0.832.
  * Arms spread in flying position.
  */
-const WINGSUIT_MASS_SEGMENTS: MassSegment[] = [
+export const WINGSUIT_MASS_SEGMENTS: MassSegment[] = [
   { name: 'head',            massRatio: 0.14,   normalizedPosition: { x:  0.302049, y:  0,         z: -0.01759 } },
   { name: 'torso',           massRatio: 0.435,  normalizedPosition: { x:  0.078431, y:  0,         z:  0       } },
   { name: 'right_upper_arm', massRatio: 0.0275, normalizedPosition: { x:  0.174411, y:  0.158291,  z:  0       } },
@@ -690,7 +690,7 @@ const CANOPY_AIR_SEGMENTS: MassSegment[] = [
  * Weight segments — contribute to gravitational force (m·g).
  * Includes pilot body + canopy structure. Excludes trapped air (buoyant).
  */
-const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
+export const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
   ...CANOPY_PILOT_SEGMENTS,
   ...CANOPY_STRUCTURE_SEGMENTS,
 ]
@@ -700,7 +700,7 @@ const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
  * Includes everything: pilot body + canopy structure + trapped air.
  * Air mass is buoyant so it doesn't add weight, but it does resist rotation.
  */
-const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
+export const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
   ...CANOPY_PILOT_SEGMENTS,
   ...CANOPY_STRUCTURE_SEGMENTS,
   ...CANOPY_AIR_SEGMENTS,
@@ -856,7 +856,9 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
       d_alpha_stall_fwd: -4,
       cm_delta: -0.04,
     }
-  }
+  },
+
+  referenceLength: 1.875  // Pilot height (will be IBEX_REF_LENGTH after definition order fix)
 }
 
 /**
@@ -921,7 +923,12 @@ const BRAKE_FLAP_POLAR: ContinuousPolar = {
   s: 0.5,               // placeholder, factory sets actual area
   m: 77.5,
   chord: 0.5,           // placeholder, factory sets actual chord
+
+  referenceLength: 1.875  // Pilot height (will be IBEX_REF_LENGTH after definition order fix)
 }
+
+/** Reference length for Ibex canopy polar (pilot height) [m] */
+const IBEX_REF_LENGTH = 1.875
 
 /**
  * 16 aerodynamic segments for the Ibex UL canopy system.
@@ -984,13 +991,13 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // Positions from GLB TE via _cellTE(), relative to riser convergence.
   // TE NED x = GLB TE z (-2.874) × glbToNED = -1.429
   // parentCellX = cell QC NED x = -0.113 (constant across span)
-  //                         name        TE position (NED norm)                     θ     side     brkSens chordFrac  cellS         cellChord  cellX   polar
-  makeBrakeFlapSegment('flap_r1', _cellTE(2, 'right'),   12, 'right',  0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'right').x, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l1', _cellTE(2, 'left'),   -12, 'left',   0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'left').x,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r2', _cellTE(3, 'right'),   24, 'right',  0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'right').x, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l2', _cellTE(3, 'left'),   -24, 'left',   0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'left').x,  BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_r3', _cellTE(4, 'right'),   36, 'right',  1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'right').x, BRAKE_FLAP_POLAR),
-  makeBrakeFlapSegment('flap_l3', _cellTE(4, 'left'),   -36, 'left',   1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'left').x,  BRAKE_FLAP_POLAR),
+  //                         name        TE position (NED norm)                     θ     side     brkSens chordFrac  cellS         cellChord  cellX   polar                refLength
+  makeBrakeFlapSegment('flap_r1', _cellTE(2, 'right'),   12, 'right',  0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_l1', _cellTE(2, 'left'),   -12, 'left',   0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_r2', _cellTE(3, 'right'),   24, 'right',  0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_l2', _cellTE(3, 'left'),   -24, 'left',   0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_r3', _cellTE(4, 'right'),   36, 'right',  1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_l3', _cellTE(4, 'left'),   -36, 'left',   1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
 
   // ── 2 parasitic bodies (lines + pilot chute) ──
   // Lines: midpoint between riser convergence and canopy center
@@ -1039,6 +1046,15 @@ export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit
 
 // Default segments are built after all polars are defined (see bottom of file)
 // to avoid TDZ issues with forward references to aurafiveContinuous/slicksinContinuous.
+
+// ─── A5 Constants ─────────────────────────────────────────────────────────────
+// Used by aurafiveContinuous and A5 segment polars (defined in A5 Segments section below)
+
+const A5_SYS_CHORD = 1.8     // system chord [m]
+const A5_CG_XC    = 0.40     // CG location as chord fraction (x/c)
+const A5_HEIGHT   = 1.875    // pilot height [m] (mass normalization)
+const A5_REF_LENGTH = 1.93   // wingsuit reference length [m] (aero normalization)
+const GLB_TO_NED  = 0.2962   // GLB → NED scale for span (y-axis) positions
 
 // ─── Continuous Polar Definitions ────────────────────────────────────────────
 
@@ -1109,7 +1125,9 @@ export const aurafiveContinuous: ContinuousPolar = {
       d_cp_0:             0.03,   // CP moves toward CG (0.40 → 0.43, CG=0.40)
       d_cp_alpha:         0.02,   // CP travel reduced (stays closer to CG)
     }
-  }
+  },
+
+  referenceLength: A5_REF_LENGTH  // Wingsuit reference length (1.93 m)
 }
 
 /**
@@ -1162,6 +1180,7 @@ export const ibexulContinuous: ContinuousPolar = {
   s: 20.439,
   m: 77.5,
   chord: 3.29,
+  referenceLength: 1.875,  // Currently pilot height; could be canopy chord (3.29m) or √S (4.52m)
 
   massSegments: CANOPY_WEIGHT_SEGMENTS,
   inertiaMassSegments: CANOPY_INERTIA_SEGMENTS,
@@ -1227,7 +1246,8 @@ export const slicksinContinuous: ContinuousPolar = {
 
   s: 0.5,
   m: 77.5,
-  chord: 1.7
+  chord: 1.7,
+  referenceLength: 1.875  // Pilot height
 }
 
 /**
@@ -1276,7 +1296,8 @@ export const caravanContinuous: ContinuousPolar = {
 
   s: 2,
   m: 77.5,
-  chord: 11.0
+  chord: 11.0,
+  referenceLength: 11.0  // Mean aerodynamic chord
 }
 
 // ─── A5 Segments — 6-Segment Wingsuit ────────────────────────────────────────
@@ -1298,10 +1319,6 @@ export const caravanContinuous: ContinuousPolar = {
  *
  * Span (y) positions still use GLB_TO_NED scaling from the 3D model.
  */
-const A5_SYS_CHORD = 1.8     // system chord [m]
-const A5_CG_XC    = 0.40     // CG location as chord fraction (x/c)
-const A5_HEIGHT   = 1.875    // pilot height [m] (normalization divisor)
-const GLB_TO_NED  = 0.2962   // GLB → NED scale for span (y-axis) positions
 
 /** Convert a system-chord fraction to NED normalized x-position. */
 function a5xc(xc: number): number {
@@ -1400,7 +1417,9 @@ const A5_CENTER_POLAR: ContinuousPolar = {
       d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -2,
     }
-  }
+  },
+
+  referenceLength: A5_REF_LENGTH
 }
 const A5_CENTER_POS = {       // x/c = 0.42 (center panel QC, forward of hip line)
   x: a5xc(0.42),             //  −0.019 (just behind CG — 27° LE sweep correction)
@@ -1459,7 +1478,9 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
       d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -4,
     }
-  }
+  },
+
+  referenceLength: A5_REF_LENGTH
 }
 const A5_R1_POS = {           // x/c = 0.44 (triangular planform QC — forward of rectangular 0.49)
   x: a5xc(0.44),             //  −0.038 (slightly behind CG)
@@ -1506,7 +1527,9 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
       d_cd_n: 0.15,            // broader profile in separated flow
       d_alpha_stall_fwd: -5,
     }
-  }
+  },
+
+  referenceLength: A5_REF_LENGTH
 }
 const A5_R2_POS = {           // x/c = 0.37 (outer wing panel QC)
   x: a5xc(0.37),             //  +0.077 (forward of CG)
@@ -1599,6 +1622,7 @@ export const a5segmentsContinuous: ContinuousPolar = {
   s: 2,
   m: 77.5,
   chord: 1.8,
+  referenceLength: A5_REF_LENGTH,  // Wingsuit reference length (1.93 m)
 
   massSegments: WINGSUIT_MASS_SEGMENTS,
   cgOffsetFraction: 0.197,

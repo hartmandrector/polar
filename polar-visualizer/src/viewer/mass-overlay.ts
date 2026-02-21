@@ -18,9 +18,9 @@ import { nedToThreeJS } from './frames.ts'
 export interface MassOverlay {
   group: THREE.Group
   /** Update sphere positions from a polar's mass segments */
-  update(segments: MassSegment[], height: number, weight: number, pilotScale: number): void
+  update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio?: number): void
   /** Update CP diamond marker position from system CP chord fraction or 3D NED position */
-  updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[], cpNED?: { x: number; y: number; z: number }): void
+  updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[], cpNED?: { x: number; y: number; z: number }, canopyScaleRatio?: number): void
   /** Toggle visibility */
   setVisible(visible: boolean): void
 }
@@ -119,11 +119,11 @@ export function createMassOverlay(): MassOverlay {
     }
   }
 
-  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number): void {
+  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio: number = 1.0): void {
+    ensureMeshCount(segments.length)
     if (segments.length === 0) return
 
-    ensureMeshCount(segments.length)
-
+    // TODO(ref-audit): height should map to pilotHeight_m
     const masses = getPhysicalMassPositions(segments, height, weight)
     const cg = computeCenterOfMass(segments, height, weight)
 
@@ -135,12 +135,16 @@ export function createMassOverlay(): MassOverlay {
       const mp = masses[i]
       const mesh = massPoints[i]
 
+      // Canopy-attached mass points scale with canopy component scale
+      const isCanopy = mp.name.startsWith('canopy_')
+      const posScale = isCanopy ? canopyScaleRatio : 1.0
+
       // NED body → Three.js via nedToThreeJS
       const threePos = nedToThreeJS({ x: mp.x, y: mp.y, z: mp.z })
       mesh.position.set(
-        threePos.x * scale,
-        threePos.y * scale,
-        threePos.z * scale
+        threePos.x * scale * posScale,
+        threePos.y * scale * posScale,
+        threePos.z * scale * posScale
       )
 
       const t = mp.mass / maxMass
@@ -191,34 +195,39 @@ export function createMassOverlay(): MassOverlay {
     pilotScale: number,
     massSegments?: MassSegment[],
     cpNEDin?: { x: number; y: number; z: number },
+    canopyScaleRatio: number = 1.0,
   ): void {
+    // CP is a canopy-level metric — scale with canopy visual enlargement
+    const cpScale = pilotScale * canopyScaleRatio
     if (cpNEDin) {
       // 3D system CP from cross-product formula — position directly
       const cpThree = nedToThreeJS(cpNEDin)
       cpMesh.position.set(
-        cpThree.x * pilotScale,
-        cpThree.y * pilotScale,
-        cpThree.z * pilotScale,
+        cpThree.x * cpScale,
+        cpThree.y * cpScale,
+        cpThree.z * cpScale,
       )
     } else if (massSegments && massSegments.length > 0) {
       // Fallback: position CP along chord axis relative to computed CG
+      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
       const cg = computeCenterOfMass(massSegments, height, 1)
       const cpOffsetNorm = (cgFraction - cpFraction) * chord / height
       const cpNED = { x: cg.x + cpOffsetNorm, y: cg.y, z: cg.z }
       const cpThree = nedToThreeJS(cpNED)
       cpMesh.position.set(
-        cpThree.x * pilotScale,
-        cpThree.y * pilotScale,
-        cpThree.z * pilotScale,
+        cpThree.x * cpScale,
+        cpThree.y * cpScale,
+        cpThree.z * cpScale,
       )
     } else {
       // No mass segments — use chord-fraction directly
+      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
       const cpNED = { x: (0.5 - cpFraction) * (1.0 / height), y: 0, z: 0 }
       const cpThree = nedToThreeJS(cpNED)
       cpMesh.position.set(
-        cpThree.x * pilotScale,
-        cpThree.y * pilotScale,
-        cpThree.z * pilotScale,
+        cpThree.x * cpScale,
+        cpThree.y * cpScale,
+        cpThree.z * cpScale,
       )
     }
     cpMesh.scale.setScalar(MAX_RADIUS * 0.65)

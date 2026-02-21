@@ -23,6 +23,10 @@
 
 import type { ContinuousPolar, AeroSegment } from '../polar/continuous-polar.ts'
 import type { SegmentForceResult } from '../polar/aero-segment.ts'
+import { CANOPY_AERO_CALIBRATION } from '../viewer/model-loader.ts'
+
+/** Conversion factor: 1 m² ≈ 10.7639 ft² */
+const M2_TO_FT2 = 10.7639
 
 // ─── Parameter Definitions ───────────────────────────────────────────────────
 
@@ -108,6 +112,26 @@ const valueEls: Map<string, HTMLSpanElement> = new Map()
 const rowEls: Map<string, HTMLElement> = new Map()
 let systemViewEl: HTMLElement | null = null
 
+// Canopy scale slider state
+let canopyScaleRow: HTMLElement | null = null
+let canopyScaleSlider: HTMLInputElement | null = null
+let canopyScaleValueEl: HTMLSpanElement | null = null
+/** Base canopy surface area [m²] from the polar S field */
+let canopyBaseArea = 0
+/** Current canopy component scale (1.0 = base) */
+let canopyCurrentScale = 1.0
+/** Callback injected from main.ts: applies scale to model + triggers re-render */
+let canopyScaleCallback: ((scale: number) => void) | null = null
+/** Whether the currently active polar is a canopy type */
+let isCanopyPolar = false
+
+// Canopy verification readout state
+let canopyVerifyEl: HTMLElement | null = null
+/** Base chord from the polar [m] */
+let canopyBaseChord = 0
+/** Visual component scale from vehicle-registry (set via setCanopyComponentScale) */
+let canopyVisualComponentScale = 1.0
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -144,6 +168,60 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
 
   panelEl.appendChild(segmentSelectorRow)
 
+  // ── Canopy scale slider (visible only for canopy polars in system view) ──
+  canopyScaleRow = document.createElement('div')
+  canopyScaleRow.className = 'debug-row debug-canopy-scale-row'
+  canopyScaleRow.style.display = 'none'
+
+  const csLabelRow = document.createElement('div')
+  csLabelRow.className = 'debug-label-row'
+  const csLabel = document.createElement('label')
+  csLabel.className = 'debug-label'
+  csLabel.textContent = 'Canopy Area'
+  canopyScaleValueEl = document.createElement('span')
+  canopyScaleValueEl.className = 'debug-value'
+  canopyScaleValueEl.textContent = '—'
+  csLabelRow.appendChild(csLabel)
+  csLabelRow.appendChild(canopyScaleValueEl)
+  canopyScaleRow.appendChild(csLabelRow)
+
+  canopyScaleSlider = document.createElement('input')
+  canopyScaleSlider.type = 'range'
+  canopyScaleSlider.className = 'debug-slider'
+  // Range: ~100 ft² to ~400 ft² mapped through component scale
+  // Scale range 0.7 to 2.0 (area ∝ scale², so area range = baseArea×0.49 to baseArea×4.0)
+  canopyScaleSlider.min = '0.7'
+  canopyScaleSlider.max = '2.0'
+  canopyScaleSlider.step = '0.01'
+  canopyScaleSlider.value = '1.0'
+  canopyScaleSlider.addEventListener('input', () => {
+    const newScale = parseFloat(canopyScaleSlider!.value)
+    canopyCurrentScale = newScale
+    updateCanopyScaleLabel()
+    canopyScaleCallback?.(newScale)
+    onChange?.()
+  })
+  // Double-click to reset to 1.0
+  canopyScaleSlider.addEventListener('dblclick', () => {
+    canopyScaleSlider!.value = '1.0'
+    canopyCurrentScale = 1.0
+    updateCanopyScaleLabel()
+    canopyScaleCallback?.(1.0)
+    onChange?.()
+  })
+  canopyScaleRow.appendChild(canopyScaleSlider)
+  panelEl.appendChild(canopyScaleRow)
+
+  // ── Canopy verification readout (always visible for canopy polars in system view) ──
+  canopyVerifyEl = document.createElement('div')
+  canopyVerifyEl.className = 'debug-canopy-verify'
+  canopyVerifyEl.style.display = 'none'
+  canopyVerifyEl.style.fontSize = '11px'
+  canopyVerifyEl.style.color = '#aaa'
+  canopyVerifyEl.style.padding = '4px 8px'
+  canopyVerifyEl.style.lineHeight = '1.5'
+  canopyScaleRow.appendChild(canopyVerifyEl)
+
   // System summary view (shown when 'system' selected on segmented polars)
   systemViewEl = document.createElement('div')
   systemViewEl.id = 'debug-system-view'
@@ -166,15 +244,43 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
 }
 
 /**
+ * Inject a callback that will be called when the canopy scale slider changes.
+ * The callback receives the new component scale (1.0 = base size).
+ * Call once from main.ts after setupDebugPanel, and update when the model changes.
+ */
+export function setCanopyScaleHandler(handler: ((scale: number) => void) | null): void {
+  canopyScaleCallback = handler
+}
+
+/**
+ * Inject the canopy visual component scale from the loaded model.
+ * This is the equipment `scale` value from the vehicle registry (e.g. 1.5).
+ * Call after model load so the verification readout can show visual vs physics area.
+ */
+export function setCanopyComponentScale(componentScale: number): void {
+  canopyVisualComponentScale = componentScale
+  updateCanopyVerification()
+}
+
+/**
  * Called when the polar dropdown changes. Resets all overrides to the
  * new polar's baseline values.
  */
-export function syncDebugPanel(polar: ContinuousPolar): void {
+export function syncDebugPanel(polar: ContinuousPolar, isCanopy: boolean = false): void {
   basePolar = { ...polar }   // shallow clone as our baseline reference
   overrides.clear()
   segmentOverrides.clear()
   selectedSegment = 'system'
   currentSegments = polar.aeroSegments
+
+  // Track canopy state for scale slider visibility
+  isCanopyPolar = isCanopy
+  canopyBaseArea = polar.s ?? 0
+  canopyBaseChord = polar.chord ?? 0
+  canopyCurrentScale = 1.0
+  if (canopyScaleSlider) canopyScaleSlider.value = '1.0'
+  updateCanopyScaleLabel()
+  updateCanopyScaleVisibility()
 
   // Update segment selector dropdown
   if (segmentSelector && segmentSelectorRow) {
@@ -402,6 +508,73 @@ function syncSlidersToBaseline(polar: ContinuousPolar): void {
   if (systemViewEl) {
     systemViewEl.style.display = isSystemWithSegments ? '' : 'none'
   }
+
+  // Show/hide canopy scale slider
+  updateCanopyScaleVisibility()
+}
+
+/** Format and display the canopy scale label: area in m² and ft² */
+function updateCanopyScaleLabel(): void {
+  if (!canopyScaleValueEl || canopyBaseArea <= 0) return
+  const area_m2 = canopyBaseArea * canopyCurrentScale * canopyCurrentScale
+  const area_ft2 = area_m2 * M2_TO_FT2
+  const modified = Math.abs(canopyCurrentScale - 1.0) > 0.005
+  canopyScaleValueEl.textContent = `${area_m2.toFixed(1)} m² (${area_ft2.toFixed(0)} ft²)`
+  if (canopyScaleRow) {
+    canopyScaleRow.classList.toggle('debug-modified', modified)
+  }
+  updateCanopyVerification()
+}
+
+/**
+ * Update the canopy verification readout showing visual vs physics scaling.
+ *
+ * Displays:
+ *   - Physics area (from polar.S) — what the math uses
+ *   - Visual area — what the mesh represents, given component scale + calibration
+ *   - Base chord / scaled chord
+ *   - Visual scale factor (componentScale / calibration)
+ */
+function updateCanopyVerification(): void {
+  if (!canopyVerifyEl || canopyBaseArea <= 0) return
+  // Physics values (what the aero math uses)
+  const physArea_m2 = canopyBaseArea * canopyCurrentScale * canopyCurrentScale
+  const physArea_ft2 = physArea_m2 * M2_TO_FT2
+  const physChord = canopyBaseChord * canopyCurrentScale
+
+  // Visual values (what the mesh represents)
+  // The mesh is scaled by componentScale, but CP positions are scaled by
+  // componentScale / CANOPY_AERO_CALIBRATION, so the effective visual area
+  // the mesh occupies differs from the physics area by calibration².
+  const effectiveVisualScale = canopyVisualComponentScale * canopyCurrentScale
+  const visualAreaFactor = effectiveVisualScale * effectiveVisualScale
+  // Visual area = baseArea × visualScale² (how big the mesh looks)
+  // Physics area = baseArea × sliderScale² (what the math uses)
+  // Ratio = visualComponentScale² (before calibration effect)
+  const visualArea_m2 = canopyBaseArea * visualAreaFactor
+  const visualArea_ft2 = visualArea_m2 * M2_TO_FT2
+  const visualChord = canopyBaseChord * effectiveVisualScale
+
+  // Alignment ratio (CP position / mesh position) — 1.0 = perfect
+  const alignRatio = 1.0 / CANOPY_AERO_CALIBRATION
+
+  const lines: string[] = [
+    `<b>Aero Verification</b>`,
+    `Physics: S=${physArea_m2.toFixed(1)} m² (${physArea_ft2.toFixed(0)} ft²)  c=${physChord.toFixed(2)} m`,
+    `Visual:  S=${visualArea_m2.toFixed(1)} m² (${visualArea_ft2.toFixed(0)} ft²)  c=${visualChord.toFixed(2)} m`,
+    `CP/mesh alignment: ${alignRatio.toFixed(3)} (calibration=${CANOPY_AERO_CALIBRATION.toFixed(3)})`,
+  ]
+  canopyVerifyEl.innerHTML = lines.join('<br>')
+}
+
+/** Show the canopy scale slider only when system is selected on a canopy polar with segments */
+function updateCanopyScaleVisibility(): void {
+  if (!canopyScaleRow) return
+  const isSystemWithSegments = selectedSegment === 'system' &&
+    currentSegments && currentSegments.length > 0
+  const vis = isCanopyPolar && isSystemWithSegments
+  canopyScaleRow.style.display = vis ? '' : 'none'
+  if (canopyVerifyEl) canopyVerifyEl.style.display = vis ? '' : 'none'
 }
 
 /**

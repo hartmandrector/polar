@@ -110,7 +110,7 @@ describe('sumAllSegments', () => {
   const controls = defaultControls()
   const rho = 1.225
   const airspeed = 15
-  const height = 1.875  // reference height [m]
+  const height = polar.referenceLength  // reference height [m]
 
   // CG at origin (segment position is also origin) → zero lever arm
   const cgMeters: Vec3NED = { x: 0, y: 0, z: 0 }
@@ -361,7 +361,7 @@ describe('Ibex UL — lever arm moments', () => {
   const segments = polar.aeroSegments!
   const rho = 1.225
   const airspeed = 15
-  const height = 1.875
+  const height = polar.referenceLength
 
   // System CG from mass segments
   const cgMeters = computeCenterOfMass(polar.massSegments!, height, polar.m)
@@ -539,7 +539,7 @@ describe('sweepSegments', () => {
     const segments = makeIbexAeroSegments('slick')
     const polar = ibexulContinuous
     const controls = defaultControls()
-    const points = sweepSegments(segments, polar, controls, {
+    const points = sweepSegments(segments, polar, polar.referenceLength, controls, {
       minAlpha: -5,
       maxAlpha: 25,
       step: 1.0,
@@ -553,7 +553,7 @@ describe('sweepSegments', () => {
     const segments = makeIbexAeroSegments('slick')
     const polar = ibexulContinuous
     const controls = defaultControls()
-    const points = sweepSegments(segments, polar, controls, {
+    const points = sweepSegments(segments, polar, polar.referenceLength, controls, {
       minAlpha: 8,
       maxAlpha: 10,
       step: 1.0,
@@ -571,7 +571,7 @@ describe('sweepSegments', () => {
     const segments = makeIbexAeroSegments('slick')
     const polar = ibexulContinuous
     const controls = defaultControls()
-    const points = sweepSegments(segments, polar, controls, {
+    const points = sweepSegments(segments, polar, polar.referenceLength, controls, {
       minAlpha: 5,
       maxAlpha: 6,
       step: 1.0,
@@ -596,8 +596,8 @@ describe('sweepSegments', () => {
     const noBrake = defaultControls()
     const fullBrake: SegmentControls = { ...defaultControls(), brakeLeft: 1, brakeRight: 1 }
 
-    const noPoints = sweepSegments(segments, polar, noBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
-    const brPoints = sweepSegments(segments, polar, fullBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
+    const noPoints = sweepSegments(segments, polar, polar.referenceLength, noBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
+    const brPoints = sweepSegments(segments, polar, polar.referenceLength, fullBrake, { minAlpha: 9, maxAlpha: 9, step: 1 })
 
     // Both brakes add camber → more CL at the same α
     expect(brPoints[0].cl).not.toBeCloseTo(noPoints[0].cl, 2)

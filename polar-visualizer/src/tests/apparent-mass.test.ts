@@ -219,7 +219,7 @@ describe('buildCompositeFrame', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
   }
@@ -273,7 +273,7 @@ describe('frameNeedsRebuild', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
     const frame = buildCompositeFrame(cfg, 1.0, 0)
@@ -285,7 +285,7 @@ describe('frameNeedsRebuild', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
     const frame = buildCompositeFrame(cfg, 0.5, 0)
@@ -297,7 +297,7 @@ describe('frameNeedsRebuild', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
     const frame = buildCompositeFrame(cfg, 1.0, 0)
@@ -311,7 +311,7 @@ describe('frameToSimConfig', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
     const frame = buildCompositeFrame(cfg)
@@ -339,7 +339,7 @@ describe('frameToSimConfig', () => {
       polar: ibexulContinuous,
       makeAeroSegments: () => makeIbexAeroSegments(),
       rotatePilotMass: rotatePilotMass,
-      height: 1.875,
+      height: ibexulContinuous.referenceLength,
       rho: RHO,
     }
     const frame = buildCompositeFrame(cfg)

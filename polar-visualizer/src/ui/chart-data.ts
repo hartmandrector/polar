@@ -136,6 +136,7 @@ export function sweepPolar(
 export function sweepSegments(
   segments: AeroSegment[],
   polar: ContinuousPolar,
+  massReference_m: number,
   controls: SegmentControls,
   config: Partial<SweepConfig> = {}
 ): PolarPoint[] {
@@ -144,7 +145,7 @@ export function sweepSegments(
 
   // System CG from mass segments (or fallback to origin)
   const cgMeters = polar.massSegments && polar.massSegments.length > 0
-    ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+    ? computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
     : { x: 0, y: 0, z: 0 }
 
   // Reference values for coefficient normalization
@@ -165,7 +166,8 @@ export function sweepSegments(
     const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha, cfg.beta_deg)
 
     // 3. Sum all segment forces and moments
-    const system = sumAllSegments(segments, segForces, cgMeters, 1.875, windDir, liftDir, sideDir)
+    // TODO(ref-audit): aero reference -> referenceLength_m
+    const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir)
 
     // 4. Decompose total force into lift/drag/side magnitudes
     // by projecting onto the wind-frame direction vectors

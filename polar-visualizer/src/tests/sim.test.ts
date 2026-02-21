@@ -78,8 +78,8 @@ describe('evaluateAeroForces', () => {
   const controls = defaultControls()
   const segments = makeIbexAeroSegments()
   const polar = ibexulContinuous
-  const cgMeters = computeCenterOfMass(polar.massSegments!, 1.875, polar.m)
-  const height = 1.875
+  const cgMeters = computeCenterOfMass(polar.massSegments!, polar.referenceLength, polar.m)
+  const height = polar.referenceLength
   const rho = 1.225
   const airspeed = 12
   const alpha_deg = 8
@@ -173,10 +173,10 @@ describe('computeDerivatives', () => {
     return {
       segments,
       controls,
-      cgMeters: computeCenterOfMass(polar.massSegments!, 1.875, polar.m),
-      inertia: computeInertia(polar.massSegments!, 1.875, polar.m),
+      cgMeters: computeCenterOfMass(polar.massSegments!, polar.referenceLength, polar.m),
+      inertia: computeInertia(polar.massSegments!, polar.referenceLength, polar.m),
       mass: polar.m,
-      height: 1.875,
+      height: polar.referenceLength,
       rho: 1.225,
     }
   }
@@ -286,10 +286,10 @@ describe('simulate', () => {
     return {
       segments,
       controls,
-      cgMeters: computeCenterOfMass(polar.massSegments!, 1.875, polar.m),
-      inertia: computeInertia(polar.massSegments!, 1.875, polar.m),
+      cgMeters: computeCenterOfMass(polar.massSegments!, polar.referenceLength, polar.m),
+      inertia: computeInertia(polar.massSegments!, polar.referenceLength, polar.m),
       mass: polar.m,
-      height: 1.875,
+      height: polar.referenceLength,
       rho: 1.225,
     }
   }
@@ -359,10 +359,10 @@ describe('rk4Step', () => {
     return {
       segments,
       controls,
-      cgMeters: computeCenterOfMass(polar.massSegments!, 1.875, polar.m),
-      inertia: computeInertia(polar.massSegments!, 1.875, polar.m),
+      cgMeters: computeCenterOfMass(polar.massSegments!, polar.referenceLength, polar.m),
+      inertia: computeInertia(polar.massSegments!, polar.referenceLength, polar.m),
       mass: polar.m,
-      height: 1.875,
+      height: polar.referenceLength,
       rho: 1.225,
     }
   }

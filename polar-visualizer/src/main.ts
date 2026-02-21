@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
+import { loadVehicleModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -20,7 +20,7 @@ import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficien
 import type { ContinuousPolar, SegmentControls, FullCoefficients, SegmentAeroResult } from './polar/index.ts'
 import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED, evaluateAeroForcesDetailed } from './polar/aero-segment.ts'
 import { coeffToSS } from './polar/coefficients.ts'
-import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView } from './ui/debug-panel.ts'
+import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView, setCanopyScaleHandler, setCanopyComponentScale } from './ui/debug-panel.ts'
 import type { SystemViewData } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
 import { updateInertiaReadout, updateRatesReadout, updatePositionsReadout } from './ui/readout.ts'
@@ -29,6 +29,7 @@ import type { InertiaComponents } from './polar/inertia.ts'
 import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
+import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
 import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
@@ -45,8 +46,9 @@ let prevPolarKeyForInertia = ''
 
 // ─── Model Management ────────────────────────────────────────────────────────
 
-async function switchModel(modelType: ModelType, cgOffsetFraction: number = 0, pilotType?: PilotType, polar?: ContinuousPolar): Promise<void> {
+async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number = 0, pilotType?: PilotType, polar?: ContinuousPolar, massReference_m?: number): Promise<void> {
   if (loadingModel) return
+  const modelType = vehicle.modelType ?? 'wingsuit'
   if (currentModel && currentModel.type === modelType && currentModel.pilotType === pilotType) return
 
   loadingModel = true
@@ -57,18 +59,22 @@ async function switchModel(modelType: ModelType, cgOffsetFraction: number = 0, p
   }
 
   try {
-    currentModel = await loadModel(modelType, pilotType)
+    currentModel = await loadVehicleModel(vehicle, pilotType)
     // CG centering — three things are shifted by the same cgOffsetThree:
     //   1. Model mesh + bridle  (applyCgFromMassSegments, model-loader.ts)
     //   2. Force vectors         (shiftPos in vectors.ts via cgOffsetThree)
     //   3. Mass overlay spheres  (massOverlay.group.position below)
     if (modelType === 'canopy' && polar?.massSegments && polar.massSegments.length > 0) {
-      const cgNED = computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+      const massReference = massReference_m ?? polar.referenceLength
+      const cgNED = computeCenterOfMass(polar.massSegments, massReference, polar.m)
       applyCgFromMassSegments(currentModel, cgNED)
     } else if (cgOffsetFraction) {
       applyCgOffset(currentModel, cgOffsetFraction)
     }
     sceneCtx.scene.add(currentModel.group)
+
+    // Update debug panel with canopy visual component scale
+    setCanopyComponentScale(currentModel.canopyComponentScale)
 
     // Cell wireframes — attach to canopy mesh so they move with it
     if (modelType === 'canopy' && currentModel.canopyModel) {
@@ -163,6 +169,7 @@ function buildSegmentControls(state: FlightState): SegmentControls {
 function computeSegmentReadout(
   segments: import('./polar/continuous-polar.ts').AeroSegment[],
   polar: ContinuousPolar,
+  massReference_m: number,
   controls: SegmentControls,
   alpha_deg: number,
   beta_deg: number,
@@ -184,11 +191,12 @@ function computeSegmentReadout(
 
   // System CG
   const cgMeters = polar.massSegments && polar.massSegments.length > 0
-    ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+    ? computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
     : { x: 0, y: 0, z: 0 }
 
   // Sum forces and moments
-  const system = sumAllSegments(segments, segForces, cgMeters, 1.875, windDir, liftDir, sideDir)
+  // TODO(ref-audit): aero reference -> referenceLength_m
+  const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir)
 
   // Decompose into pseudo coefficients
   const totalLift = liftDir.x * system.force.x + liftDir.y * system.force.y + liftDir.z * system.force.z
@@ -223,10 +231,11 @@ function computeSegmentReadout(
     const cx = My * Fz - Mz * Fy
     const cy_cross = Mz * Fx - Mx * Fz
     const cz = Mx * Fy - My * Fx
+    // TODO(ref-audit): split mass (cgMeters) vs aero ref length
     cpNED = {
-      x: cgMeters.x / 1.875 + cx / (F2 * 1.875),
-      y: cgMeters.y / 1.875 + cy_cross / (F2 * 1.875),
-      z: cgMeters.z / 1.875 + cz / (F2 * 1.875),
+      x: cgMeters.x / polar.referenceLength + cx / (F2 * polar.referenceLength),
+      y: cgMeters.y / polar.referenceLength + cy_cross / (F2 * polar.referenceLength),
+      z: cgMeters.z / polar.referenceLength + cz / (F2 * polar.referenceLength),
     }
   }
 
@@ -313,8 +322,12 @@ function updateVisualization(state: FlightState): void {
   flightState = state
 
   // Get the continuous polar (with debug overrides if panel is open)
-  const basePolar: ContinuousPolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+  const vehicle = getVehicleDefinition(state.polarKey)
+  const basePolar: ContinuousPolar = getVehicleAeroPolar(vehicle)
+    ?? continuousPolars[state.polarKey]
+    ?? continuousPolars.aurafive
   const polar: ContinuousPolar = getOverriddenPolar(basePolar)
+  const massReference = getVehicleMassReference(vehicle, basePolar)
 
   // Rebuild segments when canopy pilot type changes (ibex only)
   if (state.modelType === 'canopy' && polar.aeroSegments) {
@@ -366,13 +379,21 @@ function updateVisualization(state: FlightState): void {
   if (state.polarKey !== prevPolarKeyForInertia) {
     prevPolarKeyForInertia = state.polarKey
     currentInertia = polar.massSegments
-      ? computeInertia(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m)
+      ? computeInertia(polar.inertiaMassSegments ?? polar.massSegments, massReference, polar.m)
       : ZERO_INERTIA
   }
 
   // Rotate pilot mass segments when pilot pitch or deploy changes (canopy only)
   // Only update mass distribution and inertia — don't recenter the model.
   // The mass overlay's CG marker (red ball) will show the true CG position.
+  //
+  // TODO: Future work — Dynamically recenter model on computed CG as pilot pitch/deploy change.
+  // This requires better understanding of:
+  //   1. Reference length parameterization (aero vs mass) — chord length (1.93m) vs pilot height (1.875m)
+  //   2. GLB model placement — are mesh origins at geometric center or CG?
+  //   3. Frame handling — body frame vs inertial frame CG dynamics
+  // When these are resolved, uncomment applyCgFromMassSegments() here to move model to true CG.
+  // Note: Currently things rotate correctly about computed CG, but translation to origin is off.
   if (state.modelType === 'canopy' && polar.massSegments) {
     const pitchChanged = Math.abs(state.pilotPitch - prevPilotPitch) > 0.01
     const deployChanged = Math.abs(state.deploy - prevDeploy) > 0.001
@@ -383,7 +404,9 @@ function updateVisualization(state: FlightState): void {
       polar.massSegments = rotated.weight
       polar.inertiaMassSegments = rotated.inertia
       // Recompute inertia with new mass distribution
-      currentInertia = computeInertia(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m)
+      currentInertia = computeInertia(polar.inertiaMassSegments ?? polar.massSegments, massReference, polar.m)
+      // TODO: const newCgNED = computeCenterOfMass(polar.massSegments, massReference, polar.m)
+      // TODO: applyCgFromMassSegments(currentModel, newCgNED)
     }
   }
 
@@ -485,7 +508,7 @@ function updateVisualization(state: FlightState): void {
   if (hasSegments) {
     // Compute CG for evaluateAeroForcesDetailed
     const cgNED = polar.massSegments && polar.massSegments.length > 0
-      ? computeCenterOfMass(polar.massSegments, 1.875, polar.m)
+      ? computeCenterOfMass(polar.massSegments, massReference, polar.m)
       : { x: 0, y: 0, z: 0 }
 
     if (hasRates) {
@@ -496,7 +519,8 @@ function updateVisualization(state: FlightState): void {
         z: state.airspeed * Math.sin(state.alpha_deg * DEG2RAD) * Math.cos(state.beta_deg * DEG2RAD),
       }
       const omega = { p: bodyRates.p, q: bodyRates.q, r: bodyRates.r }
-      const detailed = evaluateAeroForcesDetailed(segments!, cgNED, 1.875, bodyVel, omega, segControls, state.rho)
+      // TODO(ref-audit): aero reference -> referenceLength_m
+      const detailed = evaluateAeroForcesDetailed(segments!, cgNED, polar.referenceLength, bodyVel, omega, segControls, state.rho)
       cachedPerSegment = detailed.perSegment
       cachedSegForces = detailed.perSegment.map(ps => ps.forces)
     } else {
@@ -507,7 +531,7 @@ function updateVisualization(state: FlightState): void {
     }
 
     // Compute segment-summed coefficients for readout at current flight state
-    segReadout = computeSegmentReadout(segments!, polar, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
+    segReadout = computeSegmentReadout(segments!, polar, massReference, segControls, state.alpha_deg, state.beta_deg, state.rho, state.airspeed, cachedSegForces)
     updateReadout(segReadout, polar, state.airspeed, state.rho, legacyCoeffs)
     updateInertiaReadout(currentInertia, segReadout, polar, state.airspeed, state.rho)
 
@@ -519,7 +543,8 @@ function updateVisualization(state: FlightState): void {
     let bodyAccel: { pDot: number; qDot: number; rDot: number } | null = null
     if (currentInertia.Ixx > 0.001 || currentInertia.Iyy > 0.001 || currentInertia.Izz > 0.001) {
       const { windDir, liftDir, sideDir } = computeWindFrameNED(state.alpha_deg, state.beta_deg)
-      const system = sumAllSegments(segments!, cachedSegForces!, cgNED, 1.875, windDir, liftDir, sideDir)
+      // TODO(ref-audit): aero reference -> referenceLength_m
+      const system = sumAllSegments(segments!, cachedSegForces!, cgNED, polar.referenceLength, windDir, liftDir, sideDir)
       // Simplified angular acceleration (diagonal inertia)
       bodyAccel = {
         pDot: currentInertia.Ixx > 0.001 ? system.moment.x / currentInertia.Ixx : 0,
@@ -559,6 +584,7 @@ function updateVisualization(state: FlightState): void {
     state.showAccelArcs ? currentInertia : null,
     gravityDir,
     currentModel?.pilotScale ?? 1.0,
+    massReference,
     segControls,
     currentModel?.cgOffsetThree,
     cachedSegForces,
@@ -566,6 +592,7 @@ function updateVisualization(state: FlightState): void {
     bodyQuat,
     cachedPerSegment,
     currentModel?.type === 'canopy' ? state.deploy : 1.0,
+    currentModel?.canopyScaleRatio ?? 1.0,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
@@ -583,10 +610,11 @@ function updateVisualization(state: FlightState): void {
     if (currentModel.canopyModel) {
       const spanScale  = 0.1 + 0.9 * state.deploy  // min 10% span
       const chordScale = 0.3 + 0.7 * state.deploy  // min 30% chord
+      const canopyBaseScale = currentModel.canopyBaseScale ?? CANOPY_SCALE
       currentModel.canopyModel.scale.set(
-        -CANOPY_SCALE * spanScale,  // X (lateral/span) — negative preserves X-flip
-        CANOPY_SCALE,               // Y (vertical) — always full height
-        CANOPY_SCALE * chordScale,  // Z (fore-aft/chord)
+        -canopyBaseScale * spanScale,  // X (lateral/span) — negative preserves X-flip
+        canopyBaseScale,               // Y (vertical) — always full height
+        canopyBaseScale * chordScale,  // Z (fore-aft/chord)
       )
 
       // Scale bridle attachment point to follow the canopy surface deformation.
@@ -632,18 +660,21 @@ function updateVisualization(state: FlightState): void {
       const pvtLocal = massOverlay.group.worldToLocal(pvtWorld.clone())
       // Three.js → NED normalised: ned.x = three.z, ned.z = -three.y
       // Divide by (height × pilotScale) to go from model-units to normalised
-      const hs = 1.875 * currentModel.pilotScale
+      // TODO(ref-audit): mass reference -> pilotHeight_m
+      const hs = massReference * currentModel.pilotScale
       currentModel.massPivotNED = {
         x: pvtLocal.z / hs,
         z: -pvtLocal.y / hs,
       }
     }
     massOverlay.setVisible(state.showMassOverlay)
-    if (state.showMassOverlay && polar.massSegments) {
-      massOverlay.update(polar.inertiaMassSegments ?? polar.massSegments, 1.875, polar.m, currentModel.pilotScale)
+    if (state.showMassOverlay) {
+      const segs = polar.inertiaMassSegments ?? polar.massSegments ?? []
+      massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio)
       // CP diamond marker — use segmented readout CP when available, else lumped coeffs
       const cpFraction = segReadout ? segReadout.cp : coeffs.cp
-      massOverlay.updateCP(cpFraction, polar.cg, polar.chord, 1.875, currentModel.pilotScale, polar.massSegments, segReadout?.cpNED)
+      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
+      massOverlay.updateCP(cpFraction, polar.cg, polar.chord, polar.referenceLength, currentModel.pilotScale, polar.massSegments, segReadout?.cpNED, currentModel.canopyScaleRatio)
     }
 
     // Cell wireframes visibility
@@ -678,6 +709,7 @@ function updateVisualization(state: FlightState): void {
     }, state.alpha_deg, legacyPolar,
       hasSegments ? segments : undefined,
       hasSegments ? segControls : undefined,
+      massReference,
     )
   } else {
     // Only α changed → move cursor
@@ -711,6 +743,13 @@ async function init(): Promise<void> {
     if (flightState) updateVisualization(flightState)
   })
 
+  // Inject canopy scale handler: called when the debug panel canopy area slider changes
+  setCanopyScaleHandler((scale: number) => {
+    if (currentModel?.setCanopyScale) {
+      currentModel.setCanopyScale(scale)
+    }
+  })
+
   // Track polar selection to only sync debug panel when it actually changes
   let prevPolarKey = ''
 
@@ -719,25 +758,37 @@ async function init(): Promise<void> {
     // When polar selection changes, sync debug panel to new baseline
     if (state.polarKey !== prevPolarKey) {
       prevPolarKey = state.polarKey
-      const basePolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
-      syncDebugPanel(basePolar)
+      const vehicle = getVehicleDefinition(state.polarKey)
+      const basePolar = getVehicleAeroPolar(vehicle)
+        ?? continuousPolars[state.polarKey]
+        ?? continuousPolars.aurafive
+      syncDebugPanel(basePolar, vehicle.modelType === 'canopy')
     }
 
     // When controls change, switch model if needed, then update
-    const basePolar = continuousPolars[state.polarKey] || continuousPolars.aurafive
+    const vehicle = getVehicleDefinition(state.polarKey)
+    const basePolar = getVehicleAeroPolar(vehicle)
+      ?? continuousPolars[state.polarKey]
+      ?? continuousPolars.aurafive
+    const massReference = getVehicleMassReference(vehicle, basePolar)
     const pilotType = state.modelType === 'canopy' ? state.canopyPilotType : undefined
-    switchModel(state.modelType, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar).then(() => updateVisualization(state))
+    switchModel(vehicle, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar, massReference)
+      .then(() => updateVisualization(state))
   })
 
   // Sync debug panel to initial polar
   prevPolarKey = flightState.polarKey
-  const initialPolar = continuousPolars[flightState.polarKey] || continuousPolars.aurafive
-  syncDebugPanel(initialPolar)
+  const initialVehicle = getVehicleDefinition(flightState.polarKey)
+  const initialPolar = getVehicleAeroPolar(initialVehicle)
+    ?? continuousPolars[flightState.polarKey]
+    ?? continuousPolars.aurafive
+  syncDebugPanel(initialPolar, initialVehicle.modelType === 'canopy')
 
   // Load initial model
   const initialCgOffset = initialPolar.cgOffsetFraction ?? 0
   const initialPilotType = flightState.modelType === 'canopy' ? flightState.canopyPilotType : undefined
-  await switchModel(flightState.modelType, initialCgOffset, initialPilotType, initialPolar)
+  const initialMassReference = getVehicleMassReference(initialVehicle, initialPolar)
+  await switchModel(initialVehicle, initialCgOffset, initialPilotType, initialPolar, initialMassReference)
 
   // Initial visualization update
   updateVisualization(flightState)

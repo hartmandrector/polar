@@ -242,7 +242,7 @@ describe('Assembly configurations', () => {
   })
 
   it('canopy-wingsuit assembly has correct CANOPY_SCALE', () => {
-    expect(CANOPY_WINGSUIT_ASSEMBLY.parentScale).toBe(1.5)
+    expect(CANOPY_WINGSUIT_ASSEMBLY.parentScale).toBe(3.0)
   })
 
   it('both assemblies share the same trim angle', () => {

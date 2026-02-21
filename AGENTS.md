@@ -7,6 +7,14 @@ TypeScript + Three.js + Vite + Chart.js + vitest.
 
 ## Key Documents (read these first)
 
+**Architecture & Refactoring:**
+- `VEHICLE-REFACTOR.md` — Vehicle decoupling architecture: how to make the system modular for custom user data
+- `REFERENCE-LENGTH.md` — Reference length parameterization (Phase A complete): why and how we moved from hardcoded constants to polar-controlled parameters
+
+**Integration Guides (for users):**
+- `polar-visualizer/docs/USER-MY-DATA.md` — Three-tier guide for users integrating their own vehicle data (Beginner / Intermediate / Advanced)
+
+**Technical Details:**
 - `WINGSUIT-SEGMENTS.md` — 6-segment wingsuit model: phases, implementation status, tuning notes
 - `CONTINUOUS-POLAR.md` — Continuous polar system architecture and segment math
 - `POLAR-VISUALIZER.md` — Overall visualizer architecture, coordinate systems, rendering pipeline
