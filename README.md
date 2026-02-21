@@ -51,6 +51,16 @@ The dev server will open at `http://localhost:5173`.
 
 ---
 
+## How It Works
+
+The entire system is built on two foundational pillars — if you understand these, every design decision in the project makes sense:
+
+- **[Aerodynamic Model](docs/aero-model-overview.md)** — Kirchhoff separation theory blends attached-flow and flat-plate aerodynamics through a smooth sigmoid, giving every segment physically motivated coefficients at any orientation. [Full spec →](KIRCHHOFF.md)
+
+- **[Reference Frames](docs/frames-overview.md)** — Five coordinate frames (inertial, body, wind, Three.js, GLB) connected by explicit transforms. The rotating-frame derivative produces Coriolis and gyroscopic terms; per-segment ω×r correction generates automatic rate damping. [Full spec →](FRAMES.md)
+
+---
+
 ## Project Structure
 
 ```
