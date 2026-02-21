@@ -10,19 +10,15 @@
 We have working coupled canopy+aero scaling via a single slider. The next step
 is to add the same for the pilot, then a pivot junction control.
 
-**Three new slider systems needed:**
+**Two new slider systems needed:**
 
 1. **Pilot scaling** — height slider that couples pilot GLB mesh + pilot aero
    (reference length, mass positions, segment areas) — same pattern as the
    existing canopy slider.
 
-2. **Pivot junction** — controls the riser attachment mechanics between pilot
-   and canopy. Adjusts trim angle, pendulum length, and connection geometry
+2. **Pivot junction** — controls the scaling ratio between pilot and canopy
+   at the riser attachment. Adjusts pendulum length and connection geometry
    so incoming GLB models with different proportions assemble correctly.
-
-3. **Weight override** — already partially designed in Phase D
-   ([implementation doc](docs/reference/VEHICLE-REFACTOR-IMPLEMENTATION.md#phase-d-ui-scaling-controls),
-   Task D.3). Slider for total system mass independent of geometry scaling.
 
 ## What's Done
 

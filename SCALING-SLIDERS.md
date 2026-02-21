@@ -73,7 +73,6 @@ This single abstract value adjusts:
 ### What It Does NOT Control
 - Canopy size (that's the canopy area slider)
 - Pilot height in meters (that's the pilot height slider)
-- Trim angle (separate parameter, could be its own control later)
 - Aerodynamic coefficients (those scale with the pilot/canopy sliders)
 
 ### Current Implementation Scatter
@@ -85,9 +84,11 @@ These related values are currently spread across multiple files:
 | `parentScale` | `model-registry.ts` → `VehicleAssembly` |
 | `childScale` | `model-registry.ts` → `VehicleAssembly` / `deriveAssemblyOffsets()` |
 | `shoulderOffsetFraction` | `model-registry.ts` → `VehicleAssembly` |
-| `trimAngleDeg` | `model-registry.ts` → `VehicleAssembly` |
 | `PILOT_PIVOT_X/Z` | `polar-data.ts` (physics pivot) |
 | Pivot group creation | `model-loader.ts` (rendering pivot) |
+
+Note: `trimAngleDeg` is implicitly captured by the assembly system and
+does not need independent control.
 
 **Goal:** Consolidate into `VehicleDefinition` in the vehicle registry so
 the slider has one place to read/write.

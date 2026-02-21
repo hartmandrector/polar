@@ -2,10 +2,11 @@
 
 > Consolidate pivot/assembly values into `VehicleDefinition`.
 
-Currently `parentScale`, `childScale`, `shoulderOffsetFraction`, and
-`trimAngleDeg` live in `VehicleAssembly` (model-registry.ts), while
-`PILOT_PIVOT_X/Z` live in `polar-data.ts` and the pivot group is
-created in `model-loader.ts`. Three files, one concept.
+Currently `parentScale`, `childScale`, and `shoulderOffsetFraction`
+live in `VehicleAssembly` (model-registry.ts), while `PILOT_PIVOT_X/Z`
+live in `polar-data.ts` and the pivot group is created in
+`model-loader.ts`. Three files, one concept. (`trimAngleDeg` is
+implicitly captured by the assembly and doesn't need independent control.)
 
 **Plan:** Move all pivot-related values into `VehicleDefinition` in
 `vehicle-registry.ts` so the assembly junction is defined in one place:
@@ -14,7 +15,6 @@ created in `model-loader.ts`. Three files, one concept.
 interface VehicleDefinition {
   // ... existing fields ...
   pivot: {
-    trimAngleDeg: number          // forward lean (currently 6°)
     shoulderOffsetFraction: number // riser-to-shoulder distance (normalized)
     pivotX: number                // NED x of riser attachment
     pivotZ: number                // NED z of riser attachment
