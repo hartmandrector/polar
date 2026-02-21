@@ -8,16 +8,16 @@ TypeScript + Three.js + Vite + Chart.js + vitest.
 ## Key Documents (read these first)
 
 **Architecture & Refactoring:**
-- `VEHICLE-REFACTOR.md` — Vehicle decoupling architecture: modular system for custom user data (Phases A–C complete)
-- `REFERENCE-LENGTH.md` — Reference length parameterization (Phases A–C complete): per-vehicle aero vs mass reference lengths
+- `docs/reference/VEHICLE-REFACTOR.md` — Vehicle decoupling architecture: modular system for custom user data (Phases A–C complete)
+- `docs/REFERENCE-LENGTH.md` — Reference length parameterization (Phases A–C complete): per-vehicle aero vs mass reference lengths
 
 **Integration Guides (for users):**
-- `polar-visualizer/docs/USER-MY-DATA.md` — Three-tier guide for users integrating their own vehicle data (Beginner / Intermediate / Advanced)
+- `docs/USER-MY-DATA.md` — Three-tier guide for users integrating their own vehicle data (Beginner / Intermediate / Advanced)
 
 **Technical Details:**
-- `WINGSUIT-SEGMENTS.md` — 6-segment wingsuit model: phases, implementation status, tuning notes
-- `CONTINUOUS-POLAR.md` — Continuous polar system architecture and segment math
-- `POLAR-VISUALIZER.md` — Overall visualizer architecture, coordinate systems, rendering pipeline
+- `docs/WINGSUIT-SEGMENTS.md` — 6-segment wingsuit model: phases, implementation status, tuning notes
+- `docs/CONTINUOUS-POLAR.md` — Continuous polar system architecture and segment math
+- `docs/POLAR-VISUALIZER.md` — Overall visualizer architecture, coordinate systems, rendering pipeline
 - `README.md` — Project overview
 - `OPENCLAW-SETUP.md` — OpenClaw setup plan and workflow documentation
 

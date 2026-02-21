@@ -2,7 +2,7 @@
 
 > **Status:** Phases A–C complete. Phase D planned.
 > **Scope:** Step-by-step implementation roadmap with test strategy
-> **Related:** [VEHICLE-REFACTOR.md](VEHICLE-REFACTOR.md) (architecture & design), [REFERENCE-LENGTH.md](REFERENCE-LENGTH.md) (Phases A–C complete)
+> **Related:** [VEHICLE-REFACTOR.md](VEHICLE-REFACTOR.md) (architecture & design), [REFERENCE-LENGTH.md](../REFERENCE-LENGTH.md) (Phases A–C complete)
 
 ---
 
@@ -886,7 +886,7 @@ function updateVehicleInfo(vehicle: VehicleDefinition) {
 
 ### Task E.1: Publish User Integration Guide
 
-**File:** Leverage existing [USER-MY-DATA.md](docs/USER-MY-DATA.md) + create `docs/user-vehicle-registry.md`
+**File:** Leverage existing [USER-MY-DATA.md](../USER-MY-DATA.md) + create `docs/user-vehicle-registry.md`
 
 **User workflow:**
 ```

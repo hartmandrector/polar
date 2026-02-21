@@ -103,5 +103,5 @@ Both sliders follow the same wiring pattern as the existing canopy slider:
 3. Apply in `main.ts` render loop (mesh scale + physics parameters)
 4. Verify in debug panel (readout of effective values)
 
-See [Phase D tasks](docs/reference/VEHICLE-REFACTOR-IMPLEMENTATION.md#phase-d-ui-scaling-controls)
+See [Phase D tasks](reference/VEHICLE-REFACTOR-IMPLEMENTATION.md#phase-d-ui-scaling-controls)
 for the detailed implementation checklist (Tasks D.1–D.6).

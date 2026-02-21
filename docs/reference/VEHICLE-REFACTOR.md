@@ -2,7 +2,7 @@
 
 > **Status:** Phases A–C complete. Phase D (UI scaling controls) planned.
 > **Scope:** Blueprint for decoupling GLB models, aerodynamic polars, and mass systems
-> **Related:** [REFERENCE-LENGTH.md](REFERENCE-LENGTH.md) (Phases A–C complete), [USER-MY-DATA.md](docs/USER-MY-DATA.md) (integration guide)
+> **Related:** [REFERENCE-LENGTH.md](../REFERENCE-LENGTH.md) (Phases A–C complete), [USER-MY-DATA.md](../USER-MY-DATA.md) (integration guide)
 
 ---
 
@@ -667,6 +667,6 @@ When vehicle refactoring is complete:
 
 ## Next Steps
 
-See [USER-MY-DATA.md](docs/USER-MY-DATA.md) for onboarding guidance at three skill levels.
+See [USER-MY-DATA.md](../USER-MY-DATA.md) for onboarding guidance at three skill levels.
 
 See AGENTS.md for architectural principles and team conventions.

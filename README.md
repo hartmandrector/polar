@@ -55,9 +55,9 @@ The dev server will open at `http://localhost:5173`.
 
 The entire system is built on two foundational pillars — if you understand these, every design decision in the project makes sense:
 
-- **[Aerodynamic Model](docs/aero-model-overview.md)** — Kirchhoff separation theory blends attached-flow and flat-plate aerodynamics through a smooth sigmoid, giving every segment physically motivated coefficients at any orientation. [Full spec →](KIRCHHOFF.md)
+- **[Aerodynamic Model](docs/aero-model-overview.md)** — Kirchhoff separation theory blends attached-flow and flat-plate aerodynamics through a smooth sigmoid, giving every segment physically motivated coefficients at any orientation. [Full spec →](docs/KIRCHHOFF.md)
 
-- **[Reference Frames](docs/frames-overview.md)** — Five coordinate frames (inertial, body, wind, Three.js, GLB) connected by explicit transforms. The rotating-frame derivative produces Coriolis and gyroscopic terms; per-segment ω×r correction generates automatic rate damping. [Full spec →](FRAMES.md)
+- **[Reference Frames](docs/frames-overview.md)** — Five coordinate frames (inertial, body, wind, Three.js, GLB) connected by explicit transforms. The rotating-frame derivative produces Coriolis and gyroscopic terms; per-segment ω×r correction generates automatic rate damping. [Full spec →](docs/FRAMES.md)
 
 ---
 
@@ -518,7 +518,7 @@ $$\mathbf{V}_{local,i} = \mathbf{V}_{body} + \boldsymbol{\omega} \times \mathbf{
 
 The cyan arrows in the 3D view show these per-segment velocity vectors. In the GIF above, a roll rate shifts the local velocity asymmetrically — the advancing wing sees higher airspeed and the retreating wing sees lower airspeed, producing differential lift and the associated rolling/yawing moments visible in the moment arcs.
 
-Full derivation and implementation checklist: [SIMULATION.md](SIMULATION.md) §15–§16.
+Full derivation and implementation checklist: [SIMULATION.md](docs/SIMULATION.md) §15–§16.
 
 ---
 
