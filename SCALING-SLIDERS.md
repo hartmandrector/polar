@@ -33,32 +33,64 @@ Pilot mesh scales below the riser. Canopy is unaffected.
 
 ## 2. Pivot Junction Slider
 
-**Purpose:** Control the riser-to-pilot connection geometry so different
-GLB models (with different shoulder positions, harness attachment points)
-assemble correctly.
+**Purpose:** Abstract control (0.0 – 1.0) that adjusts the scaling ratio
+between pilot and canopy at their connection point (riser convergence / origin).
+
+### Why It Exists
+
+The canopy and pilot GLBs are authored independently at arbitrary scales.
+The assembly system uses `parentScale` and `childScale` to make them fit
+together — `deriveAssemblyOffsets()` computes `childScale` from the ratio
+of their `glbToMeters` values. But if a user brings a custom GLB with
+different proportions, the derived ratio may not produce the right visual
+or physical junction. This slider lets them correct it.
 
 ### Input
-- Trim angle: −5° to +15° (default: 6° forward)
-- Pendulum length offset: −0.1 to +0.1 NED normalized (adjusts vertical
-  distance from riser to pilot CG)
+- Slider range: 0.0 – 1.0 (default: 0.5 = current derived ratio)
+- 0.0 = pilot scaled smallest relative to canopy
+- 1.0 = pilot scaled largest relative to canopy
 
 ### What It Controls
-| Parameter | Current Source | What Slider Does |
-|-----------|--------------|-----------------|
-| `trimAngleDeg` | `CANOPY_WINGSUIT_ASSEMBLY` (6°) | Adjusts pilot forward lean |
-| `PILOT_PIVOT_X/Z` | Hardcoded in `polar-data.ts` | Shifts riser attachment point |
-| `shoulderOffset` | Derived from GLB in `model-loader.ts` | Override for non-standard pilot GLBs |
 
-### Why This Matters
-The pivot point is at the riser convergence (origin). Both pilot and canopy
-rotate about this point. If a user's pilot GLB has different proportions
-(e.g., harness attachment 10cm higher than our default), the pivot slider
-lets them correct the assembly without re-authoring the GLB.
+The slider interpolates `childScale / parentScale` — the ratio that
+determines how big the pilot renders relative to the canopy mesh:
 
-### Interaction with Other Sliders
-- Pilot height slider changes mass distribution below pivot → affects pendulum dynamics
-- Canopy area slider changes forces above pivot → affects trim angle
-- Pivot slider adjusts the junction itself → affects both sides
+```
+effectiveChildScale = lerp(minRatio, maxRatio, sliderValue) × parentScale
+```
+
+Where `minRatio` and `maxRatio` define a reasonable range around the
+derived default (e.g., ±30% of `deriveAssemblyOffsets().childScale`).
+
+This single abstract value adjusts:
+| Parameter | Effect |
+|-----------|--------|
+| `childScale` | Pilot mesh size relative to canopy |
+| `shoulderOffsetFraction` | Shoulder-to-riser distance (scales with child) |
+| `pilotPivot.position` | 3D pivot placement (derived from shoulder offset) |
+| Pendulum length | Visual + physics distance from riser to pilot CG |
+
+### What It Does NOT Control
+- Canopy size (that's the canopy area slider)
+- Pilot height in meters (that's the pilot height slider)
+- Trim angle (separate parameter, could be its own control later)
+- Aerodynamic coefficients (those scale with the pilot/canopy sliders)
+
+### Current Implementation Scatter
+
+These related values are currently spread across multiple files:
+
+| Value | Current Location |
+|-------|-----------------|
+| `parentScale` | `model-registry.ts` → `VehicleAssembly` |
+| `childScale` | `model-registry.ts` → `VehicleAssembly` / `deriveAssemblyOffsets()` |
+| `shoulderOffsetFraction` | `model-registry.ts` → `VehicleAssembly` |
+| `trimAngleDeg` | `model-registry.ts` → `VehicleAssembly` |
+| `PILOT_PIVOT_X/Z` | `polar-data.ts` (physics pivot) |
+| Pivot group creation | `model-loader.ts` (rendering pivot) |
+
+**Goal:** Consolidate into `VehicleDefinition` in the vehicle registry so
+the slider has one place to read/write.
 
 ---
 

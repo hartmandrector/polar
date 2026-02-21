@@ -51,3 +51,4 @@ is to add the same for the pilot, then a pivot junction control.
 | Output Compatibility | [docs/reference/OUTPUT-REFACTOR-COMPATIBILITY.md](docs/reference/OUTPUT-REFACTOR-COMPATIBILITY.md) | How scaling interacts with CloudBASE export |
 | Reference Length | [REFERENCE-LENGTH.md](REFERENCE-LENGTH.md) | Normalization history, constants inventory, Phase A–C status |
 | Scaling Sliders (detail) | [SCALING-SLIDERS.md](SCALING-SLIDERS.md) | Pilot slider + pivot slider design |
+| Pivot Consolidation | [PIVOT-CONSOLIDATION.md](PIVOT-CONSOLIDATION.md) | Move all pivot/assembly values into VehicleDefinition |
