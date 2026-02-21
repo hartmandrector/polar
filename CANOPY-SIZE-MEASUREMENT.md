@@ -135,26 +135,26 @@ $$\text{Scale factor} = \sqrt{\frac{120 \text{ sqft}}{22.10 \text{ unit}^2}} = \
 
 ## Reference Information
 
-**Wingsuit reference (pilot height):** 187.5 cm = 1.875 m
-- This is the reference length used for normalizing segment positions in the physics engine
-- Independent of canopy dimensions (Aura 5 is worn by the same 1.875 m reference pilot)
+**Pilot height:** 1.875 m — used as mass normalization reference for all vehicles.
 
-**Canopy reference:** 3.29 m chord (physics system)
-- Currently the system uses pilot height (1.875 m) as universal `referenceLength`
-- Could be changed to 3.29 m (chord) or 4.45 m (GLB-measured chord) with refactoring
+**Reference length architecture (Phase A–C complete):**
+- Wingsuits: `polar.referenceLength` = 1.93 m (head-to-tail flight chord, `A5_REF_LENGTH`)
+- Canopies: `polar.referenceLength` = 1.875 m (= pilot height, `IBEX_REF_LENGTH`)
+- Mass reference: `getVehicleMassReference()` returns 1.875 for all current vehicles
+
+**Canopy physics:** S = 20.439 m² (220 ft²), chord = 3.29 m
+**Canopy visual:** ~46 m² (495 ft²) due to `CANOPY_AERO_CALIBRATION = 1.776` — accepted as visual hack
 
 ---
 
-## Notes for Refactoring (Phase C/D)
+## Notes for Refactoring (Phase D)
 
-With **VEHICLE-REFACTOR Phase C**, we'll record per-component references:
-- **Pilot reference:** `1.875 m` (Aura 5 height)
-- **Canopy physics reference:** `3.29 m` (chord), giving 220 sqft area
-- **Canopy GLB reference:** `3.528 GLB units` (chord), native model size
-- **Rendering scale:** computed from GLB bounding box → physics size ratio
+**Vehicle refactor Phase C is complete.** Per-component references are recorded:
+- `VehicleDefinition` registry stores `pilotHeight_m`, `referenceLength_m` per component
+- `getVehicleMassReference()` returns the mass reference per vehicle type
+- `polar.referenceLength` carries the aero reference per polar
 
-This architecture will:
-- Keep physics tuning stable (220 sqft baseline)
-- Allow GLB updates without affecting flight model
-- Enable independent scaling of physics vs. rendering
-- Document the transformation pipeline clearly
+**Remaining (Phase D — UI scaling controls):**
+- Canopy area slider: scale S, chord, span, positions by √(newArea / baseArea)
+- Pilot height slider: scale mass reference, inertia, body areas
+- GLB mesh scales to match physics

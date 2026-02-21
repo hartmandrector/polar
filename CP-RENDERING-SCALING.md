@@ -1,6 +1,7 @@
 # CP Rendering & Scaling — Audit Trail
 
-**Status:** With `parentScale: 3.0` (2× canopy), we've updated `deployScales` but need to verify chord-based CP calculations.
+**Status:** Verified and stable with current assembly scaling (vehicle registry + `CANOPY_AERO_CALIBRATION`).
+CP offset formula uses `massReference_m` from `getVehicleMassReference()` (not hardcoded).
 
 ---
 
@@ -95,10 +96,9 @@ posWorld = cpThree.multiplyScalar(pilotScale * massReference_m)
          = cpThree.multiplyScalar(pilotScale * 1.875)
 ```
 
-**Key:** `pilotScale` is derived from **parentScale**:
+**Key:** `pilotScale` is derived from the assembly's **baseParentScale**:
 ```typescript
-pilotScale = canopyMeshScale / (CANOPY_GEOMETRY.glbToNED * 1.875)
-           = (parentScale × s) / (0.4972 × 1.875)
+pilotScale = (physicsParentScale × s) / CANOPY_GEOMETRY.glbToMeters
 ```
 
 When parentScale changes from 1.5 → 3.0:

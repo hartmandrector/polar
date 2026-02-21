@@ -289,7 +289,7 @@ export function updateForceVectors(
   inertia: InertiaComponents | null = null,
   gravityDir?: THREE.Vector3,
   pilotScale: number = 1.0,
-  massReference_m: number = polar.referenceLength,
+  massReference_m: number = 1.875,  // pilotHeight_m default; caller always provides explicit value
   controls?: SegmentControls,
   cgOffsetThree?: THREE.Vector3,
   cachedSegForces?: SegmentForceResult[],
@@ -405,22 +405,6 @@ export function updateForceVectors(
       const posThree = nedToThreeJS(cpNED).multiplyScalar(pilotScale * massReference_m)
       const posWorld = applyFramePos(shiftPos(posThree))
 
-      // ── DIAGNOSTIC: log center cell position for alignment verification ──
-      if (seg.name === 'cell_c' && !(vectors as any)._diagLogged) {
-        console.log('[VECTORS DIAG] ── cell_c arrow position ──')
-        console.log(`  seg.position: (${seg.position.x.toFixed(4)}, ${seg.position.y.toFixed(4)}, ${seg.position.z.toFixed(4)})`)
-        console.log(`  canopyScaleRatio: ${canopyScaleRatio}`)
-        console.log(`  posScale: ${posScale}`)
-        console.log(`  segPos (scaled): (${segPosX.toFixed(4)}, ${segPosY.toFixed(4)}, ${segPosZ.toFixed(4)})`)
-        console.log(`  cpNED: (${cpNED.x.toFixed(4)}, ${cpNED.y.toFixed(4)}, ${cpNED.z.toFixed(4)})`)
-        console.log(`  pilotScale: ${pilotScale}`)
-        console.log(`  massReference_m: ${massReference_m}`)
-        console.log(`  posThree (unshifted): (${posThree.x.toFixed(4)}, ${posThree.y.toFixed(4)}, ${posThree.z.toFixed(4)})`)
-        console.log(`  cgOffset: ${cgOffsetThree ? `(${cgOffsetThree.x.toFixed(4)}, ${cgOffsetThree.y.toFixed(4)}, ${cgOffsetThree.z.toFixed(4)})` : 'none'}`)
-        console.log(`  posWorld (final): (${posWorld.x.toFixed(4)}, ${posWorld.y.toFixed(4)}, ${posWorld.z.toFixed(4)})`)
-        ;(vectors as any)._diagLogged = true
-      }
-
       // Lift arrow — flip direction for negative lift
       const liftLen = Math.abs(sf.lift) * FORCE_SCALE
       if (liftLen > 0.001) {
@@ -486,7 +470,6 @@ export function updateForceVectors(
     const windNED = { x: windDir.z, y: -windDir.x, z: -windDir.y }
     const liftNED = { x: liftDir.z, y: -liftDir.x, z: -liftDir.y }
     const sideNED = { x: sideDir.z, y: -sideDir.x, z: -sideDir.y }
-    // TODO(ref-audit): aero reference -> referenceLength_m
     const system = sumAllSegments(segments, segForces, cgNED, polar.referenceLength, windNED, liftNED, sideNED)
 
     // Total aero force (at CG, from summed segments)

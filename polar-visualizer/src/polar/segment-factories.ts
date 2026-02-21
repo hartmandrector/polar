@@ -406,8 +406,7 @@ export function makeBrakeFlapSegment(
   // Full-flight flap geometry (deploy = 1) — captured at factory time
   const fullMaxFlapS = flapChordFraction * parentCellS
   const fullMaxFlapChord = flapChordFraction * parentCellChord
-  // TODO(ref-audit): aero reference -> referenceLength_m
-  const fullMaxCpShift = 0.25 * fullMaxFlapChord / referenceLength
+  const fullMaxCpShift = 0.25 * fullMaxFlapChord / referenceLength  // referenceLength from caller
 
   // Roll increment sign — deepens the arc in the same direction as the base roll.
   const rollSign = rollDeg >= 0 ? 1 : -1

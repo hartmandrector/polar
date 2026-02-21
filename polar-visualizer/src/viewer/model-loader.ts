@@ -422,8 +422,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
   // For canopy: derived FROM the canopy mesh scale so physics segment
   // positions land exactly on the GLB mesh. Formula:
   //   canopyMeshScale = parentScale × s  (scene units per GLB unit)
-  //   pilotScale = canopyMeshScale / (glbToNED × 1.875)
-  //             = canopyMeshScale / glbToMeters
+  //   pilotScale = canopyMeshScale / glbToMeters
   // For standalone: derived from pilot body length (legacy).
   const box = new THREE.Box3().setFromObject(compositeRoot)
   const center = box.getCenter(new THREE.Vector3())
@@ -458,7 +457,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
       const resolvedAssembly: VehicleAssembly | undefined = (compositeRoot as any)._assembly
       const physicsParentScale = resolvedAssembly?.baseParentScale ?? Math.abs(mainModel.scale.x)
       canopyBaseScale = Math.abs(mainModel.scale.x) * s  // full visual scale (for deployment)
-      pilotScale = (physicsParentScale * s) / (CANOPY_GEOMETRY.glbToNED * 1.875)
+      pilotScale = (physicsParentScale * s) / CANOPY_GEOMETRY.glbToMeters
       // Component scale = visual enlargement factor (fullScale / baseScale)
       canopyComponentScale = physicsParentScale > 0
         ? Math.abs(mainModel.scale.x) / physicsParentScale
@@ -471,43 +470,11 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
       _canopyBasePS = physicsParentScale
       _canopyNormS = s
 
-      // ── DIAGNOSTIC: trace the complete scaling pipeline ──
-      const _glbToNED = CANOPY_GEOMETRY.glbToNED
-      const _glbToMeters = CANOPY_GEOMETRY.glbToMeters
-      const _fullPS = Math.abs(mainModel.scale.x)
-      const _centerRibY = 4.337  // GLB y of center cell chord LE (rib[0].glbYChordLE)
-      const _centerRibZ = -0.248 // GLB z of center cell QC (approx)
-      // Mesh position of center cell chord LE (Three.js y):
-      const meshY = _centerRibY * _fullPS * s
-      // Corresponding NED position from _cellQC:
-      const nedZ = -_centerRibY * _glbToNED  // NED z (normalized)
-      // Arrow position at that NED pos (Three.js y):
-      const arrowY = Math.abs(nedZ) * canopyScaleRatio * pilotScale * 1.875
-      console.log('[CANOPY DIAG] ── scaling pipeline ──')
-      console.log(`  referenceDim (wingsuitRawMaxDim): ${referenceDim}`)
-      console.log(`  TARGET_SIZE: ${TARGET_SIZE}`)
-      console.log(`  s (norm): ${s.toFixed(6)}`)
-      console.log(`  baseParentScale: ${physicsParentScale}`)
-      console.log(`  fullParentScale (|mainModel.scale.x|): ${_fullPS}`)
-      console.log(`  canopyComponentScale: ${canopyComponentScale}`)
-      console.log(`  CANOPY_AERO_CALIBRATION: ${CANOPY_AERO_CALIBRATION}`)
-      console.log(`  canopyScaleRatio: ${canopyScaleRatio.toFixed(6)}`)
-      console.log(`  pilotScale: ${pilotScale.toFixed(6)}`)
-      console.log(`  glbToNED: ${_glbToNED.toFixed(6)}`)
-      console.log(`  glbToMeters: ${_glbToMeters.toFixed(6)}`)
-      console.log(`  compositeRoot.scale: (${compositeRoot.scale.x.toFixed(4)}, ${compositeRoot.scale.y.toFixed(4)}, ${compositeRoot.scale.z.toFixed(4)})`)
-      console.log(`  mainModel.scale: (${mainModel.scale.x.toFixed(4)}, ${mainModel.scale.y.toFixed(4)}, ${mainModel.scale.z.toFixed(4)})`)
-      console.log(`  ── center cell alignment check ──`)
-      console.log(`  Mesh  Three.y for GLB y=${_centerRibY}: ${meshY.toFixed(4)}`)
-      console.log(`  Arrow Three.y for same point:          ${arrowY.toFixed(4)}`)
-      console.log(`  ratio (arrow/mesh): ${(arrowY/meshY).toFixed(6)}  (should be 1.0 for alignment)`)
-      console.log(`  Algebraic: canopyScaleRatio × basePS / fullPS = ${(canopyScaleRatio * physicsParentScale / _fullPS).toFixed(6)}`)
-
     } else {
       // Standalone models: bbox-center at origin (legacy)
       compositeRoot.position.sub(center.multiplyScalar(s))
       bodyLength = size.z * s
-      pilotScale = bodyLength / 1.875
+      pilotScale = bodyLength / WINGSUIT_GEOMETRY.referenceHeight  // pilot height (1.875m, same for all models)
     }
   }
 

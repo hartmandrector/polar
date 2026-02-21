@@ -1,6 +1,6 @@
 # REFERENCE-LENGTH.md — Scaling & Normalization Overhaul
 
-> **Status:** Phase A + B complete; Phase C planning in progress.
+> **Status:** Phase A + B + C complete. Phase D (UI scaling controls) planned.
 > **Created:** 2026-02-20
 > **Author:** Polar Claw + Hartman
 
@@ -52,16 +52,17 @@ collapsed. The number of magic constants approaches zero.
 
 ## Current Constants Inventory
 
-### Named Constants (3 definitions of the same thing)
+### Named Constants
 ```typescript
-// model-registry.ts
+// model-registry.ts — render-only, do not use for aero reference
 const REF_HEIGHT = 1.875
 
-// polar-data.ts
-const A5_HEIGHT = 1.875    // pilot height for wingsuit normalization
+// polar-data.ts — wingsuit aero reference (head-to-tail flight chord)
+const A5_REF_LENGTH = 1.93
+const A5_HEIGHT = 1.875    // pilot height (mass normalization)
 
-// segment-factories.ts
-const REFERENCE_HEIGHT = 1.875
+// polar-data.ts — canopy aero reference (= pilot height for now)
+const IBEX_REF_LENGTH = 1.875
 ```
 
 ### GLB Scaling Chain (model-registry.ts)
@@ -92,13 +93,19 @@ s = TARGET_SIZE / referenceDim               // normalize so pilot body = 2.0 un
 pilotScale = canopyMeshScale / glbToMeters   // NED meters → scene units
 ```
 
-### Denormalization in Physics (scattered)
+### Denormalization in Physics
 ```typescript
-// Every function that converts normalized positions to meters:
-computeInertia(segments, 1.875, mass)
-computeCenterOfMass(segments, 1.875, mass)
-sumAllSegments(segments, forces, cg, 1.875, ...)
-evaluateAeroForces(segments, cg, 1.875, vel, omega, controls, rho)
+// Mass functions use massReference (from vehicle registry):
+computeInertia(segments, massReference, mass)    // massReference = 1.875 (all vehicles)
+computeCenterOfMass(segments, massReference, mass)
+
+// Aero functions use polar.referenceLength:
+sumAllSegments(segments, forces, cg, polar.referenceLength, ...)  // 1.93 wingsuits, 1.875 canopies
+evaluateAeroForcesDetailed(segments, cg, polar.referenceLength, vel, omega, controls, rho)
+
+// Vehicle registry provides both:
+const massReference = getVehicleMassReference(vehicle, polar)  // always 1.875 currently
+const aeroRef = polar.referenceLength                          // 1.93 or 1.875
 ```
 
 ---
@@ -138,29 +145,27 @@ physics. Tests can verify behavior with different reference lengths.
 - Tests pass: 220/220.
 - Expected scaling confirmed: moment arms +2.9%, inertia +5.9%.
 
-### Phase C: Per-Component Reference Frames
+### Phase C: Per-Component Reference Frames ✅
 
-**Goal:** Canopy and pilot segments use their own reference lengths.
-Composite frame assembles in physical meters.
+**Status:** Completed (2026-02-20). Chose option 4 (keep canopy normalized by pilot height).
 
-This requires answering: **what is the canopy's reference length?**
+**Decision:** Canopy positions remain normalized by pilot height (1.875m) since
+the canopy-pilot composite is always assembled together. The canopy's physical
+dimensions (`s`, `chord`, `span`) scale independently of position normalization.
 
-Options:
-| Option | Reference Length | Pros | Cons |
-|--------|----------------|------|------|
-| Canopy chord | ~2.8m (for 210 sqft) | Aerodynamic convention | Changes with area scaling |
-| Canopy semi-span | ~5.3m | Structural convention | Same issue |
-| √(S) | ~4.42m | Scales naturally with area | Not a physical dimension |
-| Pilot height | 1.875m (current) | No change to canopy positions | Couples canopy to pilot |
-
-**My lean:** Keep canopy positions normalized by pilot height for now
-(option 4), since the canopy-pilot composite is always assembled together.
-The canopy's physical dimensions (`s`, `chord`, `span`) are already stored
-separately and scale independently of position normalization.
+**What was implemented:**
+- `VehicleDefinition` registry with per-component reference lengths
+- `getVehicleMassReference()` returns mass reference per vehicle type
+- `polar.referenceLength` carries aero reference per polar (1.93 wingsuits, 1.875 canopies)
+- Mixed normalization: CG uses mass reference, positions use aero reference
+  - For wingsuits: ~2.9% lever-arm discrepancy (1.875 vs 1.93) — acceptable
+  - For canopies: both are 1.875, no discrepancy
+- Debug panel with aero verification readout (Physics S vs Visual S)
+- All TODO(ref-audit) comments resolved
 
 For true independent scaling (different pilot under same canopy), we'd need
 to store canopy positions in canopy-relative coordinates and transform them
-at assembly time. That's Phase C territory.
+at assembly time. That's Phase D territory.
 
 ### Phase D: Scaling Controls
 
@@ -242,18 +247,16 @@ Mostly `polar-data.ts` + test expected values.
 
 ## Open Questions
 
-1. **What is the true wingsuit flight chord?** Need to measure: top of helmet
-   to tip of tail fabric, in flight configuration (arms extended, legs together).
-   Hartman says ~1.93m, but need to confirm.
+1. ~~**What is the true wingsuit flight chord?**~~ **Answered:** 1.93m (A5_REF_LENGTH).
 
 2. **What is the canopy's true planform area?** The GLB is a ~120 sqft design
-   scaled to ~220–245 sqft visually. Hartman's actual canopy is 210 sqft.
-   Do we anchor to 210 and let the user scale from there?
+   scaled to ~220 sqft via physics. Hartman's actual canopy is 210 sqft.
+   Physics uses S=20.439 m² (220 ft²). Visual mesh shows ~46 m² (495 ft²)
+   due to CANOPY_AERO_CALIBRATION=1.776. Accepted as visual hack.
 
 3. **Should we collapse parentScale/childScale?** If we anchor both GLBs to
    physical dimensions via the registry, these intermediate factors become
    redundant. But the X-flip (canopy mirroring) still needs to happen somewhere.
 
-4. **Default `= 1.875` in function signatures**: Remove the defaults entirely
-   (force callers to pass explicitly), or replace with a named constant?
-   Forcing explicit passing is safer — no silent wrong-default bugs.
+4. ~~**Default `= 1.875` in function signatures**~~ **Resolved:** callers pass
+   explicit values from `getVehicleMassReference()` or `polar.referenceLength`.

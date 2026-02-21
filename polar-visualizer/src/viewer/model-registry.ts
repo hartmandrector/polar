@@ -656,8 +656,8 @@ export function relativeToCG(position: Vec3, cgNED: Vec3): Vec3 {
 //  Model definitions
 // ─────────────────────────────────────────────────────────────────────
 
-// Reference height used throughout the system (pilot height in meters)
-// TODO(ref-audit): keep as render-only; do not mix with aero reference length
+// Reference height for rendering (pilot height in meters).
+// Render-only — do not use for aero reference length.
 const REF_HEIGHT = 1.875
 
 /**

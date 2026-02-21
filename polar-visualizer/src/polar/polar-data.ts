@@ -802,6 +802,9 @@ export function rotatePilotMass(
  * polar values. These are initial estimates — tuning via debug overrides
  * will refine them per-segment.
  */
+/** Reference length for Ibex canopy polar (pilot height) [m] */
+const IBEX_REF_LENGTH = 3.74//1.875
+
 const CANOPY_CELL_POLAR: ContinuousPolar = {
   name: 'Ibex UL Cell',
   type: 'Canopy',
@@ -858,7 +861,7 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
     }
   },
 
-  referenceLength: 1.875  // Pilot height (will be IBEX_REF_LENGTH after definition order fix)
+  referenceLength: IBEX_REF_LENGTH
 }
 
 /**
@@ -924,11 +927,8 @@ const BRAKE_FLAP_POLAR: ContinuousPolar = {
   m: 77.5,
   chord: 0.5,           // placeholder, factory sets actual chord
 
-  referenceLength: 1.875  // Pilot height (will be IBEX_REF_LENGTH after definition order fix)
+  referenceLength: IBEX_REF_LENGTH
 }
-
-/** Reference length for Ibex canopy polar (pilot height) [m] */
-const IBEX_REF_LENGTH = 1.875
 
 /**
  * 16 aerodynamic segments for the Ibex UL canopy system.

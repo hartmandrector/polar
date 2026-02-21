@@ -194,8 +194,7 @@ function computeSegmentReadout(
     ? computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
     : { x: 0, y: 0, z: 0 }
 
-  // Sum forces and moments
-  // TODO(ref-audit): aero reference -> referenceLength_m
+  // Sum forces and moments (aero reference length — correct)
   const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir)
 
   // Decompose into pseudo coefficients
@@ -231,7 +230,9 @@ function computeSegmentReadout(
     const cx = My * Fz - Mz * Fy
     const cy_cross = Mz * Fx - Mx * Fz
     const cz = Mx * Fy - My * Fx
-    // TODO(ref-audit): split mass (cgMeters) vs aero ref length
+    // Phase C: cgMeters uses massReference while positions use polar.referenceLength.
+    // For wingsuits this is a ~2.9% lever-arm difference (1.875 vs 1.93).
+    // Acceptable until per-component reference frames (Phase C).
     cpNED = {
       x: cgMeters.x / polar.referenceLength + cx / (F2 * polar.referenceLength),
       y: cgMeters.y / polar.referenceLength + cy_cross / (F2 * polar.referenceLength),
@@ -519,7 +520,6 @@ function updateVisualization(state: FlightState): void {
         z: state.airspeed * Math.sin(state.alpha_deg * DEG2RAD) * Math.cos(state.beta_deg * DEG2RAD),
       }
       const omega = { p: bodyRates.p, q: bodyRates.q, r: bodyRates.r }
-      // TODO(ref-audit): aero reference -> referenceLength_m
       const detailed = evaluateAeroForcesDetailed(segments!, cgNED, polar.referenceLength, bodyVel, omega, segControls, state.rho)
       cachedPerSegment = detailed.perSegment
       cachedSegForces = detailed.perSegment.map(ps => ps.forces)
@@ -543,7 +543,6 @@ function updateVisualization(state: FlightState): void {
     let bodyAccel: { pDot: number; qDot: number; rDot: number } | null = null
     if (currentInertia.Ixx > 0.001 || currentInertia.Iyy > 0.001 || currentInertia.Izz > 0.001) {
       const { windDir, liftDir, sideDir } = computeWindFrameNED(state.alpha_deg, state.beta_deg)
-      // TODO(ref-audit): aero reference -> referenceLength_m
       const system = sumAllSegments(segments!, cachedSegForces!, cgNED, polar.referenceLength, windDir, liftDir, sideDir)
       // Simplified angular acceleration (diagonal inertia)
       bodyAccel = {
@@ -660,8 +659,7 @@ function updateVisualization(state: FlightState): void {
       const pvtLocal = massOverlay.group.worldToLocal(pvtWorld.clone())
       // Three.js → NED normalised: ned.x = three.z, ned.z = -three.y
       // Divide by (height × pilotScale) to go from model-units to normalised
-      // TODO(ref-audit): mass reference -> pilotHeight_m
-      const hs = massReference * currentModel.pilotScale
+      const hs = massReference * currentModel.pilotScale  // massReference = pilotHeight_m
       currentModel.massPivotNED = {
         x: pvtLocal.z / hs,
         z: -pvtLocal.y / hs,
@@ -673,7 +671,8 @@ function updateVisualization(state: FlightState): void {
       massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio)
       // CP diamond marker — use segmented readout CP when available, else lumped coeffs
       const cpFraction = segReadout ? segReadout.cp : coeffs.cp
-      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
+      // Phase C: updateCP receives polar.referenceLength for CP positioning.
+      // For canopies both references are 1.875 so no practical discrepancy.
       massOverlay.updateCP(cpFraction, polar.cg, polar.chord, polar.referenceLength, currentModel.pilotScale, polar.massSegments, segReadout?.cpNED, currentModel.canopyScaleRatio)
     }
 

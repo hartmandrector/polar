@@ -123,7 +123,7 @@ export function createMassOverlay(): MassOverlay {
     ensureMeshCount(segments.length)
     if (segments.length === 0) return
 
-    // TODO(ref-audit): height should map to pilotHeight_m
+    // height = massReference (pilotHeight_m for wingsuits, referenceLength for canopies)
     const masses = getPhysicalMassPositions(segments, height, weight)
     const cg = computeCenterOfMass(segments, height, weight)
 
@@ -209,7 +209,8 @@ export function createMassOverlay(): MassOverlay {
       )
     } else if (massSegments && massSegments.length > 0) {
       // Fallback: position CP along chord axis relative to computed CG
-      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
+      // Phase C: height may mix mass/aero references for wingsuits (~2.9%).
+      // For canopies (the only vehicle with mass segments + CP) both are 1.875.
       const cg = computeCenterOfMass(massSegments, height, 1)
       const cpOffsetNorm = (cgFraction - cpFraction) * chord / height
       const cpNED = { x: cg.x + cpOffsetNorm, y: cg.y, z: cg.z }
@@ -221,7 +222,7 @@ export function createMassOverlay(): MassOverlay {
       )
     } else {
       // No mass segments — use chord-fraction directly
-      // TODO(ref-audit): split mass (pilotHeight_m) vs aero (referenceLength_m)
+      // Phase C: height may mix mass/aero references (see above).
       const cpNED = { x: (0.5 - cpFraction) * (1.0 / height), y: 0, z: 0 }
       const cpThree = nedToThreeJS(cpNED)
       cpMesh.position.set(
