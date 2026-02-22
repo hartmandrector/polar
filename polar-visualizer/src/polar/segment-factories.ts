@@ -80,7 +80,8 @@ export const DEPLOY_CHORD_OFFSET = 0.15
  *
  * @param name             Human-readable segment name (e.g. 'cell_c', 'cell_r2')
  * @param position         NED body-frame position (normalized by reference height)
- * @param rollDeg          Arc angle θ [deg] — 0° center, ±12/24/36° for outer cells
+ * @param rollDeg          Arc angle θ_arc [deg] — NOT Euler φ. Geometric station along
+ *                         curved canopy span. 0° center, ±12/24/36° for outer cells.
  * @param side             Which side of the canopy for control routing
  * @param brakeSensitivity How much brake δ this cell sees (0 for center, 0.4→1.0 outer)
  * @param riserSensitivity How much riser Δα this cell sees (~1.0 for all cells)
@@ -445,7 +446,7 @@ export function makeUnzippablePilotSegment(
  *
  * @param name              Segment name (e.g. 'flap_r2')
  * @param trailingEdgePos   NED body-frame position at the trailing edge of parent cell (normalized)
- * @param rollDeg           Arc angle θ [deg] — same as parent cell
+ * @param rollDeg           Arc angle θ_arc [deg] — NOT Euler φ. Same as parent cell.
  * @param side              Which side for control routing (same as parent cell)
  * @param brakeSensitivity  Brake cascade factor (same as parent cell)
  * @param flapChordFraction Maximum flap chord / cell chord at full brake (outer=0.30, inner=0.10)

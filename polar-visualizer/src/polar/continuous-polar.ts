@@ -168,7 +168,9 @@ export interface AeroSegment {
 
   /**
    * Cell orientation from arc geometry.
-   * roll_deg: arc angle θ — 0° at center, ±12°/24°/36° at outer cells.
+   * roll_deg: arc angle θ_arc — 0° at center, ±12°/24°/36° at outer cells.
+   *           NOT Euler roll φ — this is the geometric station angle along
+   *           the curved canopy span. See FRAMES.md §2.7.
    *           Determines how freestream α, β map to local flow angles.
    * pitch_deg: optional incidence offset (washout, trim tab, etc.)
    *

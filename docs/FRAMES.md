@@ -137,6 +137,24 @@ where `CG_xc = 0.40`, `SYS_CHORD = 1.8 m`, `HEIGHT = 1.875 m`.
 
 **Code:** `a5xc(xc)` in `polar-data.ts`
 
+### 2.7  "Roll Angle" Disambiguation
+
+Three distinct quantities share the word "roll" across this project and related work:
+
+| Name | Symbol | Frame | Meaning |
+|------|--------|-------|---------|
+| **Euler roll** | $\phi$ | Body → Inertial | Bank angle from 3-2-1 decomposition. `FlightState.roll_deg`. |
+| **Cell arc angle** | $\theta_{\text{arc}}$ | Span geometry | Angular station of a canopy cell along the curved span. `AeroSegment.orientation.roll_deg`. **Not** an Euler angle — purely geometric. |
+| **GPS-derived roll** | $\phi_V$ | Velocity (wind) | Bank angle estimated by projecting acceleration onto velocity. Assumes forward = $\vec{V}$, no sideslip ($\beta = 0$). Used in Kalman filter / GPS flight analysis. |
+
+$\phi$ and $\phi_V$ are approximately equal in steady symmetric flight (small $\beta$)
+but diverge with sideslip or unsteady motion. $\theta_{\text{arc}}$ is a completely
+different concept — it describes **where** a segment sits on the span, not how the
+vehicle is banked.
+
+> **Future cleanup:** `orientation.roll_deg` on `AeroSegment` could be renamed
+> to `arcAngle_deg` to eliminate collision with Euler $\phi$.
+
 ---
 
 ## 3  Euler Angles (3-2-1 Sequence)
