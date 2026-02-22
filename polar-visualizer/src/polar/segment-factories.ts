@@ -113,6 +113,24 @@ export function makeCanopyCellSegment(
     chord: cellPolar.chord,
     polar: cellPolar,
 
+    /**
+     * Get AC position in meters based on current deploy state.
+     * At deploy=0 (line stretch), canopy is bundled: span/chord collapse.
+     * At deploy=1 (full flight), positions match full-flight calibration.
+     */
+    getPositionMeters(controls: SegmentControls, massRef_m: number) {
+      const d = Math.max(0, Math.min(1, controls.deploy))
+      const spanScale = 0.1 + 0.9 * d    // span: 10% → 100%
+      const chordScale = 0.3 + 0.7 * d   // chord: 30% → 100%
+      const chordOffset = DEPLOY_CHORD_OFFSET * (1 - d)  // forward shift at low deploy
+
+      return {
+        x: (fullX + chordOffset) * massRef_m * chordScale,
+        y: fullY * massRef_m * spanScale,
+        z: position.z * massRef_m,  // line length is constant
+      }
+    },
+
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       // Use this.polar so debug overrides applied to seg.polar take effect
       const polar = this.polar ?? cellPolar
@@ -228,6 +246,32 @@ export function makeLiftingBodySegment(
     pitchOffset_deg,
     polar: bodyPolar,
 
+    /**
+     * Get AC position in meters based on pilot pitch.
+     * Pilot swings around riser pivot when pitching.
+     */
+    getPositionMeters(controls: SegmentControls, massRef_m: number) {
+      let x = neutralX
+      let z = neutralZ
+
+      // Rotate position around pivot when pilot pitches
+      if (pivot && Math.abs(controls.pilotPitch) > 0.01) {
+        const delta = controls.pilotPitch * Math.PI / 180
+        const cos_d = Math.cos(delta)
+        const sin_d = Math.sin(delta)
+        const dx = neutralX - pivot.x
+        const dz = neutralZ - pivot.z
+        x = dx * cos_d - dz * sin_d + pivot.x
+        z = dx * sin_d + dz * cos_d + pivot.z
+      }
+
+      return {
+        x: x * massRef_m,
+        y: position.y * massRef_m,
+        z: z * massRef_m,
+      }
+    },
+
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       // Use this.polar so debug overrides applied to seg.polar take effect
       const polar = this.polar ?? bodyPolar
@@ -307,6 +351,32 @@ export function makeUnzippablePilotSegment(
     chord: zippedPolar.chord,
     pitchOffset_deg,
     polar: zippedPolar,
+
+    /**
+     * Get AC position in meters based on pilot pitch.
+     * Pilot swings around riser pivot when pitching.
+     */
+    getPositionMeters(controls: SegmentControls, massRef_m: number) {
+      let x = neutralX
+      let z = neutralZ
+
+      // Rotate position around pivot when pilot pitches
+      if (pivot && Math.abs(controls.pilotPitch) > 0.01) {
+        const delta = controls.pilotPitch * Math.PI / 180
+        const cos_d = Math.cos(delta)
+        const sin_d = Math.sin(delta)
+        const dx = neutralX - pivot.x
+        const dz = neutralZ - pivot.z
+        x = dx * cos_d - dz * sin_d + pivot.x
+        z = dx * sin_d + dz * cos_d + pivot.z
+      }
+
+      return {
+        x: x * massRef_m,
+        y: position.y * massRef_m,
+        z: z * massRef_m,
+      }
+    },
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       const t = Math.max(0, Math.min(1, controls.unzip))
@@ -423,6 +493,35 @@ export function makeBrakeFlapSegment(
     S: 0,               // starts at zero — grows with brake input
     chord: 0,
     polar: flapPolar,
+
+    /**
+     * Get AC position in meters based on deploy and brake state.
+     * Flap positions depend on both deployment scaling and brake input.
+     */
+    getPositionMeters(controls: SegmentControls, massRef_m: number) {
+      const d = Math.max(0, Math.min(1, controls.deploy))
+      const spanScale = 0.1 + 0.9 * d
+      const chordScale = 0.3 + 0.7 * d
+      const chordOffset = DEPLOY_CHORD_OFFSET * (1 - d)
+
+      // Brake input from side routing
+      const brakeInput = side === 'right' ? controls.brakeRight : controls.brakeLeft
+      const effectiveBrake = brakeInput * brakeSensitivity
+
+      // Flap chord and CP shift scale with deployment
+      const maxFlapChord = fullMaxFlapChord * chordScale
+      const maxCpShift = fullMaxCpShift * chordScale
+      const cpShift = effectiveBrake * maxCpShift
+
+      // Dynamic position: TE to cell center with chord offset
+      const teX = parentCellX + chordOffset + (fullTeX - parentCellX) * chordScale + cpShift
+
+      return {
+        x: teX * massRef_m,
+        y: fullTeY * spanScale * massRef_m,
+        z: teZ * massRef_m,
+      }
+    },
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       // ── Deployment scaling ──

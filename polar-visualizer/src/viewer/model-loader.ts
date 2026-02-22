@@ -249,6 +249,12 @@ export interface LoadedModel {
    * riser attachment point stays fixed.  Only available for canopy composites.
    */
   setPilotHeight?: (heightCm: number) => void
+  /**
+   * Pilot size compensation factor from the assembly.
+   * Used to scale pilot-only mass/aero positions to match the compensated mesh.
+   * Default: 1.0 (no compensation).
+   */
+  pilotSizeCompensation: number
 }
 
 const loader = new GLTFLoader()
@@ -300,6 +306,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
   let pilotRawHeight = 0  // raw pilot max extent in GLB units (before normalization)
   let referenceDim = 0    // the dimension used for normalization (pilot body size)
   let canopyBaseScale: number | undefined
+  let pilotSizeCompensation = 1.0  // compensation factor for pilot GLB scale
   if (type === 'canopy' && pilotType) {
     const assembly = overrides?.assembly ?? getAssembly(pilotType)
     const pilotGeo = PILOT_GEOMETRY[pilotType]
@@ -335,7 +342,10 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     // childScale corrects for different GLB-to-meters ratios between canopy
     // and pilot models, so the pilot renders at the correct physical size
     // relative to the canopy mesh (otherwise the pilot appears ~17% too large).
-    const childSc = childScale
+    // pilotSizeCompensation provides an additional per-assembly adjustment for
+    // inherent GLB model scale differences before the physics conversion.
+    pilotSizeCompensation = assembly.pilotSizeCompensation ?? 1.0
+    const childSc = childScale * pilotSizeCompensation
     pilotModel.scale.setScalar(childSc)
 
     // Wrap pilot in a pivot group at the riser attachment point.
@@ -353,11 +363,15 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     // center is now at the shoulders).
     // The effective offset accounts for childScale: the scaled shoulder
     // position in the rotated model determines the actual displacement.
+    // NOTE: childOffset.y was computed assuming the base childScale, so when
+    // pilotSizeCompensation is applied, the offset must also scale to keep
+    // the pivot at the riser attachment point.
     const bodyExtentY = pilotSize.z  // raw body length along GLB Z
     const shoulderOffset = assembly.shoulderOffsetFraction * bodyExtentY * childSc
+    const scaledOffsetY = offset.position.y * pilotSizeCompensation  // scale offset for compensation
     pilotPivot.position.set(
       offset.position.x,
-      offset.position.y + shoulderOffset,
+      scaledOffsetY + shoulderOffset,
       offset.position.z,
     )
     pilotModel.position.set(0, -shoulderOffset, 0)
@@ -366,12 +380,19 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     compositeRoot.add(pilotPivot)
     ;(compositeRoot as any)._pilotPivot = pilotPivot
 
-    // Store base pilot values for the setPilotHeight closure
+    // Store base pilot values for the setPilotHeight closure.
+    // NOTE: Store the FULL initial pivot position (including shoulderOffset) so that
+    // ratio scaling produces the correct net position. If we stored scaledOffsetY
+    // alone, the shoulder offset would scale independently and the two nearly-canceling
+    // values would produce positions close to zero at small ratios.
     ;(compositeRoot as any)._pilotModel = pilotModel
     ;(compositeRoot as any)._basePilotChildScale = childSc
     ;(compositeRoot as any)._pilotBodyExtentY = bodyExtentY
     ;(compositeRoot as any)._pilotShoulderFrac = assembly.shoulderOffsetFraction
-    ;(compositeRoot as any)._pilotOffsetPos = offset.position.clone()
+    ;(compositeRoot as any)._baseShoulderOffset = shoulderOffset  // initial shoulder offset at baseline
+    const scaledOffsetPos = offset.position.clone()
+    scaledOffsetPos.y = scaledOffsetY + shoulderOffset  // store FULL initial position
+    ;(compositeRoot as any)._pilotOffsetPos = scaledOffsetPos
 
     // Use the standalone pilot raw dimension as reference
     // so the pilot appears the same size as when viewed standalone.
@@ -446,6 +467,9 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
       const resolvedAssembly: VehicleAssembly | undefined = (compositeRoot as any)._assembly
       const physicsParentScale = resolvedAssembly?.baseParentScale ?? Math.abs(mainModel.scale.x)
       canopyBaseScale = Math.abs(mainModel.scale.x) * s  // full visual scale (for deployment)
+      // NOTE: pilotSizeCompensation is NOT applied here — pilotScale affects ALL
+      // overlay positions (canopy + pilot). Compensation is handled separately
+      // in the pilot mesh scaling path above.
       pilotScale = (physicsParentScale * s) / CANOPY_GEOMETRY.glbToMeters
       // Component scale = visual enlargement factor (fullScale / baseScale)
       canopyComponentScale = physicsParentScale > 0
@@ -569,6 +593,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot,
     canopyModel: type === 'canopy' ? mainModel : undefined,
     canopyBaseScale, canopyScaleRatio, canopyComponentScale, deployGroup,
+    pilotSizeCompensation,
   }
 
   // Coupled scaling: setCanopyScale atomically updates the GLB mesh size,
@@ -592,15 +617,16 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     const _baseCS: number = (compositeRoot as any)._basePilotChildScale
     const _bodyY: number = (compositeRoot as any)._pilotBodyExtentY
     const _sFrac: number = (compositeRoot as any)._pilotShoulderFrac
+    const _baseShoulder: number = (compositeRoot as any)._baseShoulderOffset
     const _offPos: THREE.Vector3 = (compositeRoot as any)._pilotOffsetPos
     result.setPilotHeight = (heightCm: number) => {
       const ratio = heightCm / 187.5
       const newChildScale = _baseCS * ratio
       _pm.scale.setScalar(newChildScale)
-      // childOffset.y was derived from -(shoulderGlbZ × childScale), so it
-      // must scale with the same ratio to keep the shoulder at the riser junction.
-      const newShoulderOffset = _sFrac * _bodyY * newChildScale
-      _pp.position.set(_offPos.x, _offPos.y * ratio + newShoulderOffset, _offPos.z)
+      // Scale the full initial pivot position by ratio to maintain correct proportions.
+      // The shoulder offset for the mesh-within-pivot also scales by ratio.
+      const newShoulderOffset = _baseShoulder * ratio
+      _pp.position.set(_offPos.x, _offPos.y * ratio, _offPos.z)
       _pm.position.set(0, -newShoulderOffset, 0)
     }
   }

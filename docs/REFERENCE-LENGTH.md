@@ -169,22 +169,33 @@ at assembly time. That's Phase D territory.
 
 ### Phase D: Scaling Controls
 
+**Status:** In progress (2026-02-22).
+
 **Goal:** UI sliders for canopy area and pilot height. Visual and physics
 scale together.
 
-1. Canopy area slider (e.g., 150–350 sqft)
+1. ✅ Canopy area slider (150–350 sqft) — implemented in debug panel
    - Scale factor: `k = √(newArea / baseArea)`
    - Apply to: `S *= k²`, `chord *= k`, `span *= k`, positions × k
    - GLB mesh: scale X and Z by k
 
-2. Pilot height slider (e.g., 1.50–2.00m)
-   - Scale factor: `k = newHeight / baseHeight`
-   - Apply to: `referenceLength = newHeight`, mass positions × k, body areas × k²
-   - GLB mesh: uniform scale by k
+2. ✅ Pilot height slider (75–230 cm) — implemented in debug panel (2026-02-22)
+   - Scale factor: `ratio = heightCm / 187.5`
+   - Apply to: pilot mesh scale, pivot position, shoulder offset
+   - Physics overlays scale via `pilotHeightRatio` in mass/aero calls
 
-3. Riser connection stays at canopy attachment point
-   - Pilot hangs from riser regardless of pilot scale
-   - Canopy scale changes riser-to-canopy distance
+3. ✅ Pilot size compensation — `pilotSizeCompensation` in VehicleAssembly
+   - Static calibration for inherent GLB model scale issues
+   - Scales mesh, pivot, mass overlays, and aero arrows atomically
+   - See [SCALING-SLIDERS.md](SCALING-SLIDERS.md) for full documentation
+
+4. ⬜ Pivot junction slider — planned
+   - Adjusts scaling ratio between pilot and canopy
+   - Adjusts pendulum length and connection geometry
+
+**Key constraint:** Riser connection stays at canopy attachment point.
+Pilot hangs from riser regardless of pilot scale. Canopy is unaffected
+by pilot scaling.
 
 ---
 

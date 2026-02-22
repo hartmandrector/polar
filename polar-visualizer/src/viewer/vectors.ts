@@ -298,6 +298,7 @@ export function updateForceVectors(
   perSegmentData?: SegmentAeroResult[],
   deploy: number = 1.0,
   canopyScaleRatio: number = 1.0,
+  pilotSizeCompensation: number = 1.0,
 ): void {
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
@@ -360,8 +361,8 @@ export function updateForceVectors(
       const sa = vectors.segmentArrows[i]
 
       // Canopy visual scale: enlarge canopy-attached positions to match the
-      // enlarged canopy mesh (component scale).  Pilot segment stays at 1.0.
-      const posScale = seg.name !== 'pilot' ? canopyScaleRatio : 1.0
+      // enlarged canopy mesh (component scale).  Pilot segment uses pilotSizeCompensation.
+      const posScale = seg.name !== 'pilot' ? canopyScaleRatio : pilotSizeCompensation
 
       // Deployment scaling for canopy-attached segments (PC, cells, flaps).
       // The bridle attachment and canopy surface deform horizontally during deployment.
@@ -473,7 +474,7 @@ export function updateForceVectors(
     const windNED = { x: windDir.z, y: -windDir.x, z: -windDir.y }
     const liftNED = { x: liftDir.z, y: -liftDir.x, z: -liftDir.y }
     const sideNED = { x: sideDir.z, y: -sideDir.x, z: -sideDir.y }
-    const system = sumAllSegments(segments, segForces, cgNED, polar.referenceLength, windNED, liftNED, sideNED)
+    const system = sumAllSegments(segments, segForces, cgNED, polar.referenceLength, windNED, liftNED, sideNED, ctrl, massReference_m)
 
     // Total aero force (at CG, from summed segments)
     const totalAeroThree = nedToThreeJS(system.force)

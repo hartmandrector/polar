@@ -20,8 +20,9 @@ export interface MassOverlay {
   /** Update sphere positions from a polar's mass segments.
    *  @param weightSegments  Optional weight-only segments for CG marker (excludes buoyant air mass).
    *                          When omitted, CG is computed from the display segments.
+   *  @param pilotSizeCompensation  Scale factor for pilot-only mass positions (default 1.0).
    */
-  update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio?: number, weightSegments?: MassSegment[]): void
+  update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio?: number, weightSegments?: MassSegment[], pilotSizeCompensation?: number): void
   /** Update CP diamond marker position from system CP chord fraction or 3D NED position */
   updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[], cpNED?: { x: number; y: number; z: number }, canopyScaleRatio?: number): void
   /** Toggle visibility */
@@ -122,7 +123,7 @@ export function createMassOverlay(): MassOverlay {
     }
   }
 
-  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio: number = 1.0, weightSegments?: MassSegment[]): void {
+  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio: number = 1.0, weightSegments?: MassSegment[], pilotSizeCompensation: number = 1.0): void {
     ensureMeshCount(segments.length)
     if (segments.length === 0) return
 
@@ -141,9 +142,10 @@ export function createMassOverlay(): MassOverlay {
       const mp = masses[i]
       const mesh = massPoints[i]
 
-      // Canopy-attached mass points scale with canopy component scale
+      // Canopy-attached mass points scale with canopy component scale;
+      // pilot-attached mass points scale with pilotSizeCompensation
       const isCanopy = mp.name.startsWith('canopy_')
-      const posScale = isCanopy ? canopyScaleRatio : 1.0
+      const posScale = isCanopy ? canopyScaleRatio : pilotSizeCompensation
 
       // NED body → Three.js via nedToThreeJS
       const threePos = nedToThreeJS({ x: mp.x, y: mp.y, z: mp.z })

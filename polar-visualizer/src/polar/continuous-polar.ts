@@ -255,6 +255,25 @@ export interface AeroSegment {
     cm: number    // pitching moment coefficient (about segment AC)
     cp: number    // center of pressure (chord fraction, for force application)
   }
+
+  /**
+   * Get segment AC position in meters (NED body frame) based on current controls.
+   *
+   * For canopy segments with moving parts (deploy-dependent scaling, pilot pitch
+   * pendulum swing), this computes the actual position dynamically instead of
+   * using the static normalized `position` field.
+   *
+   * Wingsuit segments don't need this — they use the simple normalized approach
+   * where position × referenceLength gives the correct result.
+   *
+   * @param controls   Current control inputs (deploy, pilotPitch, etc.)
+   * @param massRef_m  Mass reference length [m] for position scaling
+   * @returns AC position in meters (NED body frame), or undefined to use default
+   */
+  getPositionMeters?: (
+    controls: SegmentControls,
+    massRef_m: number,
+  ) => { x: number; y: number; z: number } | undefined
 }
 
 // ─── Segment Controls ────────────────────────────────────────────────────────

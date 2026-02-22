@@ -432,6 +432,18 @@ export interface VehicleAssembly {
   readonly overlayPositionScale?: number
 
   /**
+   * Pilot size compensation factor for inherent GLB model scale.
+   * Scales the pilot mesh, aerodynamics, mass points, and pivot position
+   * simultaneously so that everything fits together correctly.
+   * Use this to adjust for GLB models that are inherently oversized or
+   * undersized relative to the physics reference.
+   * Default: 1.0 (no compensation). Values < 1.0 shrink, > 1.0 enlarge.
+   * NOTE: This is NOT for adjusting individual items — use other fields
+   * if you need to tweak mesh, aero, or mass independently.
+   */
+  readonly pilotSizeCompensation?: number
+
+  /**
    * Pilot forward shift from riser [NED normalized].
    * In a vertical hang the CG is directly below the riser → 0.
    * Non-zero only if the body hangs off-center from the attachment.
@@ -1193,6 +1205,10 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
   // Empirically measured at parentScale=4.5 to align aero/mass overlays with GLB mesh.
   overlayPositionScale: 0.5631,
 
+  // Pilot size compensation — adjusts pilot GLB scale before physics conversion.
+  // Tune visually until pilot mesh matches mass points and force arrows.
+  pilotSizeCompensation:  0.77,
+
   // Physics
   trimAngleDeg: 6,
   pilotFwdShift: 0,          // positions are absolute NED relative to riser
@@ -1237,6 +1253,9 @@ export const CANOPY_SLICK_ASSEMBLY: VehicleAssembly = {
 
   // Overlay position alignment — same as wingsuit assembly
   overlayPositionScale: 0.5631,
+
+  // Pilot size compensation — same as wingsuit assembly
+  pilotSizeCompensation: 0.77,
 
   trimAngleDeg: 6,
   pilotFwdShift: 0,

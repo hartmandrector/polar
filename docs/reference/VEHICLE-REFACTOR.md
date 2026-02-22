@@ -1,8 +1,8 @@
 # VEHICLE-REFACTOR — Decoupled Vehicle Architecture
 
-> **Status:** Phases A–C complete. Phase D (UI scaling controls) planned.
+> **Status:** Phases A–C complete. Phase D (UI scaling controls) in progress — pilot height slider ✅.
 > **Scope:** Blueprint for decoupling GLB models, aerodynamic polars, and mass systems
-> **Related:** [REFERENCE-LENGTH.md](../REFERENCE-LENGTH.md) (Phases A–C complete), [USER-MY-DATA.md](../USER-MY-DATA.md) (integration guide)
+> **Related:** [REFERENCE-LENGTH.md](../REFERENCE-LENGTH.md) (Phases A–C complete), [USER-MY-DATA.md](../USER-MY-DATA.md) (integration guide), [SCALING-SLIDERS.md](../SCALING-SLIDERS.md) (slider implementation)
 
 ---
 

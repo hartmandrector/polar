@@ -8,8 +8,9 @@ TypeScript + Three.js + Vite + Chart.js + vitest.
 ## Key Documents (read these first)
 
 **Architecture & Refactoring:**
-- `docs/reference/VEHICLE-REFACTOR.md` — Vehicle decoupling architecture: modular system for custom user data (Phases A–C complete)
+- `docs/reference/VEHICLE-REFACTOR.md` — Vehicle decoupling architecture: modular system for custom user data (Phases A–C complete, D in progress)
 - `docs/REFERENCE-LENGTH.md` — Reference length parameterization (Phases A–C complete): per-vehicle aero vs mass reference lengths
+- `docs/SCALING-SLIDERS.md` — Pilot height slider, pilotSizeCompensation, scaling chain documentation
 
 **Integration Guides (for users):**
 - `docs/USER-MY-DATA.md` — Three-tier guide for users integrating their own vehicle data (Beginner / Intermediate / Advanced)
@@ -131,4 +132,7 @@ polar-visualizer/
 - Phase A ✅ — Per-polar `referenceLength` field, A5_REF_LENGTH constant
 - Phase B ✅ — Vehicle registry, `getVehicleMassReference()`, mass vs aero split
 - Phase C ✅ — Canopy/pilot decoupling, debug panel, verification readouts
-- Phase D — Per-component reference frames (planned)
+- Phase D ✅ (partial) — UI scaling controls:
+  - ✅ Canopy area slider (debug panel)
+  - ✅ Pilot height slider + `pilotSizeCompensation` (see `docs/SCALING-SLIDERS.md`)
+  - ⬜ Pivot junction slider (planned)

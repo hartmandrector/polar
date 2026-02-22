@@ -27,10 +27,11 @@ is to add the same for the pilot, then a pivot junction control.
 - ✅ Wingsuit aero reference corrected to 1.93m (Phase B)
 - ✅ Per-component reference via `getVehicleMassReference()` (Phase C)
 - ✅ Debug panel with aero verification readout
+- ✅ Pilot height slider — scales pilot GLB + mass/aero overlays + pivot (2026-02-22)
+- ✅ `pilotSizeCompensation` — static calibration for inherent GLB scale issues
 
 ## What's Left
 
-- [ ] Pilot height slider (see [SCALING-SLIDERS.md](SCALING-SLIDERS.md))
 - [ ] Pivot junction slider (see [SCALING-SLIDERS.md](SCALING-SLIDERS.md))
 - [ ] Physics verification for combined scaling (force/moment stability)
 - [ ] Loose ends from Phase C: some `Ambiguous` mass-vs-aero sites in vectors.ts

@@ -196,7 +196,8 @@ function computeSegmentReadout(
     : { x: 0, y: 0, z: 0 }
 
   // Sum forces and moments (aero reference length — correct)
-  const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir)
+  // Pass controls + mass reference for canopy dynamic position calculation
+  const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir, controls, massReference_m)
 
   // Decompose into pseudo coefficients
   const totalLift = liftDir.x * system.force.x + liftDir.y * system.force.y + liftDir.z * system.force.z
@@ -550,7 +551,7 @@ function updateVisualization(state: FlightState): void {
     let bodyAccel: { pDot: number; qDot: number; rDot: number } | null = null
     if (currentInertia.Ixx > 0.001 || currentInertia.Iyy > 0.001 || currentInertia.Izz > 0.001) {
       const { windDir, liftDir, sideDir } = computeWindFrameNED(state.alpha_deg, state.beta_deg)
-      const system = sumAllSegments(segments!, cachedSegForces!, cgNED, polar.referenceLength, windDir, liftDir, sideDir)
+      const system = sumAllSegments(segments!, cachedSegForces!, cgNED, polar.referenceLength, windDir, liftDir, sideDir, segControls, massReference)
       // Simplified angular acceleration (diagonal inertia)
       bodyAccel = {
         pDot: currentInertia.Ixx > 0.001 ? system.moment.x / currentInertia.Ixx : 0,
@@ -599,6 +600,7 @@ function updateVisualization(state: FlightState): void {
     cachedPerSegment,
     currentModel?.type === 'canopy' ? state.deploy : 1.0,
     currentModel?.canopyScaleRatio ?? 1.0,
+    currentModel?.pilotSizeCompensation ?? 1.0,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
@@ -686,7 +688,7 @@ function updateVisualization(state: FlightState): void {
     if (state.showMassOverlay) {
       const segs = polar.inertiaMassSegments ?? polar.massSegments ?? []
       const weightSegs = polar.massSegments ?? segs
-      massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio, weightSegs)
+      massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio, weightSegs, currentModel.pilotSizeCompensation)
       // CP diamond marker — use segmented readout CP when available, else lumped coeffs
       const cpFraction = segReadout ? segReadout.cp : coeffs.cp
       // Phase C: updateCP receives polar.referenceLength for CP positioning.

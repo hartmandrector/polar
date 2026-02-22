@@ -208,6 +208,8 @@ export function computeSegmentForce(
  * @param windDir       Unit vector — where air comes FROM (NED body frame)
  * @param liftDir       Unit vector — perpendicular to wind in vertical plane
  * @param sideDir       Unit vector — cross(wind, lift)
+ * @param controls      Optional control inputs for dynamic position calculation
+ * @param massRef_m     Optional mass reference length [m] for dynamic position scaling
  */
 export function sumAllSegments(
   segments: AeroSegment[],
@@ -217,6 +219,8 @@ export function sumAllSegments(
   windDir: Vec3NED,
   liftDir: Vec3NED,
   sideDir: Vec3NED,
+  controls?: SegmentControls,
+  massRef_m?: number,
 ): SystemForces {
   let totalFx = 0, totalFy = 0, totalFz = 0
   let totalMx = 0, totalMy = 0, totalMz = 0
@@ -235,30 +239,58 @@ export function sumAllSegments(
     totalFy += fy
     totalFz += fz
 
-    // CP position in meters: segment AC + CP offset along chord direction.
-    // CP is a chord fraction from LE — offset from quarter-chord (AC at 0.25c).
-    // In NED, chord runs from LE (+x, forward) to TE (-x, aft), so
-    // CP aft of QC (cp > 0.25) → negative x offset (negate the fraction).
-    // The chord direction rotates with pitchOffset_deg in the x-z plane.
-    // NED pitch-up rotates +x toward −z, so we negate the angle:
-    //   0° → chord along +x (prone body: LE=head +x, TE=feet −x)
-    //  90° → chord along −z (upright pilot: LE=head −z, TE=feet +z)
-    const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
-    const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
-    // Base offset at segment's static pitchOffset
-    let offX = cpOffsetNorm * Math.cos(basePitchRad)
-    let offZ = cpOffsetNorm * Math.sin(basePitchRad)
-    // Rotate offset by pilotPitch delta — rigid body rotation of the chord line
-    const cRot = (seg as any)._chordRotationRad ?? 0
-    if (Math.abs(cRot) > 1e-6) {
-      const cos_d = Math.cos(cRot), sin_d = Math.sin(cRot)
-      const ox = offX, oz = offZ
-      offX = ox * cos_d - oz * sin_d
-      offZ = ox * sin_d + oz * cos_d
+    // Try to get dynamic position from segment (for canopy moving parts)
+    const dynamicPos = controls && massRef_m && seg.getPositionMeters
+      ? seg.getPositionMeters(controls, massRef_m)
+      : undefined
+
+    let cpX: number, cpY: number, cpZ: number
+
+    if (dynamicPos) {
+      // Dynamic position: segment provides AC position in meters directly.
+      // CP offset is calculated in meters using the segment's actual scale.
+      const cpOffsetM = -(f.cp - 0.25) * seg.chord
+      const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
+      let offX = cpOffsetM * Math.cos(basePitchRad)
+      let offZ = cpOffsetM * Math.sin(basePitchRad)
+      // Rotate offset by pilotPitch delta — rigid body rotation of the chord line
+      const cRot = seg._chordRotationRad ?? 0
+      if (Math.abs(cRot) > 1e-6) {
+        const cos_d = Math.cos(cRot), sin_d = Math.sin(cRot)
+        const ox = offX, oz = offZ
+        offX = ox * cos_d - oz * sin_d
+        offZ = ox * sin_d + oz * cos_d
+      }
+      cpX = dynamicPos.x + offX
+      cpY = dynamicPos.y
+      cpZ = dynamicPos.z + offZ
+    } else {
+      // Static position: use normalized position × height (existing logic).
+      // CP position in meters: segment AC + CP offset along chord direction.
+      // CP is a chord fraction from LE — offset from quarter-chord (AC at 0.25c).
+      // In NED, chord runs from LE (+x, forward) to TE (-x, aft), so
+      // CP aft of QC (cp > 0.25) → negative x offset (negate the fraction).
+      // The chord direction rotates with pitchOffset_deg in the x-z plane.
+      // NED pitch-up rotates +x toward −z, so we negate the angle:
+      //   0° → chord along +x (prone body: LE=head +x, TE=feet −x)
+      //  90° → chord along −z (upright pilot: LE=head −z, TE=feet +z)
+      const cpOffsetNorm = -(f.cp - 0.25) * seg.chord / height
+      const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
+      // Base offset at segment's static pitchOffset
+      let offX = cpOffsetNorm * Math.cos(basePitchRad)
+      let offZ = cpOffsetNorm * Math.sin(basePitchRad)
+      // Rotate offset by pilotPitch delta — rigid body rotation of the chord line
+      const cRot = seg._chordRotationRad ?? 0
+      if (Math.abs(cRot) > 1e-6) {
+        const cos_d = Math.cos(cRot), sin_d = Math.sin(cRot)
+        const ox = offX, oz = offZ
+        offX = ox * cos_d - oz * sin_d
+        offZ = ox * sin_d + oz * cos_d
+      }
+      cpX = (seg.position.x + offX) * height
+      cpY = seg.position.y * height
+      cpZ = (seg.position.z + offZ) * height
     }
-    const cpX = (seg.position.x + offX) * height
-    const cpY = seg.position.y * height
-    const cpZ = (seg.position.z + offZ) * height
 
     // Lever arm: segment CP (meters) minus system CG (meters)
     const rx = cpX - cgMeters.x

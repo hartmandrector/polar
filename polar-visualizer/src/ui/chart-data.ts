@@ -166,7 +166,7 @@ export function sweepSegments(
     const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha, cfg.beta_deg)
 
     // 3. Sum all segment forces and moments
-    const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir)
+    const system = sumAllSegments(segments, segForces, cgMeters, polar.referenceLength, windDir, liftDir, sideDir, controls, massReference_m)
 
     // 4. Decompose total force into lift/drag/side magnitudes
     // by projecting onto the wind-frame direction vectors
