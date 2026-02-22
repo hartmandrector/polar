@@ -145,7 +145,7 @@ Three distinct quantities share the word "roll" across this project and related 
 |------|--------|-------|---------|
 | **Euler roll** | $\phi$ | Body → Inertial | Bank angle from 3-2-1 decomposition. `FlightState.roll_deg`. |
 | **Cell arc angle** | $\theta_{\text{arc}}$ | Span geometry | Angular station of a canopy cell along the curved span. `AeroSegment.orientation.roll_deg`. **Not** an Euler angle — purely geometric. |
-| **GPS-derived roll** | $\phi_V$ | Velocity (wind) | Bank angle estimated by projecting acceleration onto velocity. Assumes forward = $\vec{V}$, no sideslip ($\beta = 0$). Used in Kalman filter / GPS flight analysis. |
+| **GPS-derived roll** | $\phi_V$ | Velocity / wind-corrected velocity | Bank angle estimated by projecting acceleration onto velocity. Assumes forward = $\vec{V}$, no sideslip ($\beta = 0$). Used in Kalman filter / GPS flight analysis. The **wind-corrected velocity frame** subtracts ambient wind from GPS velocity to recover true airspeed direction — this is required to extract actual aerodynamic coefficients ($C_L$, $C_D$) from field data rather than ground-referenced performance. |
 
 $\phi$ and $\phi_V$ are approximately equal in steady symmetric flight (small $\beta$)
 but diverge with sideslip or unsteady motion. $\theta_{\text{arc}}$ is a completely
