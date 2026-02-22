@@ -82,9 +82,7 @@ The wind frame is related to the body frame by two angles:
 - **Angle of attack** $\alpha$: rotation about the y-body axis
 - **Sideslip angle** $\beta$: rotation about the z-body axis
 
-$$
-\alpha = \arctan\!\left(\frac{w}{u}\right), \qquad \beta = \arcsin\!\left(\frac{v}{V}\right)
-$$
+$$\alpha = \arctan\!\left(\frac{w}{u}\right), \qquad \beta = \arcsin\!\left(\frac{v}{V}\right)$$
 
 where $V = \sqrt{u^2 + v^2 + w^2}$.
 
@@ -99,9 +97,7 @@ where $V = \sqrt{u^2 + v^2 + w^2}$.
 Three.js uses a right-handed Y-up coordinate system.  The mapping from
 NED body to Three.js is:
 
-$$
-\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{Three.js}} = \begin{pmatrix} -y \\ -z \\ x \end{pmatrix}_{\text{NED}}
-$$
+$$\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{Three.js}} = \begin{pmatrix} -y \\ -z \\ x \end{pmatrix}_{\text{NED}}$$
 
 This is a fixed remapping, not a rotation — no angles involved.
 
@@ -126,9 +122,7 @@ frame — it exists only at model-loading time.
 Wingsuit segment positions are stored as **chord fractions** (x/c) and
 converted to NED meters via:
 
-$$
-x_{\text{NED}} = (\text{CG}_{xc} - x_c) \cdot \frac{\text{SYS\_CHORD}}{\text{HEIGHT}}
-$$
+$$x_{\text{NED}} = (\text{CG}_{xc} - x_c) \cdot \frac{\text{SYS\_CHORD}}{\text{HEIGHT}}$$
 
 where `CG_xc = 0.40`, `SYS_CHORD = 1.8 m`, `HEIGHT = 1.875 m`.
 
@@ -172,17 +166,23 @@ The order matters — rotations in 3D are non-commutative.
 
 ### 3.2  Individual Rotation Matrices
 
-$$
-R_z(\psi) = \begin{pmatrix} \cos\psi & \sin\psi & 0 \\ -\sin\psi & \cos\psi & 0 \\ 0 & 0 & 1 \end{pmatrix}
-$$
+$$R_z(\psi) = \begin{pmatrix}
+\cos\psi & \sin\psi & 0 \\
+-\sin\psi & \cos\psi & 0 \\
+0 & 0 & 1
+\end{pmatrix}$$
 
-$$
-R_y(\theta) = \begin{pmatrix} \cos\theta & 0 & -\sin\theta \\ 0 & 1 & 0 \\ \sin\theta & 0 & \cos\theta \end{pmatrix}
-$$
+$$R_y(\theta) = \begin{pmatrix}
+\cos\theta & 0 & -\sin\theta \\
+0 & 1 & 0 \\
+\sin\theta & 0 & \cos\theta
+\end{pmatrix}$$
 
-$$
-R_x(\phi) = \begin{pmatrix} 1 & 0 & 0 \\ 0 & \cos\phi & \sin\phi \\ 0 & -\sin\phi & \cos\phi \end{pmatrix}
-$$
+$$R_x(\phi) = \begin{pmatrix}
+1 & 0 & 0 \\
+0 & \cos\phi & \sin\phi \\
+0 & -\sin\phi & \cos\phi
+\end{pmatrix}$$
 
 ### 3.3  Singularity
 
@@ -200,15 +200,15 @@ needed for aerobatic vehicles.
 
 Transforms a vector from body-frame components to inertial-frame components:
 
-$$
-\vec{V}_E = [EB] \; \vec{V}_B
-$$
+$$\vec{V}_E = [EB] \; \vec{V}_B$$
 
 The matrix is the product $R_x(\phi)^T \cdot R_y(\theta)^T \cdot R_z(\psi)^T$:
 
-$$
-[EB] = \begin{pmatrix} c_\theta c_\psi & s_\phi s_\theta c_\psi - c_\phi s_\psi & c_\phi s_\theta c_\psi + s_\phi s_\psi \\ c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\psi - s_\phi c_\psi \\ -s_\theta & s_\phi c_\theta & c_\phi c_\theta \end{pmatrix}
-$$
+$$[EB] = \begin{pmatrix}
+c_\theta c_\psi & s_\phi s_\theta c_\psi - c_\phi s_\psi & c_\phi s_\theta c_\psi + s_\phi s_\psi \\
+c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\psi - s_\phi c_\psi \\
+-s_\theta & s_\phi c_\theta & c_\phi c_\theta
+\end{pmatrix}$$
 
 where $c_\phi = \cos\phi$, $s_\phi = \sin\phi$, etc.
 
@@ -220,9 +220,11 @@ The inverse is the transpose: $[BE] = [EB]^T$ (orthonormal rotation matrix).
 
 Transforms aerodynamic force coefficients from wind frame to body frame:
 
-$$
-[BW] = \begin{pmatrix} \cos\alpha\cos\beta & -\cos\alpha\sin\beta & -\sin\alpha \\ \sin\beta & \cos\beta & 0 \\ \sin\alpha\cos\beta & -\sin\alpha\sin\beta & \cos\alpha \end{pmatrix}
-$$
+$$[BW] = \begin{pmatrix}
+\cos\alpha\cos\beta & -\cos\alpha\sin\beta & -\sin\alpha \\
+\sin\beta & \cos\beta & 0 \\
+\sin\alpha\cos\beta & -\sin\alpha\sin\beta & \cos\alpha
+\end{pmatrix}$$
 
 This is constructed as $R_y(-\beta) \cdot R_z(\alpha)$ — first rotate by α about the z-axis (yaw-like), then by −β about the new y-axis.
 
@@ -233,17 +235,11 @@ This is constructed as $R_y(-\beta) \cdot R_z(\alpha)$ — first rotate by α ab
 For force decomposition, we need the wind, lift, and side directions
 expressed in body NED:
 
-$$
-\hat{d}_{\text{wind}} = (\cos\alpha\cos\beta,\; \sin\beta,\; \sin\alpha\cos\beta)
-$$
+$$\hat{d}_{\text{wind}} = (\cos\alpha\cos\beta,\; \sin\beta,\; \sin\alpha\cos\beta)$$
 
-$$
-\hat{d}_{\text{lift}} = (-\sin\alpha\cos\beta,\; 0,\; \cos\alpha\cos\beta) \quad\text{(unnormalized)}
-$$
+$$\hat{d}_{\text{lift}} = (-\sin\alpha\cos\beta,\; 0,\; \cos\alpha\cos\beta) \quad\text{(unnormalized)}$$
 
-$$
-\hat{d}_{\text{side}} = (-\cos\alpha\sin\beta,\; \cos\beta,\; -\sin\alpha\sin\beta) \quad\text{(unnormalized)}
-$$
+$$\hat{d}_{\text{side}} = (-\cos\alpha\sin\beta,\; \cos\beta,\; -\sin\alpha\sin\beta) \quad\text{(unnormalized)}$$
 
 Forces are applied as:
 - Drag along $-\hat{d}_{\text{wind}}$
@@ -272,9 +268,7 @@ Euler angles, to avoid any ambiguity about rotation order:
 When the viewer displays attitude relative to the wind (flight path),
 the composition is:
 
-$$
-q_{\text{body}} = q_{\text{wind}} \cdot R_x(-\alpha) \cdot R_y(\beta)
-$$
+$$q_{\text{body}} = q_{\text{wind}} \cdot R_x(-\alpha) \cdot R_y(\beta)$$
 
 This builds the body quaternion from wind-frame Euler angles (μ, γ, ξ)
 plus the aerodynamic angles (α, β).
@@ -286,9 +280,7 @@ plus the aerodynamic angles (α, β).
 For rendering the airspeed vector arrow, the body-frame wind direction
 is computed and converted to Three.js coordinates:
 
-$$
-\hat{d}_{\text{wind}}^{\text{Three.js}} = \text{nedToThreeJS}\!\big((\cos\alpha\cos\beta,\; \sin\beta,\; \sin\alpha\cos\beta)\big)
-$$
+$$\hat{d}_{\text{wind}}^{\text{Three.js}} = \text{nedToThreeJS}\!\big((\cos\alpha\cos\beta,\; \sin\beta,\; \sin\alpha\cos\beta)\big)$$
 
 **Code:** `windDirectionBody(alpha_deg, beta_deg)` in `frames.ts`
 
@@ -312,29 +304,19 @@ Coriolis and gyroscopic term in the simulator.
 
 Applying the rotating-frame derivative to $\vec{P} = m\vec{V}$:
 
-$$
-\vec{F} = m\frac{{}^B d\vec{V}}{dt} + m\,\vec{\omega} \times \vec{V}
-$$
+$$\vec{F} = m\frac{{}^B d\vec{V}}{dt} + m\,\vec{\omega} \times \vec{V}$$
 
 Solved for acceleration in the body frame:
 
-$$
-\frac{{}^B d\vec{V}}{dt} = \frac{\vec{F}}{m} - \vec{\omega} \times \vec{V}
-$$
+$$\frac{{}^B d\vec{V}}{dt} = \frac{\vec{F}}{m} - \vec{\omega} \times \vec{V}$$
 
 **Scalar form (NED body):**
 
-$$
-\dot{u} = \frac{F_x}{m} + rv - qw
-$$
+$$\dot{u} = \frac{F_x}{m} + rv - qw$$
 
-$$
-\dot{v} = \frac{F_y}{m} + pw - ru
-$$
+$$\dot{v} = \frac{F_y}{m} + pw - ru$$
 
-$$
-\dot{w} = \frac{F_z}{m} + qu - pv
-$$
+$$\dot{w} = \frac{F_z}{m} + qu - pv$$
 
 The "+rv − qw" terms are the Coriolis acceleration from writing Newton's
 law in the rotating body frame.  They are **not** external forces — they
@@ -346,27 +328,17 @@ arise purely from the choice of reference frame.
 
 Applying the rotating-frame derivative to $\vec{H} = [I]\vec{\omega}$:
 
-$$
-\vec{M} = [I]\frac{{}^B d\vec{\omega}}{dt} + \vec{\omega} \times [I]\vec{\omega}
-$$
+$$\vec{M} = [I]\frac{{}^B d\vec{\omega}}{dt} + \vec{\omega} \times [I]\vec{\omega}$$
 
 For a symmetric vehicle ($I_{xy} = I_{yz} = 0$, $I_{xz} \neq 0$):
 
-$$
-\Gamma = I_{xx}I_{zz} - I_{xz}^2
-$$
+$$\Gamma = I_{xx}I_{zz} - I_{xz}^2$$
 
-$$
-\dot{p} = \frac{1}{\Gamma}\Big[I_{zz}L + I_{xz}N - I_{xz}(I_{xx} - I_{yy} + I_{zz})pq + (I_{xz}^2 + I_{zz}(I_{zz} - I_{yy}))qr\Big]
-$$
+$$\dot{p} = \frac{1}{\Gamma}\Big[I_{zz}L + I_{xz}N - I_{xz}(I_{xx} - I_{yy} + I_{zz})pq + (I_{xz}^2 + I_{zz}(I_{zz} - I_{yy}))qr\Big]$$
 
-$$
-\dot{q} = \frac{1}{I_{yy}}\Big[M - (I_{xx} - I_{zz})pr - I_{xz}(p^2 - r^2)\Big]
-$$
+$$\dot{q} = \frac{1}{I_{yy}}\Big[M - (I_{xx} - I_{zz})pr - I_{xz}(p^2 - r^2)\Big]$$
 
-$$
-\dot{r} = \frac{1}{\Gamma}\Big[I_{xz}L + I_{xx}N + I_{xz}(I_{zz} - I_{yy} + I_{xx})qr - (I_{xz}^2 + I_{xx}(I_{xx} - I_{yy}))pq\Big]
-$$
+$$\dot{r} = \frac{1}{\Gamma}\Big[I_{xz}L + I_{xx}N + I_{xz}(I_{zz} - I_{yy} + I_{xx})qr - (I_{xz}^2 + I_{xx}(I_{xx} - I_{yy}))pq\Big]$$
 
 The $\vec{\omega} \times [I]\vec{\omega}$ terms produce gyroscopic coupling
 between axes — rolling while yawing creates a pitching moment, etc.
@@ -378,17 +350,11 @@ between axes — rolling while yawing creates a pitching moment, etc.
 When apparent mass is present and different along each axis, the
 cross-terms use the **other** axis's effective mass:
 
-$$
-(m + m_{a,x})\dot{u} = F_x + (m + m_{a,y})rv - (m + m_{a,z})qw
-$$
+$$(m + m_{a,x})\dot{u} = F_x + (m + m_{a,y})rv - (m + m_{a,z})qw$$
 
-$$
-(m + m_{a,y})\dot{v} = F_y + (m + m_{a,z})pw - (m + m_{a,x})ru
-$$
+$$(m + m_{a,y})\dot{v} = F_y + (m + m_{a,z})pw - (m + m_{a,x})ru$$
 
-$$
-(m + m_{a,z})\dot{w} = F_z + (m + m_{a,x})qu - (m + m_{a,y})pv
-$$
+$$(m + m_{a,z})\dot{w} = F_z + (m + m_{a,x})qu - (m + m_{a,y})pv$$
 
 This asymmetry between the acceleration axis mass and the Coriolis axis
 mass creates the **Munk moment** — a yawing tendency in sideslip that
@@ -415,9 +381,11 @@ orthogonal and cannot be inverted by transposing.
 
 ### 7.1  Forward DKE — Body Rates → Euler Rates
 
-$$
-\begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix} = \frac{1}{\cos\theta} \begin{pmatrix} \cos\theta & \sin\phi\sin\theta & \cos\phi\sin\theta \\ 0 & \cos\phi\cos\theta & -\sin\phi\cos\theta \\ 0 & \sin\phi & \cos\phi \end{pmatrix} \begin{pmatrix} p \\ q \\ r \end{pmatrix}
-$$
+$$\begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix} = \frac{1}{\cos\theta} \begin{pmatrix}
+\cos\theta & \sin\phi\sin\theta & \cos\phi\sin\theta \\
+0 & \cos\phi\cos\theta & -\sin\phi\cos\theta \\
+0 & \sin\phi & \cos\phi
+\end{pmatrix} \begin{pmatrix} p \\ q \\ r \end{pmatrix}$$
 
 The $1/\cos\theta$ factor creates the singularity at $\theta = \pm 90°$.
 
@@ -425,23 +393,19 @@ The $1/\cos\theta$ factor creates the singularity at $\theta = \pm 90°$.
 
 ### 7.2  Inverse DKE — Euler Rates → Body Rates
 
-$$
-\begin{pmatrix} p \\ q \\ r \end{pmatrix} = \begin{pmatrix} 1 & 0 & -\sin\theta \\ 0 & \cos\phi & \sin\phi\cos\theta \\ 0 & -\sin\phi & \cos\phi\cos\theta \end{pmatrix} \begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix}
-$$
+$$\begin{pmatrix} p \\ q \\ r \end{pmatrix} = \begin{pmatrix}
+1 & 0 & -\sin\theta \\
+0 & \cos\phi & \sin\phi\cos\theta \\
+0 & -\sin\phi & \cos\phi\cos\theta
+\end{pmatrix} \begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix}$$
 
 Scalar form:
 
-$$
-p = \dot\phi - \dot\psi\sin\theta
-$$
+$$p = \dot\phi - \dot\psi\sin\theta$$
 
-$$
-q = \dot\theta\cos\phi + \dot\psi\sin\phi\cos\theta
-$$
+$$q = \dot\theta\cos\phi + \dot\psi\sin\phi\cos\theta$$
 
-$$
-r = -\dot\theta\sin\phi + \dot\psi\cos\phi\cos\theta
-$$
+$$r = -\dot\theta\sin\phi + \dot\psi\cos\phi\cos\theta$$
 
 **Code:** `eulerRatesToBodyRates(phiDot, thetaDot, psiDot, phi, theta)` in `eom.ts`
 
@@ -452,9 +416,7 @@ $$
 The body-frame velocity must be rotated into the inertial frame to
 update position:
 
-$$
-\begin{pmatrix} \dot{x} \\ \dot{y} \\ \dot{z} \end{pmatrix} = [EB] \begin{pmatrix} u \\ v \\ w \end{pmatrix}
-$$
+$$\begin{pmatrix} \dot{x} \\ \dot{y} \\ \dot{z} \end{pmatrix} = [EB] \begin{pmatrix} u \\ v \\ w \end{pmatrix}$$
 
 This uses the full DCM from §4.1.
 
@@ -468,9 +430,11 @@ Gravity is constant in the inertial frame: $\vec{g}_E = (0, 0, g)^T$ (NED: down 
 
 To project it into the body frame, multiply by $[BE] = [EB]^T$:
 
-$$
-\vec{g}_B = \begin{pmatrix} -g\sin\theta \\ g\sin\phi\cos\theta \\ g\cos\phi\cos\theta \end{pmatrix}
-$$
+$$\vec{g}_B = \begin{pmatrix}
+-g\sin\theta \\
+g\sin\phi\cos\theta \\
+g\cos\phi\cos\theta
+\end{pmatrix}$$
 
 At zero attitude ($\phi = \theta = 0$), gravity is purely $(0, 0, g)$ — straight down in the body frame, as expected.
 
@@ -493,27 +457,23 @@ increased or decreased apparent wind depending on which side it's on.
 
 For a segment at body-frame position $\vec{r}_i$ from the CG:
 
-$$
-\vec{V}_{\text{local},i} = \vec{V}_{\text{CG}} + \vec{\omega} \times \vec{r}_i
-$$
+$$\vec{V}_{\text{local},i} = \vec{V}_{\text{CG}} + \vec{\omega} \times \vec{r}_i$$
 
 Expanded:
 
-$$
-\vec{\omega} \times \vec{r}_i = \begin{pmatrix} qr_z - rr_y \\ rr_x - pr_z \\ pr_y - qr_x \end{pmatrix}
-$$
+$$\vec{\omega} \times \vec{r}_i = \begin{pmatrix}
+qr_z - rr_y \\
+rr_x - pr_z \\
+pr_y - qr_x
+\end{pmatrix}$$
 
 ### 10.3  Local Flow Angles
 
 From the local velocity, each segment derives its own:
 
-$$
-V_i = |\vec{V}_{\text{local},i}|, \quad \alpha_i = \arctan\!\left(\frac{w_i}{u_i}\right), \quad \beta_i = \arcsin\!\left(\frac{v_i}{V_i}\right)
-$$
+$$V_i = |\vec{V}_{\text{local},i}|, \quad \alpha_i = \arctan\!\left(\frac{w_i}{u_i}\right), \quad \beta_i = \arcsin\!\left(\frac{v_i}{V_i}\right)$$
 
-$$
-q_i = \tfrac{1}{2}\rho V_i^2
-$$
+$$q_i = \tfrac{1}{2}\rho V_i^2$$
 
 Each segment evaluates its own Kirchhoff model at $(\alpha_i, \beta_i)$
 with its own dynamic pressure $q_i$.
@@ -555,9 +515,7 @@ The center of pressure CP from the Kirchhoff model (§4.5 of KIRCHHOFF.md) is a
 chord fraction.  To compute the moment arm, it must be converted to a
 physical offset from the segment's aerodynamic center (AC at 0.25c):
 
-$$
-\Delta x_{\text{CP}} = -(\text{CP} - 0.25) \cdot \frac{\text{chord}}{\text{height}}
-$$
+$$\Delta x_{\text{CP}} = -(\text{CP} - 0.25) \cdot \frac{\text{chord}}{\text{height}}$$
 
 The negative sign follows from the NED convention: CP aft of the AC
 (CP > 0.25) produces a negative x-offset (aft in body NED).
@@ -565,17 +523,11 @@ The negative sign follows from the NED convention: CP aft of the AC
 For segments with a pitch offset (e.g. vertical pilot), this chord
 offset is rotated by the base pitch angle plus any dynamic pilot pitch:
 
-$$
-\text{rotation} = \text{pitchOffset} + \text{\_chordRotationRad}
-$$
+$$\text{rotation} = \text{pitchOffset} + \text{\_chordRotationRad}$$
 
-$$
-\Delta x' = \Delta x \cos(\text{rotation}) - \Delta z \sin(\text{rotation})
-$$
+$$\Delta x' = \Delta x \cos(\text{rotation}) - \Delta z \sin(\text{rotation})$$
 
-$$
-\Delta z' = \Delta x \sin(\text{rotation}) + \Delta z \cos(\text{rotation})
-$$
+$$\Delta z' = \Delta x \sin(\text{rotation}) + \Delta z \cos(\text{rotation})$$
 
 **Code:** CP offset logic in `computeSegmentForce()` in `aero-segment.ts`
 
