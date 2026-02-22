@@ -83,8 +83,7 @@ The wind frame is related to the body frame by two angles:
 - **Sideslip angle** $\beta$: rotation about the z-body axis
 
 $$
-\alpha = \arctan\!\left(\frac{w}{u}\right), \qquad
-\beta = \arcsin\!\left(\frac{v}{V}\right)
+\alpha = \arctan\!\left(\frac{w}{u}\right), \qquad \beta = \arcsin\!\left(\frac{v}{V}\right)
 $$
 
 where $V = \sqrt{u^2 + v^2 + w^2}$.
@@ -101,9 +100,7 @@ Three.js uses a right-handed Y-up coordinate system.  The mapping from
 NED body to Three.js is:
 
 $$
-\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{Three.js}}
-=
-\begin{pmatrix} -y \\ -z \\ x \end{pmatrix}_{\text{NED}}
+\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{Three.js}} = \begin{pmatrix} -y \\ -z \\ x \end{pmatrix}_{\text{NED}}
 $$
 
 This is a fixed remapping, not a rotation — no angles involved.
@@ -176,27 +173,15 @@ The order matters — rotations in 3D are non-commutative.
 ### 3.2  Individual Rotation Matrices
 
 $$
-R_z(\psi) = \begin{pmatrix}
-\cos\psi & \sin\psi & 0 \\
--\sin\psi & \cos\psi & 0 \\
-0 & 0 & 1
-\end{pmatrix}
+R_z(\psi) = \begin{pmatrix} \cos\psi & \sin\psi & 0 \\ -\sin\psi & \cos\psi & 0 \\ 0 & 0 & 1 \end{pmatrix}
 $$
 
 $$
-R_y(\theta) = \begin{pmatrix}
-\cos\theta & 0 & -\sin\theta \\
-0 & 1 & 0 \\
-\sin\theta & 0 & \cos\theta
-\end{pmatrix}
+R_y(\theta) = \begin{pmatrix} \cos\theta & 0 & -\sin\theta \\ 0 & 1 & 0 \\ \sin\theta & 0 & \cos\theta \end{pmatrix}
 $$
 
 $$
-R_x(\phi) = \begin{pmatrix}
-1 & 0 & 0 \\
-0 & \cos\phi & \sin\phi \\
-0 & -\sin\phi & \cos\phi
-\end{pmatrix}
+R_x(\phi) = \begin{pmatrix} 1 & 0 & 0 \\ 0 & \cos\phi & \sin\phi \\ 0 & -\sin\phi & \cos\phi \end{pmatrix}
 $$
 
 ### 3.3  Singularity
@@ -222,11 +207,7 @@ $$
 The matrix is the product $R_x(\phi)^T \cdot R_y(\theta)^T \cdot R_z(\psi)^T$:
 
 $$
-[EB] = \begin{pmatrix}
-c_\theta c_\psi & s_\phi s_\theta c_\psi - c_\phi s_\psi & c_\phi s_\theta c_\psi + s_\phi s_\psi \\
-c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\psi - s_\phi c_\psi \\
--s_\theta & s_\phi c_\theta & c_\phi c_\theta
-\end{pmatrix}
+[EB] = \begin{pmatrix} c_\theta c_\psi & s_\phi s_\theta c_\psi - c_\phi s_\psi & c_\phi s_\theta c_\psi + s_\phi s_\psi \\ c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\psi - s_\phi c_\psi \\ -s_\theta & s_\phi c_\theta & c_\phi c_\theta \end{pmatrix}
 $$
 
 where $c_\phi = \cos\phi$, $s_\phi = \sin\phi$, etc.
@@ -240,11 +221,7 @@ The inverse is the transpose: $[BE] = [EB]^T$ (orthonormal rotation matrix).
 Transforms aerodynamic force coefficients from wind frame to body frame:
 
 $$
-[BW] = \begin{pmatrix}
-\cos\alpha\cos\beta & -\cos\alpha\sin\beta & -\sin\alpha \\
-\sin\beta & \cos\beta & 0 \\
-\sin\alpha\cos\beta & -\sin\alpha\sin\beta & \cos\alpha
-\end{pmatrix}
+[BW] = \begin{pmatrix} \cos\alpha\cos\beta & -\cos\alpha\sin\beta & -\sin\alpha \\ \sin\beta & \cos\beta & 0 \\ \sin\alpha\cos\beta & -\sin\alpha\sin\beta & \cos\alpha \end{pmatrix}
 $$
 
 This is constructed as $R_y(-\beta) \cdot R_z(\alpha)$ — first rotate by α about the z-axis (yaw-like), then by −β about the new y-axis.
@@ -439,14 +416,7 @@ orthogonal and cannot be inverted by transposing.
 ### 7.1  Forward DKE — Body Rates → Euler Rates
 
 $$
-\begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix}
-= \frac{1}{\cos\theta}
-\begin{pmatrix}
-\cos\theta & \sin\phi\sin\theta & \cos\phi\sin\theta \\
-0 & \cos\phi\cos\theta & -\sin\phi\cos\theta \\
-0 & \sin\phi & \cos\phi
-\end{pmatrix}
-\begin{pmatrix} p \\ q \\ r \end{pmatrix}
+\begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix} = \frac{1}{\cos\theta} \begin{pmatrix} \cos\theta & \sin\phi\sin\theta & \cos\phi\sin\theta \\ 0 & \cos\phi\cos\theta & -\sin\phi\cos\theta \\ 0 & \sin\phi & \cos\phi \end{pmatrix} \begin{pmatrix} p \\ q \\ r \end{pmatrix}
 $$
 
 The $1/\cos\theta$ factor creates the singularity at $\theta = \pm 90°$.
@@ -456,14 +426,7 @@ The $1/\cos\theta$ factor creates the singularity at $\theta = \pm 90°$.
 ### 7.2  Inverse DKE — Euler Rates → Body Rates
 
 $$
-\begin{pmatrix} p \\ q \\ r \end{pmatrix}
-=
-\begin{pmatrix}
-1 & 0 & -\sin\theta \\
-0 & \cos\phi & \sin\phi\cos\theta \\
-0 & -\sin\phi & \cos\phi\cos\theta
-\end{pmatrix}
-\begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix}
+\begin{pmatrix} p \\ q \\ r \end{pmatrix} = \begin{pmatrix} 1 & 0 & -\sin\theta \\ 0 & \cos\phi & \sin\phi\cos\theta \\ 0 & -\sin\phi & \cos\phi\cos\theta \end{pmatrix} \begin{pmatrix} \dot\phi \\ \dot\theta \\ \dot\psi \end{pmatrix}
 $$
 
 Scalar form:
@@ -490,9 +453,7 @@ The body-frame velocity must be rotated into the inertial frame to
 update position:
 
 $$
-\begin{pmatrix} \dot{x} \\ \dot{y} \\ \dot{z} \end{pmatrix}
-= [EB]
-\begin{pmatrix} u \\ v \\ w \end{pmatrix}
+\begin{pmatrix} \dot{x} \\ \dot{y} \\ \dot{z} \end{pmatrix} = [EB] \begin{pmatrix} u \\ v \\ w \end{pmatrix}
 $$
 
 This uses the full DCM from §4.1.
@@ -508,11 +469,7 @@ Gravity is constant in the inertial frame: $\vec{g}_E = (0, 0, g)^T$ (NED: down 
 To project it into the body frame, multiply by $[BE] = [EB]^T$:
 
 $$
-\vec{g}_B = \begin{pmatrix}
--g\sin\theta \\
-g\sin\phi\cos\theta \\
-g\cos\phi\cos\theta
-\end{pmatrix}
+\vec{g}_B = \begin{pmatrix} -g\sin\theta \\ g\sin\phi\cos\theta \\ g\cos\phi\cos\theta \end{pmatrix}
 $$
 
 At zero attitude ($\phi = \theta = 0$), gravity is purely $(0, 0, g)$ — straight down in the body frame, as expected.
@@ -543,11 +500,7 @@ $$
 Expanded:
 
 $$
-\vec{\omega} \times \vec{r}_i = \begin{pmatrix}
-qr_z - rr_y \\
-rr_x - pr_z \\
-pr_y - qr_x
-\end{pmatrix}
+\vec{\omega} \times \vec{r}_i = \begin{pmatrix} qr_z - rr_y \\ rr_x - pr_z \\ pr_y - qr_x \end{pmatrix}
 $$
 
 ### 10.3  Local Flow Angles
@@ -555,9 +508,7 @@ $$
 From the local velocity, each segment derives its own:
 
 $$
-V_i = |\vec{V}_{\text{local},i}|, \quad
-\alpha_i = \arctan\!\left(\frac{w_i}{u_i}\right), \quad
-\beta_i = \arcsin\!\left(\frac{v_i}{V_i}\right)
+V_i = |\vec{V}_{\text{local},i}|, \quad \alpha_i = \arctan\!\left(\frac{w_i}{u_i}\right), \quad \beta_i = \arcsin\!\left(\frac{v_i}{V_i}\right)
 $$
 
 $$
