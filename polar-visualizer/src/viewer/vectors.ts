@@ -328,11 +328,14 @@ export function updateForceVectors(
 
   // ── Determine CG origin ──
   // When mass segments exist, use computeCenterOfMass for proper 3D CG.
+  // computeCenterOfMass returns meters (normalizedPosition × height), so
+  // multiply only by pilotScale (not massReference_m) to convert to scene units.
+  // This matches the mass-overlay CG sphere positioning pipeline.
   // Otherwise fall back to chord-fraction CG.
   let cgOrigin: THREE.Vector3
   if (polar.massSegments && polar.massSegments.length > 0) {
     const cgNED = computeCenterOfMass(polar.massSegments, massReference_m, polar.m)
-    cgOrigin = applyFramePos(shiftPos(nedToThreeJS(cgNED).multiplyScalar(pilotScale * massReference_m)))
+    cgOrigin = applyFramePos(shiftPos(nedToThreeJS(cgNED).multiplyScalar(pilotScale)))
   } else {
     cgOrigin = applyFramePos(shiftPos(chordFractionToBody(polar.cg, bodyLength)))
   }

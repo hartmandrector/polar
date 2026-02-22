@@ -17,8 +17,11 @@ import { nedToThreeJS } from './frames.ts'
 
 export interface MassOverlay {
   group: THREE.Group
-  /** Update sphere positions from a polar's mass segments */
-  update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio?: number): void
+  /** Update sphere positions from a polar's mass segments.
+   *  @param weightSegments  Optional weight-only segments for CG marker (excludes buoyant air mass).
+   *                          When omitted, CG is computed from the display segments.
+   */
+  update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio?: number, weightSegments?: MassSegment[]): void
   /** Update CP diamond marker position from system CP chord fraction or 3D NED position */
   updateCP(cpFraction: number, cgFraction: number, chord: number, height: number, pilotScale: number, massSegments?: MassSegment[], cpNED?: { x: number; y: number; z: number }, canopyScaleRatio?: number): void
   /** Toggle visibility */
@@ -119,13 +122,16 @@ export function createMassOverlay(): MassOverlay {
     }
   }
 
-  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio: number = 1.0): void {
+  function update(segments: MassSegment[], height: number, weight: number, pilotScale: number, canopyScaleRatio: number = 1.0, weightSegments?: MassSegment[]): void {
     ensureMeshCount(segments.length)
     if (segments.length === 0) return
 
     // height = massReference (pilotHeight_m for wingsuits, referenceLength for canopies)
     const masses = getPhysicalMassPositions(segments, height, weight)
-    const cg = computeCenterOfMass(segments, height, weight)
+    // CG marker uses weight-only segments (excludes buoyant air mass that
+    // contributes to rotational inertia but not gravitational weight).
+    const cgSegs = weightSegments ?? segments
+    const cg = computeCenterOfMass(cgSegs, height, weight)
 
     // pilotScale converts pilot-body meters to model units
     const scale = pilotScale

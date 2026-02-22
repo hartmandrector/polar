@@ -565,7 +565,7 @@ const CANOPY_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: n
 export const PILOT_PIVOT_X = +(PILOT_FWD_SHIFT * COS_TRIM + PILOT_DOWN_SHIFT * SIN_TRIM).toFixed(4)
 export const PILOT_PIVOT_Z = +(-PILOT_FWD_SHIFT * SIN_TRIM + PILOT_DOWN_SHIFT * COS_TRIM).toFixed(4)
 
-// Pilot body segments rotated by trim angle (shared between weight and inertia)
+// Pilot body segments rotated by trim angle — arms-raised / toggle-reach pose (slick pilot)
 export const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
   name: p.name,
   massRatio: p.massRatio,
@@ -573,6 +573,41 @@ export const CANOPY_PILOT_SEGMENTS: MassSegment[] = CANOPY_PILOT_RAW.map(p => ({
     x: +(p.x * COS_TRIM + p.z * SIN_TRIM).toFixed(4),
     y: p.y,
     z: +(-p.x * SIN_TRIM + p.z * COS_TRIM).toFixed(4),
+  }
+}))
+
+// ─── Wingsuit canopy pilot segments ─────────────────────────────────────────
+//
+// Wingsuit pilot under canopy is still zipped up — arms along body in wing
+// position, not raised.  Reuses WINGSUIT_MASS_SEGMENTS (horizontal flying frame)
+// transformed into the canopy hanging frame:
+//
+//   canopy_x = −wingsuit_z   (belly→forward stays forward)
+//   canopy_y =  wingsuit_y   (lateral unchanged)
+//   canopy_z = SHOULDER_X_WS − wingsuit_x  (head above riser = negative z)
+//
+// SHOULDER_X_WS is derived from the riser attachment: the head sits 0.096
+// above the riser (matching CANOPY_PILOT_RAW head z), so shoulder in the
+// wingsuit x-axis = head_x − 0.096.
+const SHOULDER_X_WS = WINGSUIT_MASS_SEGMENTS[0].normalizedPosition.x - 0.096  // ≈ 0.206
+
+const CANOPY_WINGSUIT_PILOT_RAW: Array<{ name: string, massRatio: number, x: number, y: number, z: number }> =
+  WINGSUIT_MASS_SEGMENTS.map(seg => ({
+    name: seg.name,
+    massRatio: seg.massRatio,
+    x: -seg.normalizedPosition.z,
+    y: seg.normalizedPosition.y,
+    z: SHOULDER_X_WS - seg.normalizedPosition.x,
+  }))
+
+/** Wingsuit canopy pilot segments — zipped-up pose, trim-rotated. */
+export const CANOPY_WINGSUIT_PILOT_SEGMENTS: MassSegment[] = CANOPY_WINGSUIT_PILOT_RAW.map(p => ({
+  name: p.name,
+  massRatio: p.massRatio,
+  normalizedPosition: {
+    x: +(p.x * COS_TRIM + p.z * SIN_TRIM).toFixed(6),
+    y: +p.y.toFixed(6),
+    z: +(-p.x * SIN_TRIM + p.z * COS_TRIM).toFixed(6),
   }
 }))
 
@@ -689,6 +724,7 @@ const CANOPY_AIR_SEGMENTS: MassSegment[] = [
 /**
  * Weight segments — contribute to gravitational force (m·g).
  * Includes pilot body + canopy structure. Excludes trapped air (buoyant).
+ * Slick pilot version — arms-raised toggle-reach pose.
  */
 export const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
   ...CANOPY_PILOT_SEGMENTS,
@@ -696,9 +732,18 @@ export const CANOPY_WEIGHT_SEGMENTS: MassSegment[] = [
 ]
 
 /**
+ * Weight segments — wingsuit pilot version (zipped-up pose).
+ */
+export const CANOPY_WEIGHT_SEGMENTS_WINGSUIT: MassSegment[] = [
+  ...CANOPY_WINGSUIT_PILOT_SEGMENTS,
+  ...CANOPY_STRUCTURE_SEGMENTS,
+]
+
+/**
  * Inertia segments — contribute to rotational inertia (I·α).
  * Includes everything: pilot body + canopy structure + trapped air.
  * Air mass is buoyant so it doesn't add weight, but it does resist rotation.
+ * Slick pilot version.
  */
 export const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
   ...CANOPY_PILOT_SEGMENTS,
@@ -707,29 +752,46 @@ export const CANOPY_INERTIA_SEGMENTS: MassSegment[] = [
 ]
 
 /**
+ * Inertia segments — wingsuit pilot version (zipped-up pose).
+ */
+export const CANOPY_INERTIA_SEGMENTS_WINGSUIT: MassSegment[] = [
+  ...CANOPY_WINGSUIT_PILOT_SEGMENTS,
+  ...CANOPY_STRUCTURE_SEGMENTS,
+  ...CANOPY_AIR_SEGMENTS,
+]
+
+/**
  * Rotate pilot body mass segments by a pitch increment, swinging about the
  * riser attachment point (shoulder pivot), then combine with fixed canopy masses.
  *
- * The base CANOPY_PILOT_SEGMENTS already include the 6° trim rotation.
+ * The base pilot segments already include the 6° trim rotation.
  * This function applies an additional rotation on top, representing the
  * pilot swinging fore/aft under the canopy.
  *
  * @param pilotPitch_deg  Incremental pilot pitch [deg]. Positive = aft (feet forward).
  * @param pivot  Optional NED pivot point for rotation (from 3D model alignment).
  * @param deploy  Deployment fraction 0–1. Scales canopy segment span positions.
+ * @param pilotType  'wingsuit' uses zipped-up wingsuit mass model; 'slick' uses arms-raised pose.
  * @returns `{ weight, inertia }` — complete mass segment arrays for CG and inertia.
  */
 export function rotatePilotMass(
   pilotPitch_deg: number,
   pivot?: { x: number; z: number },
   deploy: number = 1,
+  pilotType: 'wingsuit' | 'slick' = 'wingsuit',
+  pilotHeightRatio: number = 1.0,
 ): { weight: MassSegment[], inertia: MassSegment[] } {
   const noPitch = Math.abs(pilotPitch_deg) < 0.01
   const fullDeploy = Math.abs(deploy - 1) < 0.001
 
+  // Select pilot segments based on pilot type
+  const basePilotSegs = pilotType === 'wingsuit' ? CANOPY_WINGSUIT_PILOT_SEGMENTS : CANOPY_PILOT_SEGMENTS
+  const baseWeight = pilotType === 'wingsuit' ? CANOPY_WEIGHT_SEGMENTS_WINGSUIT : CANOPY_WEIGHT_SEGMENTS
+  const baseInertia = pilotType === 'wingsuit' ? CANOPY_INERTIA_SEGMENTS_WINGSUIT : CANOPY_INERTIA_SEGMENTS
+
   if (noPitch && fullDeploy) {
     // No rotation, full deploy — return the pre-computed arrays
-    return { weight: CANOPY_WEIGHT_SEGMENTS, inertia: CANOPY_INERTIA_SEGMENTS }
+    return { weight: baseWeight, inertia: baseInertia }
   }
 
   const delta = pilotPitch_deg * Math.PI / 180
@@ -744,12 +806,12 @@ export function rotatePilotMass(
   // Pilot segments: rotate about pivot (only when pitch != 0)
   let rotatedPilot: MassSegment[]
   if (noPitch) {
-    rotatedPilot = CANOPY_PILOT_SEGMENTS
+    rotatedPilot = basePilotSegs
   } else {
     const delta = pilotPitch_deg * Math.PI / 180
     const cos_d = Math.cos(delta)
     const sin_d = Math.sin(delta)
-    rotatedPilot = CANOPY_PILOT_SEGMENTS.map(seg => {
+    rotatedPilot = basePilotSegs.map(seg => {
       const dx = seg.normalizedPosition.x - pivotX
       const dz = seg.normalizedPosition.z - pivotZ
       return {
@@ -762,6 +824,19 @@ export function rotatePilotMass(
         }
       }
     })
+  }
+
+  // Scale pilot segments by height ratio (pilot grows/shrinks with slider)
+  if (Math.abs(pilotHeightRatio - 1.0) > 0.001) {
+    rotatedPilot = rotatedPilot.map(seg => ({
+      name: seg.name,
+      massRatio: seg.massRatio,
+      normalizedPosition: {
+        x: seg.normalizedPosition.x * pilotHeightRatio,
+        y: seg.normalizedPosition.y* pilotHeightRatio,
+        z: seg.normalizedPosition.z * pilotHeightRatio,
+      }
+    }))
   }
 
   // Canopy segments: scale span (y) and shift x forward by deploy offset
@@ -1023,8 +1098,10 @@ const PILOT_POSITION = { x: 0.01, y: 0, z: 0.144 }
  * The pilot is hanging vertically under the canopy — rotated 90° in pitch
  * relative to the prone wingsuit pose. This pitch offset is applied so the
  * polar is evaluated at the correct local α (freestream α − 90°).
+ * 
+ * @param pilotHeightRatio Optional height ratio (heightCm / 187.5) to scale pilot position vertically
  */
-export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit'): AeroSegment[] {
+export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit', pilotHeightRatio: number = 1.0): AeroSegment[] {
   // Pilot polar must be defined before this is called (it references the
   // aurafive/slicksin objects declared later). This works because JS
   // module-level const declarations are initialized before any function
@@ -1037,9 +1114,17 @@ export function makeIbexAeroSegments(pilotType: 'wingsuit' | 'slick' = 'wingsuit
   // Riser attachment = rotation pivot for pilot pitch.
   // The chord line (head→feet) and its AC swing around this point.
   const RISER_PIVOT = { x: PILOT_PIVOT_X, z: PILOT_PIVOT_Z }
+  
+  // Scale pilot position by height ratio (proportional scaling of positions)
+  const scaledPilotPosition = {
+    x: PILOT_POSITION.x * pilotHeightRatio,
+    y: PILOT_POSITION.y,
+    z: PILOT_POSITION.z * pilotHeightRatio,
+  }
+  
   const pilotSegment = pilotType === 'wingsuit'
-    ? makeUnzippablePilotSegment('pilot', PILOT_POSITION, aurafiveContinuous, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
-    : makeLiftingBodySegment('pilot', PILOT_POSITION, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
+    ? makeUnzippablePilotSegment('pilot', scaledPilotPosition, aurafiveContinuous, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
+    : makeLiftingBodySegment('pilot', scaledPilotPosition, slicksinContinuous, PILOT_PITCH_OFFSET, RISER_PIVOT)
 
   return [...IBEX_CANOPY_SEGMENTS, pilotSegment]
 }
@@ -1105,10 +1190,10 @@ export const aurafiveContinuous: ContinuousPolar = {
 
   s: 2,
   m: 77.5,
-  chord: 1.8,
+  chord: 1.875,
 
   massSegments: WINGSUIT_MASS_SEGMENTS,
-  cgOffsetFraction: 0.197,
+  cgOffsetFraction: 0.13,
 
   controls: {
     brake: {
@@ -1182,8 +1267,8 @@ export const ibexulContinuous: ContinuousPolar = {
   chord: 3.29,
   referenceLength: 1.875,  // Currently pilot height; could be canopy chord (3.29m) or √S (4.52m)
 
-  massSegments: CANOPY_WEIGHT_SEGMENTS,
-  inertiaMassSegments: CANOPY_INERTIA_SEGMENTS,
+  massSegments: CANOPY_WEIGHT_SEGMENTS_WINGSUIT,
+  inertiaMassSegments: CANOPY_INERTIA_SEGMENTS_WINGSUIT,
   cgOffsetFraction: 0,
 
   aeroSegments: undefined as unknown as AeroSegment[],  // set below after polars defined
@@ -1625,7 +1710,7 @@ export const a5segmentsContinuous: ContinuousPolar = {
   referenceLength: A5_REF_LENGTH,  // Wingsuit reference length (1.93 m)
 
   massSegments: WINGSUIT_MASS_SEGMENTS,
-  cgOffsetFraction: 0.197,
+  cgOffsetFraction: 0.13,
 
   controls: {
     brake: {

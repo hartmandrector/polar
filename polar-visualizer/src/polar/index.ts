@@ -16,7 +16,7 @@ export {
   aurafiveContinuous, ibexulContinuous, slicksinContinuous, caravanContinuous,
   a5segmentsContinuous, makeA5SegmentsAeroSegments,
   getLegacyCoefficients, makeIbexAeroSegments, rotatePilotMass,
-  PILOT_PIVOT_X, PILOT_PIVOT_Z, CANOPY_PILOT_SEGMENTS
+  PILOT_PIVOT_X, PILOT_PIVOT_Z, CANOPY_PILOT_SEGMENTS, CANOPY_WINGSUIT_PILOT_SEGMENTS
 } from './polar-data.ts'
 export type { WSEQPolar } from './polar-data.ts'
 export { computeInertia, ZERO_INERTIA, computeCenterOfMass, getPhysicalMassPositions, calculateInertiaComponents } from './inertia.ts'

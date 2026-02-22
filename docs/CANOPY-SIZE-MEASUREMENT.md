@@ -143,7 +143,7 @@ $$\text{Scale factor} = \sqrt{\frac{120 \text{ sqft}}{22.10 \text{ unit}^2}} = \
 - Mass reference: `getVehicleMassReference()` returns 1.875 for all current vehicles
 
 **Canopy physics:** S = 20.439 m² (220 ft²), chord = 3.29 m
-**Canopy visual:** ~46 m² (495 ft²) due to `CANOPY_AERO_CALIBRATION = 1.776` — accepted as visual hack
+**Canopy visual:** ~46 m² (495 ft²) due to assembly `overlayPositionScale` (0.5631) — visual alignment factor
 
 ---
 

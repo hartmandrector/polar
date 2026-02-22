@@ -75,10 +75,9 @@ function resolveVehicleAssembly(vehicle: VehicleDefinition, pilotType: PilotType
   const canopyComponentScale = getComponentScale(canopyComponent)
   const pilotComponentScale = getComponentScale(vehicle.pilot)
 
-  // Derive baseline proportions using the original base.parentScale (without
-  // component multipliers).  This gives us the childScale that makes the pilot
-  // render at the correct physical size at the base canopy scale.
-  const baseDerived = deriveAssemblyOffsets(PILOT_GEOMETRY[pilotType], CANOPY_GEOMETRY, base.parentScale)
+  // Derive baseline proportions from parentScale.
+  const pilotBase = base.parentScale
+  const baseDerived = deriveAssemblyOffsets(PILOT_GEOMETRY[pilotType], CANOPY_GEOMETRY, pilotBase)
 
   // Apply component scales independently so canopy and pilot are decoupled.
   const fullCanopyScale = base.parentScale * canopyComponentScale
@@ -160,33 +159,9 @@ function pilotOffset(assembly: VehicleAssembly): { position: THREE.Vector3; rota
  * Scale factor for the canopy mesh — now sourced from assembly.parentScale.
  * Re-exported for backward compatibility (main.ts deployment scaling).
  */
-export const CANOPY_SCALE = CANOPY_WINGSUIT_ASSEMBLY.parentScale  // 1.5
+export const CANOPY_SCALE = CANOPY_WINGSUIT_ASSEMBLY.parentScale  // 4.5
 
-/**
- * Empirical calibration factor for canopy aero position alignment.
- *
- * At the base canopy scale (component scale = 1.0), aero segment NED positions
- * need to be divided by this factor to align with the GLB mesh.  This corrects
- * accumulated precision offsets from rib measurements, glbToNED conversion,
- * and CG centering.  Tuned by visual matching of brake flap and CP positions
- * to trailing-edge wireframes and chord-fraction landmarks.
- *
- * Diagnostic data confirmed:
- *   calibration=1.776 → arrow/mesh ratio = 0.563 (arrows at 56% of mesh height)
- *   calibration=1.0   → arrow/mesh ratio = 1.000 (arrows exactly on mesh surface)
- *
- * Algebraic proof (see diagnostic output for runtime verification):
- *   mesh_pos  = glb × fullPS × s
- *   arrow_pos = glb × glbToNED × canopyScaleRatio × pilotScale × massRef
- *             = glb × canopyScaleRatio × basePS × s   (after expansion/cancellation)
- *   alignment: canopyScaleRatio × basePS = fullPS
- *            → canopyScaleRatio = componentScale
- *            → CANOPY_AERO_CALIBRATION = 1.0
- *
- * The component scale in vehicle-registry.ts must also be 1.0 so the mesh
- * represents the correct 220 ft² (20.439 m²) physics area.
- */
-export const CANOPY_AERO_CALIBRATION = 1.776//1.776
+
 
 /**
  * Wingsuit deployment visualization group.
@@ -268,6 +243,12 @@ export interface LoadedModel {
    * Only available for canopy-type models; undefined for others.
    */
   setCanopyScale?: (scale: number) => void
+  /**
+   * Atomically update the pilot body scale at runtime based on height in cm.
+   * Rescales the pilot GLB model and recalculates the shoulder offset so the
+   * riser attachment point stays fixed.  Only available for canopy composites.
+   */
+  setPilotHeight?: (heightCm: number) => void
 }
 
 const loader = new GLTFLoader()
@@ -385,6 +366,13 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     compositeRoot.add(pilotPivot)
     ;(compositeRoot as any)._pilotPivot = pilotPivot
 
+    // Store base pilot values for the setPilotHeight closure
+    ;(compositeRoot as any)._pilotModel = pilotModel
+    ;(compositeRoot as any)._basePilotChildScale = childSc
+    ;(compositeRoot as any)._pilotBodyExtentY = bodyExtentY
+    ;(compositeRoot as any)._pilotShoulderFrac = assembly.shoulderOffsetFraction
+    ;(compositeRoot as any)._pilotOffsetPos = offset.position.clone()
+
     // Use the standalone pilot raw dimension as reference
     // so the pilot appears the same size as when viewed standalone.
     // If we haven't cached it yet, measure it now from the pilot GLB.
@@ -435,6 +423,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
   // Base values captured for the setCanopyScale closure
   let _canopyBasePS = 0   // baseParentScale (assembly scale without component multiplier)
   let _canopyNormS = 0    // TARGET_SIZE / referenceDim normalization factor
+  let _canopyOverlayPS = 1.0  // assembly overlay position scale
   if (referenceDim > 0) {
     const s = TARGET_SIZE / referenceDim
     compositeRoot.scale.multiplyScalar(s)
@@ -463,12 +452,14 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
         ? Math.abs(mainModel.scale.x) / physicsParentScale
         : 1.0
       // canopyScaleRatio: maps physics positions to match the visually scaled mesh.
-      // Equal to componentScale — derived from fullPS / basePS cancellation.
-      // See CANOPY_AERO_CALIBRATION comment for the algebraic proof.
-      canopyScaleRatio = canopyComponentScale / CANOPY_AERO_CALIBRATION
+      // Uses the assembly's measured overlayPositionScale (accounts for the different
+      // transform pipelines between Three.js mesh scaling and NED→scene conversion).
+      const overlayPS = resolvedAssembly?.overlayPositionScale ?? 1.0
+      canopyScaleRatio = canopyComponentScale * overlayPS
       // Capture base values for runtime re-scaling (setCanopyScale closure)
       _canopyBasePS = physicsParentScale
       _canopyNormS = s
+      _canopyOverlayPS = overlayPS
 
     } else {
       // Standalone models: bbox-center at origin (legacy)
@@ -587,9 +578,30 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     result.setCanopyScale = (newScale: number) => {
       const newFull = _canopyBasePS * newScale
       mainModel.scale.set(-newFull, newFull, newFull)
-      result.canopyScaleRatio = newScale / CANOPY_AERO_CALIBRATION
+      result.canopyScaleRatio = newScale * _canopyOverlayPS
       result.canopyBaseScale = newFull * _canopyNormS
       result.canopyComponentScale = newScale
+    }
+  }
+
+  // Pilot height rescaling: adjusts the pilot body scale and repositions
+  // the shoulder offset so the riser attachment point stays fixed.
+  if (type === 'canopy' && (compositeRoot as any)._pilotModel) {
+    const _pm = (compositeRoot as any)._pilotModel as THREE.Group
+    const _pp = (compositeRoot as any)._pilotPivot as THREE.Group
+    const _baseCS: number = (compositeRoot as any)._basePilotChildScale
+    const _bodyY: number = (compositeRoot as any)._pilotBodyExtentY
+    const _sFrac: number = (compositeRoot as any)._pilotShoulderFrac
+    const _offPos: THREE.Vector3 = (compositeRoot as any)._pilotOffsetPos
+    result.setPilotHeight = (heightCm: number) => {
+      const ratio = heightCm / 187.5
+      const newChildScale = _baseCS * ratio
+      _pm.scale.setScalar(newChildScale)
+      // childOffset.y was derived from -(shoulderGlbZ × childScale), so it
+      // must scale with the same ratio to keep the shoulder at the riser junction.
+      const newShoulderOffset = _sFrac * _bodyY * newChildScale
+      _pp.position.set(_offPos.x, _offPos.y * ratio + newShoulderOffset, _offPos.z)
+      _pm.position.set(0, -newShoulderOffset, 0)
     }
   }
 

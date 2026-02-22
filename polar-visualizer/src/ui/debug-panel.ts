@@ -23,7 +23,7 @@
 
 import type { ContinuousPolar, AeroSegment } from '../polar/continuous-polar.ts'
 import type { SegmentForceResult } from '../polar/aero-segment.ts'
-import { CANOPY_AERO_CALIBRATION } from '../viewer/model-loader.ts'
+
 
 /** Conversion factor: 1 m² ≈ 10.7639 ft² */
 const M2_TO_FT2 = 10.7639
@@ -125,6 +125,13 @@ let canopyScaleCallback: ((scale: number) => void) | null = null
 /** Whether the currently active polar is a canopy type */
 let isCanopyPolar = false
 
+// Pilot height slider state
+let pilotHeightRow: HTMLElement | null = null
+let pilotHeightSlider: HTMLInputElement | null = null
+let pilotHeightValueEl: HTMLSpanElement | null = null
+/** Current pilot height [cm] */
+let pilotHeightCm = 187.5
+
 // Canopy verification readout state
 let canopyVerifyEl: HTMLElement | null = null
 /** Base chord from the polar [m] */
@@ -212,6 +219,45 @@ export function setupDebugPanel(cb: DebugChangeCallback): void {
   canopyScaleRow.appendChild(canopyScaleSlider)
   panelEl.appendChild(canopyScaleRow)
 
+  // ── Pilot height slider (visible only for canopy polars in system view) ──
+  pilotHeightRow = document.createElement('div')
+  pilotHeightRow.className = 'debug-row debug-pilot-height-row'
+  pilotHeightRow.style.display = 'none'
+
+  const phLabelRow = document.createElement('div')
+  phLabelRow.className = 'debug-label-row'
+  const phLabel = document.createElement('label')
+  phLabel.className = 'debug-label'
+  phLabel.textContent = 'Pilot Height'
+  pilotHeightValueEl = document.createElement('span')
+  pilotHeightValueEl.className = 'debug-value'
+  pilotHeightValueEl.textContent = '187.5 cm'
+  phLabelRow.appendChild(phLabel)
+  phLabelRow.appendChild(pilotHeightValueEl)
+  pilotHeightRow.appendChild(phLabelRow)
+
+  pilotHeightSlider = document.createElement('input')
+  pilotHeightSlider.type = 'range'
+  pilotHeightSlider.className = 'debug-slider'
+  pilotHeightSlider.min = '75'
+  pilotHeightSlider.max = '230'
+  pilotHeightSlider.step = '0.5'
+  pilotHeightSlider.value = '187.5'
+  pilotHeightSlider.addEventListener('input', () => {
+    pilotHeightCm = parseFloat(pilotHeightSlider!.value)
+    if (pilotHeightValueEl) pilotHeightValueEl.textContent = `${pilotHeightCm.toFixed(1)} cm`
+    onChange?.()
+  })
+  // Double-click to reset to 187.5
+  pilotHeightSlider.addEventListener('dblclick', () => {
+    pilotHeightSlider!.value = '187.5'
+    pilotHeightCm = 187.5
+    if (pilotHeightValueEl) pilotHeightValueEl.textContent = '187.5 cm'
+    onChange?.()
+  })
+  pilotHeightRow.appendChild(pilotHeightSlider)
+  panelEl.appendChild(pilotHeightRow)
+
   // ── Canopy verification readout (always visible for canopy polars in system view) ──
   canopyVerifyEl = document.createElement('div')
   canopyVerifyEl.className = 'debug-canopy-verify'
@@ -253,6 +299,14 @@ export function setCanopyScaleHandler(handler: ((scale: number) => void) | null)
 }
 
 /**
+ * Return the current pilot height setting from the debug panel [cm].
+ * Default 187.5 cm (1.875 m = REF_HEIGHT).
+ */
+export function getPilotHeightCm(): number {
+  return pilotHeightCm
+}
+
+/**
  * Inject the canopy visual component scale from the loaded model.
  * This is the equipment `scale` value from the vehicle registry (e.g. 1.5).
  * Call after model load so the verification readout can show visual vs physics area.
@@ -280,6 +334,10 @@ export function syncDebugPanel(polar: ContinuousPolar, isCanopy: boolean = false
   canopyCurrentScale = 1.0
   if (canopyScaleSlider) canopyScaleSlider.value = '1.0'
   updateCanopyScaleLabel()
+  // Reset pilot height to default
+  pilotHeightCm = 187.5
+  if (pilotHeightSlider) pilotHeightSlider.value = '187.5'
+  if (pilotHeightValueEl) pilotHeightValueEl.textContent = '187.5 cm'
   updateCanopyScaleVisibility()
 
   // Update segment selector dropdown
@@ -543,26 +601,20 @@ function updateCanopyVerification(): void {
   const physChord = canopyBaseChord * canopyCurrentScale
 
   // Visual values (what the mesh represents)
-  // The mesh is scaled by componentScale, but CP positions are scaled by
-  // componentScale / CANOPY_AERO_CALIBRATION, so the effective visual area
-  // the mesh occupies differs from the physics area by calibration².
+  // The mesh is scaled by componentScale; CP positions use overlayPositionScale
+  // from the assembly, so the effective visual area may differ from physics area.
   const effectiveVisualScale = canopyVisualComponentScale * canopyCurrentScale
   const visualAreaFactor = effectiveVisualScale * effectiveVisualScale
   // Visual area = baseArea × visualScale² (how big the mesh looks)
   // Physics area = baseArea × sliderScale² (what the math uses)
-  // Ratio = visualComponentScale² (before calibration effect)
   const visualArea_m2 = canopyBaseArea * visualAreaFactor
   const visualArea_ft2 = visualArea_m2 * M2_TO_FT2
   const visualChord = canopyBaseChord * effectiveVisualScale
-
-  // Alignment ratio (CP position / mesh position) — 1.0 = perfect
-  const alignRatio = 1.0 / CANOPY_AERO_CALIBRATION
 
   const lines: string[] = [
     `<b>Aero Verification</b>`,
     `Physics: S=${physArea_m2.toFixed(1)} m² (${physArea_ft2.toFixed(0)} ft²)  c=${physChord.toFixed(2)} m`,
     `Visual:  S=${visualArea_m2.toFixed(1)} m² (${visualArea_ft2.toFixed(0)} ft²)  c=${visualChord.toFixed(2)} m`,
-    `CP/mesh alignment: ${alignRatio.toFixed(3)} (calibration=${CANOPY_AERO_CALIBRATION.toFixed(3)})`,
   ]
   canopyVerifyEl.innerHTML = lines.join('<br>')
 }
@@ -574,6 +626,7 @@ function updateCanopyScaleVisibility(): void {
     currentSegments && currentSegments.length > 0
   const vis = isCanopyPolar && isSystemWithSegments
   canopyScaleRow.style.display = vis ? '' : 'none'
+  if (pilotHeightRow) pilotHeightRow.style.display = vis ? '' : 'none'
   if (canopyVerifyEl) canopyVerifyEl.style.display = vis ? '' : 'none'
 }
 

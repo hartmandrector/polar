@@ -20,7 +20,7 @@ import { getAllCoefficients, continuousPolars, legacyPolars, getLegacyCoefficien
 import type { ContinuousPolar, SegmentControls, FullCoefficients, SegmentAeroResult } from './polar/index.ts'
 import { defaultControls, computeSegmentForce, sumAllSegments, computeWindFrameNED, evaluateAeroForcesDetailed } from './polar/aero-segment.ts'
 import { coeffToSS } from './polar/coefficients.ts'
-import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView, setCanopyScaleHandler, setCanopyComponentScale } from './ui/debug-panel.ts'
+import { setupDebugPanel, syncDebugPanel, getOverriddenPolar, getSegmentPolarOverrides, debugSweepKey, updateSystemView, setCanopyScaleHandler, setCanopyComponentScale, getPilotHeightCm } from './ui/debug-panel.ts'
 import type { SystemViewData } from './ui/debug-panel.ts'
 import { bodyToInertialQuat, bodyQuatFromWindAttitude } from './viewer/frames.ts'
 import { updateInertiaReadout, updateRatesReadout, updatePositionsReadout } from './ui/readout.ts'
@@ -98,6 +98,7 @@ async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number 
 let prevSweepKey = ''
 let prevPilotPitch = 0
 let prevDeploy = 1
+let prevPilotHeightCm = 187.5
 
 function sweepKey(s: FlightState): string {
   let key = `${s.polarKey}|${s.beta_deg}|${s.delta}|${s.dirty}|${s.airspeed}|${s.rho}|${debugSweepKey()}`
@@ -328,11 +329,13 @@ function updateVisualization(state: FlightState): void {
     ?? continuousPolars[state.polarKey]
     ?? continuousPolars.aurafive
   const polar: ContinuousPolar = getOverriddenPolar(basePolar)
+  // Mass reference is fixed per vehicle; pilot height slider only affects visual scale
   const massReference = getVehicleMassReference(vehicle, basePolar)
 
   // Rebuild segments when canopy pilot type changes (ibex only)
   if (state.modelType === 'canopy' && polar.aeroSegments) {
-    polar.aeroSegments = makeIbexAeroSegments(state.canopyPilotType as 'wingsuit' | 'slick')
+    const pilotHeightRatio = getPilotHeightCm() / 187.5
+    polar.aeroSegments = makeIbexAeroSegments(state.canopyPilotType as 'wingsuit' | 'slick', pilotHeightRatio)
   }
 
   // For wingsuit segment polars, clone segments from the base polar so
@@ -398,10 +401,14 @@ function updateVisualization(state: FlightState): void {
   if (state.modelType === 'canopy' && polar.massSegments) {
     const pitchChanged = Math.abs(state.pilotPitch - prevPilotPitch) > 0.01
     const deployChanged = Math.abs(state.deploy - prevDeploy) > 0.001
-    if (pitchChanged || deployChanged) {
+    const heightCm = getPilotHeightCm()
+    const heightChanged = Math.abs(heightCm - prevPilotHeightCm) > 0.1
+    if (pitchChanged || deployChanged || heightChanged) {
       prevPilotPitch = state.pilotPitch
       prevDeploy = state.deploy
-      const rotated = rotatePilotMass(state.pilotPitch, currentModel?.massPivotNED ?? undefined, state.deploy)
+      prevPilotHeightCm = heightCm
+      const pilotHeightRatio = heightCm / 187.5
+      const rotated = rotatePilotMass(state.pilotPitch, currentModel?.massPivotNED ?? undefined, state.deploy, state.canopyPilotType as 'wingsuit' | 'slick', pilotHeightRatio)
       polar.massSegments = rotated.weight
       polar.inertiaMassSegments = rotated.inertia
       // Recompute inertia with new mass distribution
@@ -603,6 +610,12 @@ function updateVisualization(state: FlightState): void {
     if (currentModel.pilotPivot) {
       currentModel.pilotPivot.rotation.x = state.pilotPitch * DEG2RAD
     }
+    // Pilot height — rescale pilot body, keeping shoulder at riser junction
+    if (currentModel.setPilotHeight) {
+      currentModel.setPilotHeight(getPilotHeightCm())
+      // Reset massPivotNED so it recomputes from the new geometry
+      currentModel.massPivotNED = undefined
+    }
     // Deployment — scale canopy mesh horizontally (X = lateral, Z = fore-aft)
     // Span and chord use different minimums so the canopy doesn't get
     // too thin chord-wise at low deployment.
@@ -640,7 +653,11 @@ function updateVisualization(state: FlightState): void {
     if (massOverlay.group.parent !== currentModel.group) {
       currentModel.group.add(massOverlay.group)
     }
-    // Step 3 of CG centering: shift mass overlay by same offset as model/vectors
+    // Step 3 of CG centering: position mass overlay relative to mesh CG.
+    // - Canopy models: CG offset computed from mass segments (applyCgFromMassSegments).
+    // - Standalone models: mass segments are CG-centered (weighted mean ≈ 0),
+    //   so the overlay stays at the scene origin. The mesh is shifted independently
+    //   by applyCgOffset so its CG aligns with origin.
     if (currentModel.cgOffsetThree) {
       massOverlay.group.position.set(
         -currentModel.cgOffsetThree.x,
@@ -668,7 +685,8 @@ function updateVisualization(state: FlightState): void {
     massOverlay.setVisible(state.showMassOverlay)
     if (state.showMassOverlay) {
       const segs = polar.inertiaMassSegments ?? polar.massSegments ?? []
-      massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio)
+      const weightSegs = polar.massSegments ?? segs
+      massOverlay.update(segs, massReference, polar.m, currentModel.pilotScale, currentModel.canopyScaleRatio, weightSegs)
       // CP diamond marker — use segmented readout CP when available, else lumped coeffs
       const cpFraction = segReadout ? segReadout.cp : coeffs.cp
       // Phase C: updateCP receives polar.referenceLength for CP positioning.
@@ -769,6 +787,7 @@ async function init(): Promise<void> {
     const basePolar = getVehicleAeroPolar(vehicle)
       ?? continuousPolars[state.polarKey]
       ?? continuousPolars.aurafive
+    // Mass reference is fixed per vehicle; pilot height slider only affects visual scale
     const massReference = getVehicleMassReference(vehicle, basePolar)
     const pilotType = state.modelType === 'canopy' ? state.canopyPilotType : undefined
     switchModel(vehicle, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar, massReference)

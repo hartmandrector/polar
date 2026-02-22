@@ -1,6 +1,6 @@
 # CP Rendering & Scaling — Audit Trail
 
-**Status:** Verified and stable with current assembly scaling (vehicle registry + `CANOPY_AERO_CALIBRATION`).
+**Status:** Verified and stable with current assembly scaling (vehicle registry + assembly `overlayPositionScale`).
 CP offset formula uses `massReference_m` from `getVehicleMassReference()` (not hardcoded).
 
 ---

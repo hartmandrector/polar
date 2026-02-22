@@ -424,6 +424,14 @@ export interface VehicleAssembly {
   /** Trim angle [degrees] — canopy trim in straight flight */
   readonly trimAngleDeg: number
   /**
+   * Base scale for canopy-attached overlay positions (aero arrows, mass points).
+   * Aligns NED physics positions with the visual mesh coordinate space.
+   * Runtime canopyScaleRatio = overlayPositionScale × componentScale.
+   * Default: 1.0 (no correction needed for standalone / non-canopy models).
+   */
+  readonly overlayPositionScale?: number
+
+  /**
    * Pilot forward shift from riser [NED normalized].
    * In a vertical hang the CG is directly below the riser → 0.
    * Non-zero only if the body hangs off-center from the attachment.
@@ -1153,25 +1161,25 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
   parentId: 'cp2',
   childId: 'tsimwingsuit',
 
-  parentScale: 3,  // CANOPY_SCALE — visual fit (testing decoupling)
+  parentScale: 4.5,  // Physical proportions — absorbs former component scale (3.0 × 1.5)
 
   // childScale: parentScale × wingsuit_glbToMeters / canopy_glbToMeters
-  //   = 3.0 × (1.875/3.550) / (3.29/3.529) = 1.700
+  //   = 4.5 × (1.875/3.550) / (3.29/3.529) = 2.549
   // Without this the pilot body renders too large relative to the canopy.
-  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
-  childScale: 1.7,
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 4.5)
+  childScale: 2.549,
 
   // Pilot position in parent GLB coords.
-  // Derived: -(shoulder_glbZ × childScale) = -(0.560 × 1.700) = -0.952
+  // Derived: -(shoulder_glbZ × childScale) = -(0.560 × 2.549) = -1.427
   // Places the shoulder (riser attachment) at canopy Y = 0 (harness point).
-  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
-  childOffset: { x: 0, y: -0.952, z: 0 },
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 4.5)
+  childOffset: { x: 0, y: -1.427, z: 0 },
   // −90° X rotation: prone → hanging
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
   // shoulder_left glbZ (0.560) / maxDim (3.550) = 0.158
   // Shoulder position normalized by pilot height (1.875m)
-  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  // Precomputed via deriveAssemblyOffsets(WINGSUIT_GEOMETRY, CANOPY_GEOMETRY, 4.5)
   shoulderOffsetFraction: 0.158,
   trailingEdgeShift: -0.30,       // bridle attachment shift toward canopy TE
 
@@ -1180,6 +1188,10 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
     snivel: 1.2,   // snivel model × normalization scale (0.6 × 2.0 for parentScale 3.0)
     bridle: 3.0,   // bridle model × normalization scale (1.5 × 2.0 for parentScale 3.0)
   },
+
+  // Overlay position alignment — maps NED positions to visual mesh coordinates.
+  // Empirically measured at parentScale=4.5 to align aero/mass overlays with GLB mesh.
+  overlayPositionScale: 0.5631,
 
   // Physics
   trimAngleDeg: 6,
@@ -1203,25 +1215,28 @@ export const CANOPY_SLICK_ASSEMBLY: VehicleAssembly = {
   parentId: 'cp2',
   childId: 'tslick',
 
-  parentScale: 3.0,
+  parentScale: 4.5,
 
   // childScale: parentScale × slick_glbToMeters / canopy_glbToMeters
-  //   = 3.0 × (1.875/3.384) / (3.29/3.529) = 1.784
-  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
-  childScale: 1.784,
+  //   = 4.5 × (1.875/3.384) / (3.29/3.529) = 2.674
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 4.5)
+  childScale: 2.674,
 
-  // -(shoulder_glbZ × childScale) = -(0.560 × 1.784) = -0.999
-  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
-  childOffset: { x: 0, y: -0.999, z: 0 },
+  // -(shoulder_glbZ × childScale) = -(0.560 × 2.674) = -1.497
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 4.5)
+  childOffset: { x: 0, y: -1.497, z: 0 },
   childRotationDeg: { x: -90, y: 0, z: 0 },
 
   // shoulder_glbZ (0.560) / maxDim (3.384) = 0.166
   // Shoulder position normalized by pilot height (1.875m)
-  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 3.0)
+  // Precomputed via deriveAssemblyOffsets(SLICK_GEOMETRY, CANOPY_GEOMETRY, 4.5)
   shoulderOffsetFraction: 0.166,
   trailingEdgeShift: -0.30,
 
   deployScales: undefined,  // slick has no deployment sequence
+
+  // Overlay position alignment — same as wingsuit assembly
+  overlayPositionScale: 0.5631,
 
   trimAngleDeg: 6,
   pilotFwdShift: 0,

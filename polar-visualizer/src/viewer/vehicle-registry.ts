@@ -217,7 +217,7 @@ export const VEHICLE_REGISTRY: Record<string, VehicleDefinition> = {
       {
         id: 'canopy-ibexul',
         name: 'Ibex UL Canopy',
-        scale: 1.5,  // visual enlargement; physics area from polar.S, alignment via CANOPY_AERO_CALIBRATION
+        scale: 1.0,  // physical proportions — visual scale absorbed into assembly parentScale
         aero: ibexulContinuous,
         referenceLength_m: 1.875, // TODO(phase-c): move to canopy chord reference
         glb: {
@@ -331,7 +331,7 @@ export const VEHICLE_REGISTRY: Record<string, VehicleDefinition> = {
       {
         id: 'canopy-ibexul',
         name: 'Ibex UL Canopy',
-        scale: 1.5,  // visual enlargement; physics area from polar.S, alignment via CANOPY_AERO_CALIBRATION
+        scale: 1.0,  // physical proportions — visual scale absorbed into assembly parentScale
         aero: ibexulContinuous,
         referenceLength_m: 1.875, // TODO(phase-c): move to canopy chord reference
         glb: {
