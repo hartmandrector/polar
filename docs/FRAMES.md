@@ -523,7 +523,7 @@ The negative sign follows from the NED convention: CP aft of the AC
 For segments with a pitch offset (e.g. vertical pilot), this chord
 offset is rotated by the base pitch angle plus any dynamic pilot pitch:
 
-$$\text{rotation} = \text{pitchOffset} + \text{\_chordRotationRad}$$
+$$\text{rotation} = \text{pitchOffset} + \text{chordRotationRad}$$
 
 $$\Delta x' = \Delta x \cos(\text{rotation}) - \Delta z \sin(\text{rotation})$$
 
