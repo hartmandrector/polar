@@ -122,7 +122,7 @@ frame — it exists only at model-loading time.
 Wingsuit segment positions are stored as **chord fractions** (x/c) and
 converted to NED meters via:
 
-$$x_{\text{NED}} = (\text{CG}_{xc} - x_c) \cdot \frac{\text{SYS\_CHORD}}{\text{HEIGHT}}$$
+$$x_\text{NED} = (\text{CG}_{xc} - x_c) \cdot \frac{\text{SYS CHORD}}{\text{HEIGHT}}$$
 
 where `CG_xc = 0.40`, `SYS_CHORD = 1.8 m`, `HEIGHT = 1.875 m`.
 

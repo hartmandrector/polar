@@ -264,7 +264,7 @@ Both are applied via `applyControl(polar, ctrl, amount)` which produces a new po
 - This shifts $\alpha_0$ negative (more camber = more lift at zero geometric α).
 - Drag increases ($\Delta C_{D_0} > 0$) from the exposed fabric and increased profile drag.
 - The stall angle can shift ($\Delta\alpha_{\text{stall,fwd}}$) — deep brake may trigger stall earlier.
-- A pitch moment is generated ($\text{cm\_delta}$) from the control force couple.
+- A pitch moment is generated ($\text{cm delta}$) from the control force couple.
 
 **Dirty flying on a wingsuit:**
 - Body tension decreases, reducing wing efficiency.
@@ -320,7 +320,7 @@ This captures how a rolled panel sees a reduced effective α and gains a compone
 Front and rear riser inputs create an angle of attack change:
 
 $$
-\Delta\alpha_{\text{riser}} = (-\text{frontRiser} + \text{rearRiser}) \cdot \text{ALPHA\_MAX\_RISER} \cdot \text{riserSensitivity}
+\Delta\alpha_{\text{riser}} = (-\text{frontRiser} + \text{rearRiser}) \cdot \text{ALPHA MAX RISER} \cdot \text{riserSensitivity}
 $$
 
 Default `ALPHA_MAX_RISER = 10°`.  Front riser decreases α (steeper dive), rear riser increases α (flatter glide).
@@ -429,7 +429,7 @@ The forward position shift represents the quarter-chord of the deployed flap sec
 The flap surface sees the parent cell's local α plus a deflection angle:
 
 $$
-\alpha_{\text{flap}} = \alpha_{\text{local}} + \delta_{\text{brake}} \cdot \text{MAX\_FLAP\_DEFLECTION\_DEG}
+\alpha_{\text{flap}} = \alpha_{\text{local}} + \delta_{\text{brake}} \cdot \text{MAX FLAP DEFLECTION DEG}
 $$
 
 Default `MAX_FLAP_DEFLECTION_DEG = 50°`.  At full brake on an outer cell, the flap sees 50° more α than the freestream — guaranteeing deep stall of the trailing edge fabric.
@@ -484,7 +484,7 @@ The dihedral roll feeds into the local flow angle transformation (§6.2) and the
 The effective dirty parameter for each wingsuit segment combines:
 
 $$
-\text{dirty}_{\text{eff}} = \text{clamp}\!\Big(\text{dirty}_{\text{base}} + \text{yawT} \cdot \text{YAW\_DIRTY\_COUPLING} \cdot \text{sideSign} + |\text{rollT}| \cdot \text{ROLL\_DIRTY\_COUPLING},\; 0,\; 1\Big)
+\text{dirty}_{\text{eff}} = \text{clamp}\!\Big(\text{dirty}_{\text{base}} + \text{yawT} \cdot \text{YAW DIRTY COUPLING} \cdot \text{sideSign} + |\text{rollT}| \cdot \text{ROLL DIRTY COUPLING},\; 0,\; 1\Big)
 $$
 
 This is passed to `getAllCoefficients()` as the dirty parameter, which applies the dirty SymmetricControl derivatives to degrade the polar.
