@@ -560,6 +560,20 @@ where $h$ = 1.875 m (reference height) and $\theta_p$ is the pitch offset. The l
 
 $$\vec{r}_i = \vec{r}_{CP,i} \cdot h - \vec{r}_{CG}$$
 
+### Mass Distribution & Inertia
+
+Each vehicle is modeled as a collection of point masses positioned in the NED body frame. The canopy, pilot, lines, and bridle each contribute mass at known locations — the system CG and inertia tensor emerge from the geometry.
+
+![Canopy and pilot wireframe with mass points](polar-visualizer/docs/gifs/wireframeandmass.gif)
+
+Pilot pitch rotates the pilot mass points around the riser pivot, shifting the system CG in real time. This couples body pitch with the pendulum dynamics of the harness-canopy system.
+
+![Dynamic mass model — pilot pitch shifting CG](polar-visualizer/docs/gifs/dynamic mass modelmodel.gif)
+
+The full inertia tensor $[I]$ is computed from the mass distribution and feeds directly into the rotational EOM (FRAMES.md §6.2). All positions are normalized by reference height, so the tensor scales automatically with the pilot height slider.
+
+![Mass distribution and normalized inertia tensor](polar-visualizer/docs/gifs/Mass-And-Inertia.gif)
+
 ### Force & Moment Summation
 
 Total aero force and moment about the system CG are accumulated across all segments. Each segment contributes **two** moment terms — one from its lever arm and one from its intrinsic pitching moment:
