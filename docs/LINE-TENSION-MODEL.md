@@ -76,11 +76,12 @@ Some segments need further subdivision to model tension correctly along their le
 - **Long cascade-to-riser lines**: The AB and CD lower segments span the largest distance and may need 2–3 sub-segments for accurate catenary/tension distribution.
 - **Brake lines**: The 5→4→2→1 cascade has varying tension through the junctions.
 
-Sub-segmentation multiplies the segment count but each sub-segment is computationally cheap (no aero evaluation, just tension + gravity).
+Sub-segmentation multiplies the segment count but each sub-segment is relatively cheap. Each sub-segment carries **drag** (no lift) — this is critical because line drag affects geometry (catenary shape under airload), brake force feedback to the pilot, and bridle/pilot chute behavior. The drag for each line is already accounted for in the current whole-system model; when we sub-segment, we split the existing drag budget across the individual segments proportional to their length and diameter. This keeps the total system drag consistent while giving us per-segment force resolution for tension computation.
 
 ## Architecture Notes
 
-- Each line segment: two endpoints, a rest length, material stiffness, and mass per unit length
+- Each line segment: two endpoints, a rest length, material stiffness, mass per unit length, and **drag coefficient** (cylinder cross-flow)
+- Line drag affects catenary shape, tension distribution, and pilot-felt brake force
 - Tension = positive only (lines go slack at zero tension, no compression)
 - Slack lines → affected canopy cells lose shape → reduced aero performance on that span section
 - Weight shift control: lateral CG offset tilts the two rigid half-spans differently, changing line loading asymmetrically
