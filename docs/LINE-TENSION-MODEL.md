@@ -90,7 +90,18 @@ Sub-segmentation multiplies the segment count but each sub-segment is relatively
 
 ## Status
 
-**Research phase.** No implementation yet. Next steps:
+**Research phase.** No implementation yet.
+
+### Deferred: Airfoil Distortion
+
+The canopy is a flexible wing — line tension and internal pressurization distort the airfoil shape. Loaded ribs sit slightly lower than unloaded ribs, creating a zigzag at the leading edge and distorting cell cross-sections. Two approaches considered:
+
+- **Δ parameter per cell** (pragmatic): capture the observable deflection as a shape perturbation applied to each cell's aero coefficients. Easiest to implement.
+- **Full fabric tension model** (complex): break out loaded/unloaded ribs and fabric panels as structural elements, couple with dynamic pressure on the bottom skin. Requires fabric stress integrals — too complex for now.
+
+Needs further study of Slegers & Costello and Mortaloni before deciding on approach.
+
+### Next steps:
 1. Study Slegers & Costello constraint force formulation
 2. Acquire and study Mortaloni added mass / tension paper
 3. Create GLB model for brake lines (5 attachment points + 4 junctions per side)
