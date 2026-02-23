@@ -43,9 +43,7 @@ separated (flat-plate behaviour).
 
 ### 2.1  Forward Stall Sigmoid
 
-$$
-f_{\text{fwd}}(\alpha) = \sigma\!\left(\frac{\alpha - \alpha_{\text{stall,fwd}}}{s_{1,\text{fwd}}}\right)
-$$
+$$f_{\text{fwd}}(\alpha) = \sigma\!\left(\frac{\alpha - \alpha_{\text{stall,fwd}}}{s_{1,\text{fwd}}}\right)$$
 
 where $\sigma(x) = \frac{1}{1 + e^x}$ is the logistic sigmoid (clamped at ±500 to prevent overflow).
 
@@ -55,9 +53,7 @@ As α exceeds $\alpha_{\text{stall,fwd}}$, $f_{\text{fwd}}$ drops from 1 → 0. 
 
 ### 2.2  Back Stall Sigmoid
 
-$$
-f_{\text{back}}(\alpha) = \sigma\!\left(\frac{\alpha_{\text{stall,back}} - \alpha}{s_{1,\text{back}}}\right)
-$$
+$$f_{\text{back}}(\alpha) = \sigma\!\left(\frac{\alpha_{\text{stall,back}} - \alpha}{s_{1,\text{back}}}\right)$$
 
 This mirrors the forward stall for deep negative α (back-stall / reversed flow).  It drops from 1 → 0 as α decreases below $\alpha_{\text{stall,back}}$.
 
@@ -65,9 +61,7 @@ This mirrors the forward stall for deep negative α (back-stall / reversed flow)
 
 ### 2.3  Combined Separation
 
-$$
-f(\alpha) = f_{\text{fwd}}(\alpha) \cdot f_{\text{back}}(\alpha) \;\in\; [0, 1]
-$$
+$$f(\alpha) = f_{\text{fwd}}(\alpha) \cdot f_{\text{back}}(\alpha) \;\in\; [0, 1]$$
 
 The product ensures that the flow is only "attached" when both the forward and back stall criteria are satisfied.  In the normal flight envelope, $f_{\text{back}} \approx 1$ and f is governed entirely by $f_{\text{fwd}}$.
 
@@ -88,9 +82,7 @@ The product ensures that the flow is only "attached" when both the forward and b
 
 ### 3.1  Attached-Flow Lift
 
-$$
-C_{L,\text{att}} = C_{L_\alpha} \cdot \sin(\alpha - \alpha_0)
-$$
+$$C_{L,\text{att}} = C_{L_\alpha} \cdot \sin(\alpha - \alpha_0)$$
 
 Using $\sin()$ instead of a linear $C_{L_\alpha} \cdot (\alpha - \alpha_0)$ gives better behaviour at large α in the transition zone — the lift curve naturally rolls off toward ±90° rather than growing without bound.
 
@@ -103,9 +95,7 @@ Using $\sin()$ instead of a linear $C_{L_\alpha} \cdot (\alpha - \alpha_0)$ give
 
 ### 3.2  Attached-Flow Drag
 
-$$
-C_{D,\text{att}} = C_{D_0} + K \cdot C_{L,\text{att}}^2
-$$
+$$C_{D,\text{att}} = C_{D_0} + K \cdot C_{L,\text{att}}^2$$
 
 This is the classical drag polar — parasitic drag plus induced drag quadratic in lift.
 
@@ -118,9 +108,7 @@ This is the classical drag polar — parasitic drag plus induced drag quadratic 
 
 ### 3.3  Flat-Plate Lift
 
-$$
-C_{L,\text{plate}} = C_{D_n} \cdot \sin\alpha \cdot \cos\alpha = \frac{C_{D_n}}{2}\sin 2\alpha
-$$
+$$C_{L,\text{plate}} = C_{D_n} \cdot \sin\alpha \cdot \cos\alpha = \frac{C_{D_n}}{2}\sin 2\alpha$$
 
 A flat plate at angle of attack $\alpha$ generates a normal force $C_{D_n} \cdot \sin\alpha$; the lift component is the projection perpendicular to the freestream.  Valid for any α including ±90° and ±180°.
 
@@ -132,9 +120,7 @@ A flat plate at angle of attack $\alpha$ generates a normal force $C_{D_n} \cdot
 
 ### 3.4  Flat-Plate Drag
 
-$$
-C_{D,\text{plate}} = C_{D_n} \cdot \sin^2\alpha + C_{D_0} \cdot \cos^2\alpha
-$$
+$$C_{D,\text{plate}} = C_{D_n} \cdot \sin^2\alpha + C_{D_0} \cdot \cos^2\alpha$$
 
 At α = 0° this reduces to $C_{D_0}$ (streamlined); at α = 90° it gives $C_{D_n}$ (broadside).
 
@@ -142,9 +128,7 @@ At α = 0° this reduces to $C_{D_0}$ (streamlined); at α = 90° it gives $C_{D
 
 ### 3.5  Flat-Plate Pitching Moment
 
-$$
-C_{M,\text{plate}} = -0.1 \cdot \sin 2\alpha
-$$
+$$C_{M,\text{plate}} = -0.1 \cdot \sin 2\alpha$$
 
 An empirical approximation: flat plates produce a nose-down restoring moment proportional to $\sin 2\alpha$.
 
@@ -152,9 +136,7 @@ An empirical approximation: flat plates produce a nose-down restoring moment pro
 
 ### 3.6  Flat-Plate Center of Pressure
 
-$$
-\text{CP}_{\text{plate}} = 0.25 + 0.25 \cdot \sin|\alpha|
-$$
+$$\text{CP}_{\text{plate}} = 0.25 + 0.25 \cdot \sin|\alpha|$$
 
 At small α the CP sits at the quarter-chord (thin-airfoil prediction).  At 90° the CP moves to mid-chord (0.50), consistent with broadside flat-plate aerodynamics.
 
@@ -168,41 +150,31 @@ All aerodynamic coefficients are blended between the attached-flow and flat-plat
 
 ### 4.1  Lift
 
-$$
-C_L(\alpha, \beta) = \Big[f \cdot C_{L,\text{att}} + (1-f) \cdot C_{L,\text{plate}}\Big] \cdot \cos^2\beta
-$$
+$$C_L(\alpha, \beta) = \Big[f \cdot C_{L,\text{att}} + (1-f) \cdot C_{L,\text{plate}}\Big] \cdot \cos^2\beta$$
 
 The $\cos^2\beta$ factor accounts for the reduced effective span in sideslip — the wing's projected area perpendicular to the freestream decreases as the flow comes from the side.
 
 ### 4.2  Drag
 
-$$
-C_D(\alpha, \beta) = \Big[f \cdot C_{D,\text{att}} + (1-f) \cdot C_{D,\text{plate}}\Big] \cdot \cos^2\beta + C_{D_{n,\text{lat}}} \cdot \sin^2\beta
-$$
+$$C_D(\alpha, \beta) = \Big[f \cdot C_{D,\text{att}} + (1-f) \cdot C_{D,\text{plate}}\Big] \cdot \cos^2\beta + C_{D_{n,\text{lat}}} \cdot \sin^2\beta$$
 
 The lateral broadside drag term $C_{D_{n,\text{lat}}} \cdot \sin^2\beta$ captures the increase in drag when the body is turned broadside to the flow in sideslip.
 
 ### 4.3  Side Force
 
-$$
-C_Y(\beta) = C_{Y_\beta} \cdot \sin\beta \cdot \cos\beta
-$$
+$$C_Y(\beta) = C_{Y_\beta} \cdot \sin\beta \cdot \cos\beta$$
 
 A first-order lateral force model driven by the sideslip angle.
 
 ### 4.4  Pitching Moment
 
-$$
-C_M(\alpha) = f \cdot \big(C_{M_0} + C_{M_\alpha} \cdot (\alpha - \alpha_0)\big) + (1-f) \cdot C_{M,\text{plate}}
-$$
+$$C_M(\alpha) = f \cdot \big(C_{M_0} + C_{M_\alpha} \cdot (\alpha - \alpha_0)\big) + (1-f) \cdot C_{M,\text{plate}}$$
 
 Attached-flow CM is linear in α (zero-α moment plus slope).  Blended with the flat-plate CM at separation.
 
 ### 4.5  Center of Pressure
 
-$$
-\text{CP}(\alpha) = f \cdot \text{clamp}\!\big(\text{CP}_0 + \text{CP}_\alpha \cdot (\alpha - \alpha_0), 0, 1\big) + (1-f) \cdot \text{CP}_{\text{plate}}
-$$
+$$\text{CP}(\alpha) = f \cdot \text{clamp}\!\big(\text{CP}_0 + \text{CP}_\alpha \cdot (\alpha - \alpha_0), 0, 1\big) + (1-f) \cdot \text{CP}_{\text{plate}}$$
 
 The attached CP travels linearly with α (clamped to [0, 1] chord fraction), blended with the flat-plate CP model.  This drives the per-segment force application point and is critical for pitch moment computation.
 
@@ -213,11 +185,7 @@ The attached CP travels linearly with α (clamped to [0, 1] chord fraction), ble
 
 ### 4.6  Yaw and Roll Moments
 
-$$
-C_n(\beta) = C_{n_\beta} \cdot \sin\beta \cdot \cos\beta
-\qquad\qquad
-C_{l,\text{roll}}(\beta) = C_{l_\beta} \cdot \sin\beta \cdot \cos\beta
-$$
+$$C_n(\beta) = C_{n_\beta} \cdot \sin\beta \cdot \cos\beta \qquad\qquad C_{l,\text{roll}}(\beta) = C_{l_\beta} \cdot \sin\beta \cdot \cos\beta$$
 
 Independent stability derivatives with crossflow scaling.  These are not blended by f — they operate through the lateral axis only.
 
@@ -227,9 +195,7 @@ Independent stability derivatives with crossflow scaling.  These are not blended
 
 Controls modify the base polar parameters via **SymmetricControl derivatives**.  Each polar can define control blocks for `brake`, `front_riser`, `rear_riser`, and `dirty`.  When a control input δ is applied, the effective polar becomes:
 
-$$
-P_{\text{eff}} = P_{\text{base}} + \delta \cdot \Delta P
-$$
+$$P_{\text{eff}} = P_{\text{base}} + \delta \cdot \Delta P$$
 
 ### 5.1  SymmetricControl Interface
 
@@ -305,13 +271,9 @@ Additionally, the cell's physical geometry scales with deployment:
 
 Each cell sits at an arc angle θ in the canopy.  The freestream (α, β) is rotated into the cell's local frame:
 
-$$
-\alpha_{\text{local}} = \alpha \cos\theta + \beta \sin\theta
-$$
+$$\alpha_{\text{local}} = \alpha \cos\theta + \beta \sin\theta$$
 
-$$
-\beta_{\text{local}} = -\alpha \sin\theta + \beta \cos\theta
-$$
+$$\beta_{\text{local}} = -\alpha \sin\theta + \beta \cos\theta$$
 
 This captures how a rolled panel sees a reduced effective α and gains a component of sideslip.
 
@@ -319,9 +281,7 @@ This captures how a rolled panel sees a reduced effective α and gains a compone
 
 Front and rear riser inputs create an angle of attack change:
 
-$$
-\Delta\alpha_{\text{riser}} = (-\text{frontRiser} + \text{rearRiser}) \cdot \text{ALPHA MAX RISER} \cdot \text{riserSensitivity}
-$$
+$$\Delta\alpha_{\text{riser}} = (-\text{frontRiser} + \text{rearRiser}) \cdot \text{ALPHA MAX RISER} \cdot \text{riserSensitivity}$$
 
 Default `ALPHA_MAX_RISER = 10°`.  Front riser decreases α (steeper dive), rear riser increases α (flatter glide).
 
@@ -336,9 +296,7 @@ The center cell has zero brake sensitivity — no brake lines reach it.
 
 ### 6.5  Final Evaluation
 
-$$
-\text{coeffs} = \texttt{getAllCoefficients}(\alpha_{\text{local}} + \Delta\alpha_{\text{riser}} + \Delta\alpha_{\text{brake}},\; \beta_{\text{local}},\; \delta_{\text{eff}},\; \text{evalPolar})
-$$
+$$\text{coeffs} = \texttt{getAllCoefficients}(\alpha_{\text{local}} + \Delta\alpha_{\text{riser}} + \Delta\alpha_{\text{brake}},\; \beta_{\text{local}},\; \delta_{\text{eff}},\; \text{evalPolar})$$
 
 ---
 
@@ -350,9 +308,7 @@ $$
 
 The segment may be pitched relative to the body frame.  A canopy pilot hanging vertically has `pitchOffset_deg = 90°`.  The freestream α is transformed:
 
-$$
-\alpha_{\text{local}} = \alpha_{\text{freestream}} - \text{pitchOffset}_{\text{eff}}
-$$
+$$\alpha_{\text{local}} = \alpha_{\text{freestream}} - \text{pitchOffset}_{\text{eff}}$$
 
 where `pitchOffset_eff = pitchOffset_deg + controls.pilotPitch`.
 
@@ -360,12 +316,10 @@ where `pitchOffset_eff = pitchOffset_deg + controls.pilotPitch`.
 
 When `pilotPitch ≠ 0`, the segment's position is rotated around the riser pivot point (same rotation as `rotatePilotMass()`):
 
-$$
-\begin{pmatrix} x' \\ z' \end{pmatrix}
-= \begin{pmatrix} \cos\delta & -\sin\delta \\ \sin\delta & \cos\delta \end{pmatrix}
-\begin{pmatrix} x - x_{\text{pivot}} \\ z - z_{\text{pivot}} \end{pmatrix}
-+ \begin{pmatrix} x_{\text{pivot}} \\ z_{\text{pivot}} \end{pmatrix}
-$$
+$$\begin{pmatrix} x' \\ z' \end{pmatrix} = \begin{pmatrix}
+\cos\delta & -\sin\delta \\
+\sin\delta & \cos\delta
+\end{pmatrix} \begin{pmatrix} x - x_{\text{pivot}} \\ z - z_{\text{pivot}} \end{pmatrix} + \begin{pmatrix} x_{\text{pivot}} \\ z_{\text{pivot}} \end{pmatrix}$$
 
 The chord rotation is stored in `_chordRotationRad` so that CP rendering also swings rigidly with the body.
 
@@ -395,9 +349,7 @@ The segment's S and chord are dynamically updated from the blended polar so that
 
 `lerpPolar(t, polarA, polarB)` in `coefficients.ts` linearly interpolates every aerodynamic scalar field:
 
-$$
-P_{\text{blend}} = P_A + t \cdot (P_B - P_A)
-$$
+$$P_{\text{blend}} = P_A + t \cdot (P_B - P_A)$$
 
 Applied to: `cl_alpha`, `alpha_0`, `cd_0`, `k`, `cd_n`, `cd_n_lateral`, stall angles, stall widths, all stability derivatives, `cm_0`, `cm_alpha`, `cp_0`, `cp_alpha`, `cg`, `s`, `m`, `chord`.
 
@@ -428,9 +380,7 @@ The forward position shift represents the quarter-chord of the deployed flap sec
 
 The flap surface sees the parent cell's local α plus a deflection angle:
 
-$$
-\alpha_{\text{flap}} = \alpha_{\text{local}} + \delta_{\text{brake}} \cdot \text{MAX FLAP DEFLECTION DEG}
-$$
+$$\alpha_{\text{flap}} = \alpha_{\text{local}} + \delta_{\text{brake}} \cdot \text{MAX FLAP DEFLECTION DEG}$$
 
 Default `MAX_FLAP_DEFLECTION_DEG = 50°`.  At full brake on an outer cell, the flap sees 50° more α than the freestream — guaranteeing deep stall of the trailing edge fabric.
 
@@ -438,11 +388,7 @@ Default `MAX_FLAP_DEFLECTION_DEG = 50°`.  At full brake on an outer cell, the f
 
 A panel rolled at arc angle θ produces lift perpendicular to its surface.  This tilted lift decomposes into:
 
-$$
-C_{L,\text{stream}} = C_{L,\text{local}} \cdot \cos\theta
-\qquad
-C_{Y,\text{tilt}} = C_{L,\text{local}} \cdot \sin\theta
-$$
+$$C_{L,\text{stream}} = C_{L,\text{local}} \cdot \cos\theta \qquad C_{Y,\text{tilt}} = C_{L,\text{local}} \cdot \sin\theta$$
 
 For flaps with extreme dynamic roll angles (up to 56° with `MAX_FLAP_ROLL_INCREMENT_DEG = 20°` + base 36° arc), this tilt decomposition is explicit.  Braking deepens the arc, increasing θ and the outward side force — this drives the canopy's turn response to asymmetric braking.
 
@@ -483,9 +429,7 @@ The dihedral roll feeds into the local flow angle transformation (§6.2) and the
 
 The effective dirty parameter for each wingsuit segment combines:
 
-$$
-\text{dirty}_{\text{eff}} = \text{clamp}\!\Big(\text{dirty}_{\text{base}} + \text{yawT} \cdot \text{YAW DIRTY COUPLING} \cdot \text{sideSign} + |\text{rollT}| \cdot \text{ROLL DIRTY COUPLING},\; 0,\; 1\Big)
-$$
+$$\text{dirty}_{\text{eff}} = \text{clamp}\!\Big(\text{dirty}_{\text{base}} + \text{yawT} \cdot \text{YAW DIRTY COUPLING} \cdot \text{sideSign} + |\text{rollT}| \cdot \text{ROLL DIRTY COUPLING},\; 0,\; 1\Big)$$
 
 This is passed to `getAllCoefficients()` as the dirty parameter, which applies the dirty SymmetricControl derivatives to degrade the polar.
 
@@ -495,9 +439,7 @@ This is passed to `getAllCoefficients()` as the dirty parameter, which applies t
 
 `makeParasiticSegment()` builds simple constant-coefficient drag bodies (lines, pilot body under canopy, bridle, pilot chute).
 
-$$
-C_L = \text{const}, \quad C_D = \text{const}, \quad C_Y = \text{const}, \quad C_M = 0, \quad \text{CP} = 0.25
-$$
+$$C_L = \text{const}, \quad C_D = \text{const}, \quad C_Y = \text{const}, \quad C_M = 0, \quad \text{CP} = 0.25$$
 
 These segments do **not** use the Kirchhoff model.  They produce constant drag regardless of α, β, or controls.
 
@@ -507,9 +449,7 @@ These segments do **not** use the Kirchhoff model.  They produce constant drag r
 
 `makeWingsuitHeadSegment()` builds a parasitic bluff body that also acts as a rudder in sideslip:
 
-$$
-C_Y = -0.5 \cdot \sin\beta
-$$
+$$C_Y = -0.5 \cdot \sin\beta$$
 
 The head sits far forward of the CG, so this side force creates a yaw moment that provides directional stability.  The head shifts laterally with `yawThrottle`, producing an asymmetric moment arm.
 
