@@ -41,6 +41,8 @@ The dev server will open at `http://localhost:5173`.
 
 <p align="center"><img src="polar-visualizer/docs/gifs/body-inertial-frames.gif" width="720" alt="Body vs inertial frame switching with attitude sliders" /></p>
 
+<p align="center"><img src="polar-visualizer/docs/gifs/backfly throttles.gif" width="720" alt="Back-flying with throttle controls — frame transition and control response" /></p>
+
 - **Force Vectors** — Lift (blue), drag (red), side force (cyan), weight (yellow), net (white) as shaded 3D arrows originating from the center of pressure (CP) or center of gravity (CG)
 - **Moment Arcs** — Pitch (red), yaw (green), roll (purple) curved arrows at CG
 - **4 Models** — Aura 5 wingsuit, Ibex UL canopy, Slick Sin skydiver, Caravan airplane
@@ -312,6 +314,8 @@ CL vs α — Effect of s1_fwd (stall sharpness)
 Sideslip affects all coefficients through crossflow scaling:
 
 ![Effect of sideslip (β) on coefficients](polar-visualizer/docs/gifs/effect-beta-sideslip.gif)
+
+![Effect of sideslip on 6-segment wingsuit](polar-visualizer/docs/gifs/effect-beta-sideslip6seg.gif)
 
 ![Effect of sideslip on canopy with per-segment forces](polar-visualizer/docs/gifs/effect-canopy-sideslip.gif)
 
