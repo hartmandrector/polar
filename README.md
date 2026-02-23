@@ -556,7 +556,9 @@ $$\Delta x_{CP} = -(CP - 0.25) \cdot \frac{c_{seg}}{h}$$
 
 $$\vec{r}_{CP,i} = \vec{r}_{seg,i} + \Delta x_{CP} \cdot (\cos\theta_p,\; 0,\; \sin\theta_p)$$
 
-where $h$ = 1.875 m (reference height) and $\theta_p$ is the pitch offset. The lever arm from the system CG is then $\vec{r}_i = \vec{r}_{CP,i} \cdot h - \vec{r}_{CG}$.
+where $h$ = 1.875 m (reference height) and $\theta_p$ is the pitch offset. The lever arm from the system CG is then:
+
+$$\vec{r}_i = \vec{r}_{CP,i} \cdot h - \vec{r}_{CG}$$
 
 ### Force & Moment Summation
 
@@ -566,7 +568,7 @@ $$\vec{F}_{total} = \sum_i \vec{F}_i$$
 
 $$\vec{M}_{total} = \sum_i \left(\vec{r}_i \times \vec{F}_i \;+\; M_{0,i} \cdot \hat{y}\right)$$
 
-The $\vec{r}_i \times \vec{F}_i$ term captures how off-CG forces create pitch, yaw, and roll moments. The $M_{0,i} \cdot \hat{y}$ term adds each segment's own pitch tendency (from camber, flap deflection, etc.) directly about the NED y-axis.
+The lever arm cross product creates pitch, yaw, and roll moments from off-CG forces. The intrinsic pitching moment $M_{0,i}$ adds each segment's own pitch tendency (from camber, flap deflection, etc.) directly about the NED y-axis.
 
 ### System Coefficient Recovery
 
