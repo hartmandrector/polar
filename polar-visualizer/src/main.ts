@@ -633,12 +633,14 @@ function updateVisualization(state: FlightState): void {
 
       // Scale bridle attachment point to follow the canopy surface deformation.
       // The base position (at full deployment) is scaled by the same factors.
+      // baseBridlePos is updated by setCanopyScale when the area slider changes,
+      // so deployment scaling always starts from the correct canopy-scaled position.
       // CG offset is re-applied afterward, so we scale the base then subtract offset.
       if (currentModel.bridleGroup && currentModel.baseBridlePos) {
         const cgOffset = currentModel.cgOffsetThree ?? new THREE.Vector3()
         currentModel.bridleGroup.position.set(
           currentModel.baseBridlePos.x * spanScale  - cgOffset.x,
-          currentModel.baseBridlePos.y              - cgOffset.y,  // no vertical scaling
+          currentModel.baseBridlePos.y              - cgOffset.y,
           currentModel.baseBridlePos.z * chordScale - cgOffset.z,
         )
       }

@@ -600,12 +600,29 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
   // canopyScaleRatio, canopyBaseScale, and canopyComponentScale so that the
   // visual mesh and physics overlays always stay aligned.
   if (type === 'canopy' && mainModel && _canopyBasePS > 0) {
+    const _initialComponentScale = canopyComponentScale
+    // Capture the original bridle base position before any scaling
+    let _origBridlePos: THREE.Vector3 | undefined
     result.setCanopyScale = (newScale: number) => {
       const newFull = _canopyBasePS * newScale
       mainModel.scale.set(-newFull, newFull, newFull)
       result.canopyScaleRatio = newScale * _canopyOverlayPS
       result.canopyBaseScale = newFull * _canopyNormS
       result.canopyComponentScale = newScale
+
+      // Update baseBridlePos to reflect the new canopy scale.
+      // The original baseBridlePos was captured at _initialComponentScale;
+      // scale it by newScale/_initialComponentScale so the deployment code
+      // in main.ts (which applies spanScale/chordScale on top) stays correct.
+      if (bridleGroup && result.baseBridlePos) {
+        if (!_origBridlePos) _origBridlePos = result.baseBridlePos.clone()
+        const scaleRatio = newScale / _initialComponentScale
+        result.baseBridlePos.set(
+          _origBridlePos.x * scaleRatio,
+          _origBridlePos.y * scaleRatio,
+          _origBridlePos.z * scaleRatio,
+        )
+      }
     }
   }
 
