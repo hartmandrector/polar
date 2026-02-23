@@ -101,6 +101,19 @@ The canopy is a flexible wing — line tension and internal pressurization disto
 
 Needs further study of Slegers & Costello and Mortaloni before deciding on approach.
 
+### Deferred: Weight Shift & High-Performance Turn Modeling
+
+Weight shift is a pendulum: the pilot swings laterally, loading one line group more than the other. The center cell distorts to bridge the asymmetry; the two half-spans tilt as rigid groups at different AoA → differential lift → turn. This requires a Δ perturbation on the center cell's aero coefficients plus geometric rotation of each half-span.
+
+**Control hierarchy (high-performance canopies):**
+- **Brakes** — most aggressive, trailing edge deflection, mainly for landing flare
+- **Risers** — uniform AoA change across half-span, strong but more controllable than brakes
+- **Harness/weight shift** — smoothest, only distorts center cell, primary turn mechanism in high-performance flight
+
+On our current model (large docile canopy), weight shift produces negligible turn — which is correct behavior. The existing controls capture this accurately. High-performance canopies amplify the weight shift response dramatically, but modeling that requires different polar data and is out of scope for now.
+
+**Design decision:** Current system models weight shift correctly for docile canopies (minimal effect). High-performance canopy modeling deferred — would need new polar definitions with higher sensitivity coefficients.
+
 ### Next steps:
 1. Study Slegers & Costello constraint force formulation
 2. Acquire and study Mortaloni added mass / tension paper
