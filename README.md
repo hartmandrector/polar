@@ -568,7 +568,7 @@ Each vehicle is modeled as a collection of point masses positioned in the NED bo
 
 Pilot pitch rotates the pilot mass points around the riser pivot, shifting the system CG in real time. This couples body pitch with the pendulum dynamics of the harness-canopy system.
 
-![Dynamic mass model — pilot pitch shifting CG](polar-visualizer/docs/gifs/dynamic mass modelmodel.gif)
+![Dynamic mass model — pilot pitch shifting CG](polar-visualizer/docs/gifs/dynamic-mass-model.gif)
 
 The full inertia tensor $[I]$ is computed from the mass distribution and feeds directly into the rotational EOM (FRAMES.md §6.2). All positions are normalized by reference height, so the tensor scales automatically with the pilot height slider.
 
