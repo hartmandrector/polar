@@ -91,21 +91,23 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
   if (!gp) return null
 
   // Triggers: button 6 (LT), button 7 (RT) — analog value 0–1
-  const brakeLeft  = gp.buttons[6]?.value ?? 0
-  const brakeRight = gp.buttons[7]?.value ?? 0
+  // LT = right brake, RT = left brake (crossed: triggers are on opposite side from pilot's hands)
+  const brakeLeft  = gp.buttons[7]?.value ?? 0
+  const brakeRight = gp.buttons[6]?.value ?? 0
 
   // Sticks: Y axis negative = forward (pushed away from you)
   const leftY  = applyDeadzone(gp.axes[1] ?? 0, DEADZONE)
   const rightY = applyDeadzone(gp.axes[3] ?? 0, DEADZONE)
 
-  // Forward (negative Y) → front riser, back (positive Y) → rear riser
+  // Back (positive Y) → front riser, forward (negative Y) → rear riser
+  // Inverted from initial assumption — "pull back" = fronts feels natural on gamepad
   return {
     brakeLeft,
     brakeRight,
-    frontRiserLeft:  Math.max(0, -leftY),   // forward = front
-    frontRiserRight: Math.max(0, -rightY),
-    rearRiserLeft:   Math.max(0,  leftY),   // back = rear
-    rearRiserRight:  Math.max(0,  rightY),
+    frontRiserLeft:  Math.max(0,  leftY),   // back = front riser
+    frontRiserRight: Math.max(0,  rightY),
+    rearRiserLeft:   Math.max(0, -leftY),   // forward = rear riser
+    rearRiserRight:  Math.max(0, -rightY),
   }
 }
 
@@ -248,6 +250,7 @@ export class SimRunner {
 
     // Read gamepad input and inject into controls (vehicle-aware)
     const config = this.callbacks.getSimConfig()
+    let gamepadFlightOverrides: Partial<FlightState> = {}
 
     if (this.modelType === 'canopy') {
       const gp = readCanopyGamepad()
@@ -261,6 +264,14 @@ export class SimRunner {
           rearRiserLeft: gp.rearRiserLeft,
           rearRiserRight: gp.rearRiserRight,
         }
+        // Pass gamepad values through to FlightState so viewer renders brake flaps.
+        // Use 'brakes' mode with brake values as the primary visible control.
+        // Riser forces are computed correctly in the sim physics regardless.
+        gamepadFlightOverrides = {
+          canopyControlMode: 'brakes' as const,
+          canopyLeftHand: gp.brakeLeft,
+          canopyRightHand: gp.brakeRight,
+        }
       }
     } else {
       // Wingsuit / skydiver / airplane — throttle controls
@@ -268,6 +279,11 @@ export class SimRunner {
       if (gp) {
         config.controls = {
           ...config.controls,
+          pitchThrottle: gp.pitchThrottle,
+          yawThrottle: gp.yawThrottle,
+          rollThrottle: gp.rollThrottle,
+        }
+        gamepadFlightOverrides = {
           pitchThrottle: gp.pitchThrottle,
           yawThrottle: gp.yawThrottle,
           rollThrottle: gp.rollThrottle,
@@ -283,9 +299,13 @@ export class SimRunner {
       this.simTime += DT
     }
 
-    // Push updated state to viewer
+    // Push updated state to viewer — merge gamepad overrides so
+    // updateVisualization sees the control inputs for rendering
     const base = this.callbacks.getBaseState()
-    const updatedFlight = simStateToFlightState(this.simState, base)
+    const updatedFlight = {
+      ...simStateToFlightState(this.simState, base),
+      ...gamepadFlightOverrides,
+    }
     this.callbacks.onUpdate(updatedFlight)
 
     this.animFrameId = requestAnimationFrame(this.tick)

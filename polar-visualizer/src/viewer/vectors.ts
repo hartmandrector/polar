@@ -184,7 +184,7 @@ export interface ForceVectors {
   group: THREE.Group
 }
 
-const FORCE_SCALE = 0.009   // N → visual units (3× for sim visibility)
+const FORCE_SCALE = 0.03   // N → visual units (10× original for low-airspeed visibility)
 const TORQUE_SCALE = 0.002  // N·m → radians of arc sweep
 
 export function createForceVectors(): ForceVectors {
