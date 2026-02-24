@@ -12,7 +12,7 @@ _Learn about the person you're helping. Update this as you go._
 ## Background
 
 - Born 1982. Father was a magazine editor/publisher — had PCs early. Uncle was an engineer, taught him to program as a kid.
-- Private high school at a ski jumping sporting academy. Then University of Utah — BS in Computer Engineering.
+- Private high school at a ski jumping sporting academy (class of 1999). Started college later. University of Utah — BS in Computer Engineering (class of 2009). Specialization: control systems & signals. Senior project: GPS-based autonomous raw signal receiver (hardware, wake-capture-sleep for offline processing).
 - Worked at IM Flash (Micron joint venture) building flash memory — leading edge chip production. ~2 years.
 - Left engineering for skydiving → full-time pro athlete / coach / instructor.
 - Worked for a wingsuit VR simulation company (~1 year) — million-dollar suspended robot rig with VR, used the CloudBASE-style physics. Side projects spun off from that.

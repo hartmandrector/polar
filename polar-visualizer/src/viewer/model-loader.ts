@@ -504,7 +504,11 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     const bridlePCModel = await loadRawGltf('/models/bridalandpc.gltf')
     const s = compositeRoot.scale.x  // normalization scale (should be positive)
     const bridleScale = assembly.deployScales?.bridle ?? 3.0
-    bridlePCModel.scale.setScalar(bridleScale * Math.abs(s))
+    // Apply overlayPositionScale to match the physics-to-mesh coordinate mapping.
+    // This corrects for the same GLB-to-physics space difference that affects
+    // CP/mass overlay positions. Without it, the bridle/PC would be too large.
+    const overlayPS = assembly.overlayPositionScale ?? 1.0
+    bridlePCModel.scale.setScalar(bridleScale * Math.abs(s) * overlayPS)
 
     bridleGroup = new THREE.Group()
     bridleGroup.name = 'bridle-pc-pivot'
@@ -611,9 +615,8 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
       result.canopyComponentScale = newScale
 
       // Update baseBridlePos to reflect the new canopy scale.
-      // The original baseBridlePos was captured at _initialComponentScale;
-      // scale it by newScale/_initialComponentScale so the deployment code
-      // in main.ts (which applies spanScale/chordScale on top) stays correct.
+      // baseBridlePos already has overlayPositionScale baked in (applied when first captured),
+      // so we only need the ratio of new to initial component scale.
       if (bridleGroup && result.baseBridlePos) {
         if (!_origBridlePos) _origBridlePos = result.baseBridlePos.clone()
         const scaleRatio = newScale / _initialComponentScale
@@ -720,7 +723,18 @@ export function applyCgFromMassSegments(
     loadedModel.baseModelPos = loadedModel.model.position.clone()
   }
   if (!loadedModel.baseBridlePos && loadedModel.bridleGroup) {
-    loadedModel.baseBridlePos = loadedModel.bridleGroup.position.clone()
+    // Apply overlayPositionScale when capturing the base position so it matches
+    // the physics-to-mesh coordinate mapping used by CP/mass overlays.
+    // overlayPS = canopyScaleRatio / canopyComponentScale (at initial load, componentScale = 1.0)
+    const overlayPS = loadedModel.canopyComponentScale > 0
+      ? loadedModel.canopyScaleRatio / loadedModel.canopyComponentScale
+      : 1.0
+    const rawPos = loadedModel.bridleGroup.position.clone()
+    loadedModel.baseBridlePos = new THREE.Vector3(
+      rawPos.x * overlayPS,
+      rawPos.y * overlayPS,
+      rawPos.z * overlayPS,
+    )
   }
 
   // NED→Three.js: three.x = -ned.y, three.y = -ned.z, three.z = ned.x

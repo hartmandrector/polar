@@ -65,6 +65,65 @@ CANOPY_WINGSUIT_ASSEMBLY = {
 
 ---
 
+## 0.5 Hidden Scale Factor Architecture
+
+Two static scale factors live in `VehicleAssembly` (model-registry.ts) that
+correct for GLB-to-physics coordinate space differences:
+
+| Factor | Value | Scales Mesh? | Scales Overlays? |
+|--------|-------|--------------|------------------|
+| `overlayPositionScale` | 0.5631 | No | Yes (canopy physics positions) |
+| `pilotSizeCompensation` | 0.77 | Yes (pilot GLB) | Yes (pilot physics positions) |
+
+**Key difference:** `overlayPositionScale` only affects physics overlay positions
+(CP, mass, bridle) — the canopy mesh is unaffected. `pilotSizeCompensation` scales
+both the pilot mesh and its physics overlays together.
+
+### Ownership by Attachment Point
+
+The factors apply based on what a visual element attaches to:
+
+**Canopy-attached elements** → use `overlayPositionScale` (overlays only):
+- CP diamond position
+- Canopy mass point spheres
+- Bridle/PC attachment position
+- Bridle/PC model size
+
+**Pilot-attached elements** → use `pilotSizeCompensation` (mesh + overlays):
+- Pilot GLB mesh scale
+- Pilot mass point spheres
+- Pilot segment force vectors
+- Pivot junction position
+
+### Where Defined
+
+```typescript
+// model-registry.ts — VehicleAssembly interface
+readonly overlayPositionScale?: number   // default 1.0
+readonly pilotSizeCompensation?: number  // default 1.0
+
+// CANOPY_WINGSUIT_ASSEMBLY and CANOPY_SLICK_ASSEMBLY:
+overlayPositionScale: 0.5631,
+pilotSizeCompensation: 0.77,
+```
+
+### When to Add a New Scale Factor
+
+If a new visual element requires a different scale than its attachment point,
+add a dedicated field that falls back to the parent factor:
+
+```typescript
+// Example: if bridle ever needs independent tuning
+readonly bridlePositionScale?: number  // default → overlayPositionScale
+
+// Usage:
+const bridlePS = assembly.bridlePositionScale ?? assembly.overlayPositionScale ?? 1.0
+```
+
+Currently this isn't needed — bridle and canopy overlays share the same 0.5631 factor.
+
+---
+
 ## 1. Pilot Height Slider (Dynamic)
 
 **Pattern:** Same as the existing canopy area slider — one control that
@@ -241,6 +300,42 @@ ratios.
 - ✓ Set pilot height slider to 230cm, verify overlays still align
 - ✓ Change canopy area slider, verify pilot unchanged
 - ✓ Return to defaults, verify alignment restored
+
+---
+
+## 5. Bridle/PC Position & Size Scaling
+
+The bridle and pilot chute (PC) attachment point must stay aligned with the
+canopy surface when the canopy area slider changes. This requires applying
+the same `overlayPositionScale` factor used for CP/mass overlays.
+
+### The Problem
+The bridle attachment position is computed in raw mesh coordinates, but the
+canopy area slider changes the mesh size. Without correction, the bridle
+would move too far (or not enough) when the slider changes.
+
+### The Solution
+Apply `overlayPositionScale` (0.5631) at two points:
+
+1. **Initial capture** — When `baseBridlePos` is first captured in
+   `applyCgFromMassSegments()`, multiply by `overlayPS` so it's in the
+   same coordinate space as physics overlays.
+
+2. **Model size** — When loading the bridle/PC model, multiply the scale
+   by `overlayPS` so the model size matches the attachment position.
+
+### Where It Lives
+- **Position capture:** [model-loader.ts#applyCgFromMassSegments()](../polar-visualizer/src/viewer/model-loader.ts)
+- **Model scale:** [model-loader.ts#bridlePCModel.scale](../polar-visualizer/src/viewer/model-loader.ts)
+- **Slider update:** [model-loader.ts#setCanopyScale()](../polar-visualizer/src/viewer/model-loader.ts)
+
+### Key Insight
+The `overlayPS` factor is computed as `canopyScaleRatio / canopyComponentScale`.
+At initial load (componentScale = 1.0), this equals the raw `overlayPositionScale`
+from the assembly (0.5631). This factor accounts for the difference between
+the mesh coordinate space and the physics coordinate space.
+
+---
 
 ### Known Quirk
 Mass overlay updates may not appear immediately after changing the pilot height slider alone. Adjusting another slider (e.g., pilot pitch) forces a full refresh. This is a minor debug-tooling edge case, not a physics issue.
