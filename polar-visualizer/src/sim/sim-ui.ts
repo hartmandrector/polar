@@ -7,7 +7,7 @@
  *   3. Showing a minimal HUD (altitude, speed, sim time)
  */
 
-import { SimRunner, flightStateToSimState } from './sim-runner.ts'
+import { SimRunner } from './sim-runner.ts'
 import type { SimRunnerCallbacks } from './sim-runner.ts'
 import type { SimConfig } from '../polar/sim-state.ts'
 import type { FlightState } from '../ui/controls.ts'

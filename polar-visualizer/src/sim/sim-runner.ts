@@ -11,9 +11,6 @@
 
 import type { SimState, SimConfig } from '../polar/sim-state.ts'
 import type { FlightState } from '../ui/controls.ts'
-import type { AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
-import type { InertiaComponents } from '../polar/inertia.ts'
-import type { Vec3NED } from '../polar/aero-segment.ts'
 import { rk4Step } from '../polar/sim.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -29,23 +26,16 @@ const MAX_STEPS_PER_FRAME = 10
 
 // ─── Gamepad Input ──────────────────────────────────────────────────────────
 
-export interface GamepadMapping {
-  /** Axis index for pitch throttle (forward/back body) */
-  pitchAxis: number
-  /** Axis index for yaw throttle (lateral) */
-  yawAxis: number
-  /** Axis index for roll throttle (differential) */
-  rollAxis: number
-  /** Axis deadzone (0–1) */
-  deadzone: number
-}
+/**
+ * Xbox controller axis/button indices (standard gamepad mapping):
+ *   Axis 0: Left stick X    Axis 1: Left stick Y
+ *   Axis 2: Right stick X   Axis 3: Right stick Y
+ *   Button 6: Left trigger (analog 0–1)
+ *   Button 7: Right trigger (analog 0–1)
+ */
 
-const DEFAULT_GAMEPAD: GamepadMapping = {
-  pitchAxis: 1,   // left stick Y
-  yawAxis: 0,     // left stick X
-  rollAxis: 2,    // right stick X
-  deadzone: 0.08,
-}
+/** Deadzone — axes below this magnitude read as zero */
+const DEADZONE = 0.08
 
 function applyDeadzone(value: number, deadzone: number): number {
   if (Math.abs(value) < deadzone) return 0
@@ -53,15 +43,69 @@ function applyDeadzone(value: number, deadzone: number): number {
   return sign * (Math.abs(value) - deadzone) / (1 - deadzone)
 }
 
-function readGamepad(mapping: GamepadMapping): { pitch: number; yaw: number; roll: number } | null {
+function getGamepad(): Gamepad | null {
   const gamepads = navigator.getGamepads()
-  const gp = gamepads[0] ?? gamepads[1] ?? gamepads[2] ?? gamepads[3]
+  return gamepads[0] ?? gamepads[1] ?? gamepads[2] ?? gamepads[3] ?? null
+}
+
+/**
+ * Wingsuit gamepad mapping:
+ *   Right stick Y → pitch throttle (forward = nose down)
+ *   Right stick X → roll throttle (right = right roll)
+ *   Left stick X  → yaw throttle (right = yaw right)
+ */
+export interface WingsuitGamepadInput {
+  pitchThrottle: number   // [-1, +1]
+  yawThrottle: number     // [-1, +1]
+  rollThrottle: number    // [-1, +1]
+}
+
+export function readWingsuitGamepad(): WingsuitGamepadInput | null {
+  const gp = getGamepad()
+  if (!gp) return null
+  return {
+    pitchThrottle: applyDeadzone(gp.axes[3] ?? 0, DEADZONE),  // right stick Y
+    rollThrottle:  applyDeadzone(gp.axes[2] ?? 0, DEADZONE),  // right stick X
+    yawThrottle:   applyDeadzone(gp.axes[0] ?? 0, DEADZONE),  // left stick X
+  }
+}
+
+/**
+ * Canopy gamepad mapping:
+ *   Left trigger  → left brake (0–1)
+ *   Right trigger → right brake (0–1)
+ *   Left stick Y  → left riser: forward = front, back = rear (0–1 each)
+ *   Right stick Y → right riser: forward = front, back = rear (0–1 each)
+ */
+export interface CanopyGamepadInput {
+  brakeLeft: number       // [0, 1]
+  brakeRight: number      // [0, 1]
+  frontRiserLeft: number  // [0, 1]
+  frontRiserRight: number // [0, 1]
+  rearRiserLeft: number   // [0, 1]
+  rearRiserRight: number  // [0, 1]
+}
+
+export function readCanopyGamepad(): CanopyGamepadInput | null {
+  const gp = getGamepad()
   if (!gp) return null
 
+  // Triggers: button 6 (LT), button 7 (RT) — analog value 0–1
+  const brakeLeft  = gp.buttons[6]?.value ?? 0
+  const brakeRight = gp.buttons[7]?.value ?? 0
+
+  // Sticks: Y axis negative = forward (pushed away from you)
+  const leftY  = applyDeadzone(gp.axes[1] ?? 0, DEADZONE)
+  const rightY = applyDeadzone(gp.axes[3] ?? 0, DEADZONE)
+
+  // Forward (negative Y) → front riser, back (positive Y) → rear riser
   return {
-    pitch: applyDeadzone(gp.axes[mapping.pitchAxis] ?? 0, mapping.deadzone),
-    yaw: applyDeadzone(gp.axes[mapping.yawAxis] ?? 0, mapping.deadzone),
-    roll: applyDeadzone(gp.axes[mapping.rollAxis] ?? 0, mapping.deadzone),
+    brakeLeft,
+    brakeRight,
+    frontRiserLeft:  Math.max(0, -leftY),   // forward = front
+    frontRiserRight: Math.max(0, -rightY),
+    rearRiserLeft:   Math.max(0,  leftY),   // back = rear
+    rearRiserRight:  Math.max(0,  rightY),
   }
 }
 
@@ -140,17 +184,16 @@ export class SimRunner {
   private animFrameId = 0
   private lastTime = 0
   private simTime = 0
-  private gamepadMapping: GamepadMapping
+  private modelType: 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
   private callbacks: SimRunnerCallbacks
 
   constructor(
     initialFlightState: FlightState,
     callbacks: SimRunnerCallbacks,
-    gamepadMapping?: GamepadMapping,
   ) {
     this.simState = flightStateToSimState(initialFlightState)
     this.callbacks = callbacks
-    this.gamepadMapping = gamepadMapping ?? DEFAULT_GAMEPAD
+    this.modelType = initialFlightState.modelType
   }
 
   /** Start the simulation loop */
@@ -203,15 +246,32 @@ export class SimRunner {
     const maxElapsed = MAX_STEPS_PER_FRAME * DT
     if (elapsed > maxElapsed) elapsed = maxElapsed
 
-    // Read gamepad input and inject into controls
-    const gamepadInput = readGamepad(this.gamepadMapping)
+    // Read gamepad input and inject into controls (vehicle-aware)
     const config = this.callbacks.getSimConfig()
-    if (gamepadInput) {
-      config.controls = {
-        ...config.controls,
-        pitchThrottle: gamepadInput.pitch,
-        yawThrottle: gamepadInput.yaw,
-        rollThrottle: gamepadInput.roll,
+
+    if (this.modelType === 'canopy') {
+      const gp = readCanopyGamepad()
+      if (gp) {
+        config.controls = {
+          ...config.controls,
+          brakeLeft: gp.brakeLeft,
+          brakeRight: gp.brakeRight,
+          frontRiserLeft: gp.frontRiserLeft,
+          frontRiserRight: gp.frontRiserRight,
+          rearRiserLeft: gp.rearRiserLeft,
+          rearRiserRight: gp.rearRiserRight,
+        }
+      }
+    } else {
+      // Wingsuit / skydiver / airplane — throttle controls
+      const gp = readWingsuitGamepad()
+      if (gp) {
+        config.controls = {
+          ...config.controls,
+          pitchThrottle: gp.pitchThrottle,
+          yawThrottle: gp.yawThrottle,
+          rollThrottle: gp.rollThrottle,
+        }
       }
     }
 
