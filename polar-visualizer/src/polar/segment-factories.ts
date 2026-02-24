@@ -477,7 +477,10 @@ export function makeBrakeFlapSegment(
   // Full-flight flap geometry (deploy = 1) — captured at factory time
   const fullMaxFlapS = flapChordFraction * parentCellS
   const fullMaxFlapChord = flapChordFraction * parentCellChord
-  const fullMaxCpShift = 0.25 * fullMaxFlapChord / referenceLength  // referenceLength from caller
+  // CP shift at full brake = quarter chord of the PARENT cell.
+  // The flap CP travels from the trailing edge toward the cell quarter-chord
+  // as the fabric distorts under brake input.
+  const fullMaxCpShift = 0.25 * parentCellChord / referenceLength
 
   // Roll increment sign — deepens the arc in the same direction as the base roll.
   const rollSign = rollDeg >= 0 ? 1 : -1
@@ -547,9 +550,9 @@ export function makeBrakeFlapSegment(
 
       // ── Dynamic position ──
       // At zero brake: position is at the trailing edge.
-      // As brake increases: position moves forward toward the cell center,
-      // representing the quarter-chord of the deployed flap section.
-      // The shift is along the chord direction (x in NED body frame).
+      // As brake increases: CP moves forward toward the cell quarter-chord (nose).
+      // In NED: nose is less-negative x, TE is more-negative x.
+      // cpShift is positive → moves toward nose (less negative x). 
       const cpShift = effectiveBrake * maxCpShift
       this.position.x = teX + cpShift
       this.position.z = teZ

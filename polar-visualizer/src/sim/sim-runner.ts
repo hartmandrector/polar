@@ -91,23 +91,22 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
   if (!gp) return null
 
   // Triggers: button 6 (LT), button 7 (RT) — analog value 0–1
-  // LT = right brake, RT = left brake (crossed: triggers are on opposite side from pilot's hands)
-  const brakeLeft  = gp.buttons[7]?.value ?? 0
-  const brakeRight = gp.buttons[6]?.value ?? 0
+  const brakeLeft  = gp.buttons[6]?.value ?? 0
+  const brakeRight = gp.buttons[7]?.value ?? 0
 
   // Sticks: Y axis negative = forward (pushed away from you)
   const leftY  = applyDeadzone(gp.axes[1] ?? 0, DEADZONE)
   const rightY = applyDeadzone(gp.axes[3] ?? 0, DEADZONE)
 
-  // Back (positive Y) → front riser, forward (negative Y) → rear riser
-  // Inverted from initial assumption — "pull back" = fronts feels natural on gamepad
+  // Back (positive Y) → rear riser, forward (negative Y) → front riser
+  // not really sure if this is correct but looks right in testing
   return {
     brakeLeft,
     brakeRight,
-    frontRiserLeft:  Math.max(0,  leftY),   // back = front riser
-    frontRiserRight: Math.max(0,  rightY),
-    rearRiserLeft:   Math.max(0, -leftY),   // forward = rear riser
-    rearRiserRight:  Math.max(0, -rightY),
+    frontRiserLeft:  Math.max(0, leftY),   // forward = front riser
+    frontRiserRight: Math.max(0, rightY),
+    rearRiserLeft:   Math.max(0,  -leftY),   // back = rear riser
+    rearRiserRight:  Math.max(0,  -rightY),
   }
 }
 
