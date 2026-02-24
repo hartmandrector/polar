@@ -30,6 +30,7 @@ import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
+import { setupSimUI } from './sim/sim-ui.ts'
 import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
@@ -822,6 +823,28 @@ async function init(): Promise<void> {
 
   // also check once after a short delay (for initial layout)
   setTimeout(() => resizeRenderer(sceneCtx, viewport), 100)
+
+  // ── Simulation UI ──
+  setupSimUI({
+    getFlightState: () => flightState,
+    getPolar: () => {
+      const vehicle = getVehicleDefinition(flightState.polarKey)
+      const basePolar = getVehicleAeroPolar(vehicle)
+        ?? continuousPolars[flightState.polarKey]
+        ?? continuousPolars.aurafive
+      return getOverriddenPolar(basePolar)
+    },
+    getMassReference: () => {
+      const vehicle = getVehicleDefinition(flightState.polarKey)
+      const basePolar = getVehicleAeroPolar(vehicle)
+        ?? continuousPolars[flightState.polarKey]
+        ?? continuousPolars.aurafive
+      return getVehicleMassReference(vehicle, basePolar)
+    },
+    getInertia: () => currentInertia,
+    buildControls: buildSegmentControls,
+    updateVisualization,
+  })
 
   // Render loop
   function animate(): void {
