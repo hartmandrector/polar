@@ -184,7 +184,7 @@ export interface ForceVectors {
   group: THREE.Group
 }
 
-const FORCE_SCALE = 0.003   // N → visual units
+const FORCE_SCALE = 0.009   // N → visual units (3× for sim visibility)
 const TORQUE_SCALE = 0.002  // N·m → radians of arc sweep
 
 export function createForceVectors(): ForceVectors {
@@ -445,7 +445,7 @@ export function updateForceVectors(
       }
 
       // Velocity arrow — per-segment local wind direction (§16.3)
-      const VEL_SCALE = 0.1
+      const VEL_SCALE = 0.3
       if (perSegmentData && perSegmentData[i]) {
         const ps = perSegmentData[i]
         const velNED = ps.localVelocity
