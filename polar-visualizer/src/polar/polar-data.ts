@@ -1485,10 +1485,10 @@ const A5_CENTER_POLAR: ContinuousPolar = {
   cy_beta: -0.3,
   cn_beta: 0.08,
   cl_beta: -0.04,            // body only — less dihedral effect than system
-  cm_0: -0.02,
-  cm_alpha: -0.10,
-  cp_0: 0.25,                // quarter-chord (segment LE reference, not head)
-  cp_alpha: -0.05,
+  cm_0: 0.085,
+  cm_alpha: -0.255,
+  cp_0: 0.36,
+  cp_alpha: 0.025,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 1.03,                   // 51.5% of 2.0 m² (increased from 0.85 via triangular planform)
@@ -1546,10 +1546,10 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
   cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
   cl_beta: -0.08,            // dihedral effect
-  cm_0: 0,
-  cm_alpha: -0.05,
-  cp_0: 0.25,                // standard QC — taper now captured in reduced chord/area
-  cp_alpha: -0.03,
+  cm_0: 0.01,
+  cm_alpha: -0.20,
+  cp_0: 0.15,
+  cp_alpha: 0.04,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 0.30,                   // 15.0% of 2.0 m² (reduced from 0.39 via triangular planform)
@@ -1595,10 +1595,10 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   cy_beta: -0.15,
   cn_beta: 0.02,
   cl_beta: -0.10,            // strong dihedral effect (far outboard)
-  cm_0: 0,
-  cm_alpha: -0.05,
-  cp_0: 0.25,                // quarter-chord (segment LE reference)
-  cp_alpha: -0.03,
+  cm_0: 0.005,
+  cm_alpha: -0.15,
+  cp_0: 0.18,
+  cp_alpha: 0.03,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 0.15,                   // 7.5% of 2.0 m² (each side)

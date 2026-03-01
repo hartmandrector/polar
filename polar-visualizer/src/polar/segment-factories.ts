@@ -707,10 +707,10 @@ export interface WingsuitControlConstants {
 
 /** Default wingsuit control constants — conservative starting point. */
 export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
-  PITCH_ALPHA_MAX_DEG: 1.5,
-  PITCH_CP_SHIFT: 0.05,
-  PITCH_CL_ALPHA_DELTA: 0.1,
-  PITCH_CD0_DELTA: 0.005,
+  PITCH_ALPHA_MAX_DEG: 3.5,
+  PITCH_CP_SHIFT: 0.13,
+  PITCH_CL_ALPHA_DELTA: 0.2,
+  PITCH_CD0_DELTA: 0.01,
 
   YAW_BODY_Y_SHIFT: 0.03,
   YAW_HEAD_Y_SHIFT: 0.02,
