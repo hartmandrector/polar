@@ -86,6 +86,8 @@ $$\alpha = \arctan\!\left(\frac{w}{u}\right), \qquad \beta = \arcsin\!\left(\fra
 
 where $V = \sqrt{u^2 + v^2 + w^2}$.
 
+![α and β definition — velocity vector rotation relative to body frame](../polar-visualizer/docs/gifs/frames-alpha-beta-definition.gif)
+
 ### 2.4  Three.js Rendering Frame
 
 | Axis | Direction | Positive |
@@ -213,6 +215,8 @@ c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\ps
 where $c_\phi = \cos\phi$, $s_\phi = \sin\phi$, etc.
 
 **Code:** `dcmBodyToInertial(phi, theta, psi)` in `frames.ts` — returns a 9-element column-major array.
+
+![Body↔Inertial frame toggle — same vectors, rotated coordinate axes](../polar-visualizer/docs/gifs/frames-dcm-body-inertial.gif)
 
 The inverse is the transpose: $[BE] = [EB]^T$ (orthonormal rotation matrix).
 
@@ -349,6 +353,8 @@ between axes — rolling while yawing creates a pitching moment, etc.
 
 **Code:** `rotationalEOM(moment, inertia, omega)` in `eom.ts`
 
+![Moment arcs responding to α and control inputs](../polar-visualizer/docs/gifs/frames-moment-arcs.gif)
+
 ### 6.3  Anisotropic Mass (Lamb/Kirchhoff Form)
 
 When apparent mass is present and different along each axis, the
@@ -448,6 +454,8 @@ At zero attitude ($\phi = \theta = 0$), gravity is purely $(0, 0, g)$ — straig
 
 ## 10  Per-Segment ω×r Velocity Correction
 
+![Per-segment velocity correction — asymmetric forces during roll](../polar-visualizer/docs/gifs/frames-segment-velocity-correction.gif)
+
 This is where the rotating-frame derivative (§6) meets the multi-segment
 aerodynamic model.
 
@@ -514,6 +522,8 @@ both paths produce identical results at zero angular rate.
 ---
 
 ## 11  CP Offset in Body Frame
+
+![CP diamond migrating along chord with α sweep](../polar-visualizer/docs/gifs/frames-cp-offset.gif)
 
 The center of pressure CP from the Kirchhoff model (§4.5 of KIRCHHOFF.md) is a
 chord fraction.  To compute the moment arm, it must be converted to a

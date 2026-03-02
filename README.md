@@ -550,6 +550,8 @@ $$\vec{F}_i = L_i \cdot \hat{l} - D_i \cdot \hat{w} + Y_i \cdot \hat{s}$$
 
 The wind direction $\hat{w}$, lift direction $\hat{l}$, and side direction $\hat{s}$ are orthonormal vectors constructed from $(\alpha, \beta)$ via double cross-product with the NED vertical reference.
 
+![Body↔Inertial frame toggle during flight](polar-visualizer/docs/gifs/sim-frame-toggle.gif)
+
 ### CP Position & Moment Arms
 
 Each segment's center of pressure is offset from its aerodynamic center (at quarter-chord) along the chord direction. The offset is rotated by the segment's `pitchOffset_deg` in the x-z plane to handle upright bodies (pilot hanging under canopy at 90°) versus prone bodies (wingsuit at 0°):
@@ -575,6 +577,8 @@ Pilot pitch rotates the pilot mass points around the riser pivot, shifting the s
 The full inertia tensor $[I]$ is computed from the mass distribution and feeds directly into the rotational EOM (FRAMES.md §6.2). All positions are normalized by reference height, so the tensor scales automatically with the pilot height slider.
 
 ![Mass distribution and normalized inertia tensor](polar-visualizer/docs/gifs/Mass-And-Inertia.gif)
+
+![ω×r readout — changing inertia and angular rates](polar-visualizer/docs/gifs/frames-wxr-readout.gif)
 
 ### Force & Moment Summation
 
@@ -617,6 +621,8 @@ $$V = \sqrt{\frac{2mg}{\rho S \sqrt{C_L^2 + C_D^2}}}$$
 $$V_{xs} = V \cdot \frac{C_L}{\sqrt{C_L^2 + C_D^2}} \qquad V_{ys} = V \cdot \frac{C_D}{\sqrt{C_L^2 + C_D^2}}$$
 
 Where Vxs is horizontal speed and Vys is vertical (sink) speed. The speed polar chart plots these across all α, revealing the performance envelope — best glide ratio, minimum sink, and speed range.
+
+![Dynamic / Sustained Speed polar](polar-visualizer/docs/gifs/speed-polar.gif)
 
 ---
 
