@@ -70,8 +70,8 @@ export function readWingsuitGamepad(): WingsuitGamepadInput | null {
 
   return {
     pitchThrottle: -applyDeadzone(gp.axes[3] ?? 0, DEADZONE),  // right stick Y (inverted: forward = steeper)
-    rollThrottle:  applyDeadzone(gp.axes[2] ?? 0, DEADZONE),  // right stick X
-    yawThrottle:   rt - lt,                                     // triggers: RT=right, LT=left
+    rollThrottle:  -applyDeadzone(gp.axes[2] ?? 0, DEADZONE),  // right stick X (inverted: right = right roll)
+    yawThrottle:   lt - rt,                                     // triggers (inverted: LT=left, RT=right)
   }
 }
 

@@ -447,7 +447,7 @@ export function updateGamepadOrbit(controls: OrbitControls, polarType: string): 
   const spherical = new Spherical().setFromVector3(offset)
 
   // OrbitControls uses theta for azimuthal (horizontal), phi for polar (vertical)
-  spherical.theta -= dx * ORBIT_SPEED
+  spherical.theta += dx * ORBIT_SPEED
   spherical.phi   -= dy * ORBIT_SPEED
 
   // Clamp phi to avoid flipping (stay within 0.1 – π-0.1)
