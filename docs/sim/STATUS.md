@@ -1,4 +1,6 @@
-# Simulation Status — 2026-03-01
+# Simulation Status — 2026-03-02
+
+![Wingsuit sim flight with speed polar](../../polar-visualizer/docs/gifs/sim-hero-wingsuit.gif.gif)
 
 ## Working
 
@@ -8,6 +10,7 @@
 - **Vehicle-aware gamepad**: Auto-selects mapping from polar type. Wingsuit: right stick pitch/roll, left stick yaw. Canopy: triggers for brakes, sticks for front/rear risers.
 - **Force/moment vectors**: Render in real-time during sim at 10× scale for visibility.
 - **Debug panel**: Per-segment polar overrides work during sim — enables live tuning while flying.
+- **Speed polar enhancements**: Glide ratio reference lines (1:1–3:1 ± negative), velocity vector line from origin, live sim velocity blue dot, acceleration white dot (10 mph/g scale). Full CloudBASE-style dynamic speed polar.
 
 ## Wired but Incomplete
 

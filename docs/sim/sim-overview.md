@@ -4,6 +4,8 @@ The simulator runs **6DOF rigid-body physics at 200Hz** driven by the same Kirch
 
 → Detail docs: [Status](STATUS.md) · [Gamepad](GAMEPAD.md) · [Constraint Modes](CONSTRAINT-MODES.md)
 
+![Body↔Inertial frame toggle during flight](../../polar-visualizer/docs/gifs/sim-frame-toggle.gif)
+
 ---
 
 - **[SimRunner](../../polar-visualizer/src/sim/sim-runner.ts)** — RK4 integration at 200Hz with spiral-of-death clamping (max 10 substeps/frame). Reads slider state as initial conditions, converts to body-frame SimState, integrates forces, feeds results back to the 3D viewer
