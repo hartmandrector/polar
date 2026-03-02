@@ -20,6 +20,7 @@ import type { FlightState } from '../ui/controls.ts'
 import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import type { InertiaComponents } from '../polar/inertia.ts'
 import { computeCenterOfMass, computeInertia, ZERO_INERTIA } from '../polar/inertia.ts'
+import { setSimVelocity } from '../ui/polar-charts.ts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +247,9 @@ function updateHUD(r: SimRunner, modelType: string): void {
     <div>β: ${(Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI).toFixed(1)}°</div>
   `
 
+  // Push actual sim velocity to speed polar as blue dot
+  setSimVelocity({ vxs: r.groundSpeed, vys: r.verticalSpeed })
+
   updateGamepadViz(modelType)
 }
 
@@ -391,6 +395,9 @@ function stopSim(): void {
   // Reset HUD to idle
   const hudEl = document.getElementById('sim-hud')
   if (hudEl) hudEl.innerHTML = '<div style="color:#888; font-size:11px;">SIM IDLE</div>'
+
+  // Clear sim velocity dot from speed polar
+  setSimVelocity(null)
 
   if (buttonEl) {
     buttonEl.textContent = '▶ Start Sim'

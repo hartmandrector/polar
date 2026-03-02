@@ -238,6 +238,30 @@ export class SimRunner {
     )
   }
 
+  /** Inertial velocity components [m/s] — NED Earth frame */
+  get inertialVelocity(): { vn: number, ve: number, vd: number } {
+    const { u, v, w, phi, theta, psi } = this.simState
+    const cp = Math.cos(phi),   sp = Math.sin(phi)
+    const ct = Math.cos(theta), st = Math.sin(theta)
+    const cy = Math.cos(psi),   sy = Math.sin(psi)
+    // DCM [EB] body → inertial (3-2-1 Euler)
+    const vn = (ct*cy)*u + (sp*st*cy - cp*sy)*v + (cp*st*cy + sp*sy)*w
+    const ve = (ct*sy)*u + (sp*st*sy + cp*cy)*v + (cp*st*sy - sp*cy)*w
+    const vd = (-st)*u   + (sp*ct)*v             + (cp*ct)*w
+    return { vn, ve, vd }
+  }
+
+  /** Horizontal ground speed [m/s] */
+  get groundSpeed(): number {
+    const { vn, ve } = this.inertialVelocity
+    return Math.sqrt(vn * vn + ve * ve)
+  }
+
+  /** Vertical speed [m/s] (positive = descending) */
+  get verticalSpeed(): number {
+    return this.inertialVelocity.vd
+  }
+
   /** Current SimState (read-only access for telemetry) */
   get state(): Readonly<SimState> { return this.simState }
 

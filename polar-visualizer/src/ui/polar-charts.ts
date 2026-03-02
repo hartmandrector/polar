@@ -43,6 +43,8 @@ interface ChartState {
   currentAlpha: number
   minAlpha: number
   maxAlpha: number
+  /** Sim actual velocity — blue dot on speed polar (null when sim not running) */
+  simVelocity: { vxs: number, vys: number } | null
 }
 
 // ─── Module state ────────────────────────────────────────────────────────────
@@ -59,6 +61,7 @@ const state: ChartState = {
   currentAlpha: 12,
   minAlpha: -10,
   maxAlpha: 90,
+  simVelocity: null,
 }
 
 // ─── Vertical line plugin (α cursor for AOA-based charts) ────────────────────
@@ -136,6 +139,52 @@ const velocityVectorPlugin = {
 }
 
 Chart.register(velocityVectorPlugin)
+
+// ─── Sim velocity dot plugin (blue dot on speed polar) ───────────────────────
+
+const SIM_DOT_RADIUS = 7
+const SIM_DOT_COLOR = '#4488ff'
+
+const simVelocityPlugin = {
+  id: 'simVelocity',
+  afterDraw(chart: Chart) {
+    const opts = (chart.options.plugins as any)?.simVelocity
+    if (!opts?.enabled) return
+
+    const { ctx, scales } = chart
+    const xScale = scales['x']
+    const yScale = scales['y']
+    if (!xScale || !yScale) return
+
+    const px = xScale.getPixelForValue(opts.vxs)
+    const py = yScale.getPixelForValue(opts.vys)
+
+    // Draw filled dot
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(px, py, SIM_DOT_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = SIM_DOT_COLOR
+    ctx.globalAlpha = 0.85
+    ctx.fill()
+    ctx.globalAlpha = 1.0
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#ffffff'
+    ctx.stroke()
+
+    // Speed label
+    const speed = Math.sqrt(opts.vxs * opts.vxs + opts.vys * opts.vys)
+    const unit = opts.unit ?? 'm/s'
+    ctx.font = 'bold 10px monospace'
+    ctx.fillStyle = SIM_DOT_COLOR
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(`V: ${speed.toFixed(1)} ${unit}`, px + SIM_DOT_RADIUS + 3, py - 2)
+
+    ctx.restore()
+  }
+}
+
+Chart.register(simVelocityPlugin)
 
 // ─── Chart configuration helpers ─────────────────────────────────────────────
 
@@ -514,6 +563,12 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
           y: cursor.y,
           unit: state.useMph ? 'mph' : 'm/s',
         } : { enabled: false },
+        simVelocity: chart2View === 'speed' && state.simVelocity ? {
+          enabled: true,
+          vxs: state.simVelocity.vxs * (state.useMph ? MS_TO_MPH : 1),
+          vys: state.simVelocity.vys * (state.useMph ? MS_TO_MPH : 1),
+          unit: state.useMph ? 'mph' : 'm/s',
+        } : { enabled: false },
       } as any,
       scales: {
         x: {
@@ -649,6 +704,30 @@ export function updateChartSweep(
   rebuildChart1()
   rebuildChart2()
   buildAoaLegend()
+}
+
+/**
+ * Set or clear the simulation velocity dot on the speed polar.
+ * Pass null to clear (when sim stops).
+ * vxs/vys in m/s — mph conversion handled internally.
+ */
+export function setSimVelocity(vel: { vxs: number, vys: number } | null): void {
+  state.simVelocity = vel
+  // Update plugin opts on existing chart without full rebuild
+  if (state.chart2 && state.chart2View === 'speed') {
+    const plugins = state.chart2.options.plugins as any
+    if (vel) {
+      plugins.simVelocity = {
+        enabled: true,
+        vxs: vel.vxs * (state.useMph ? MS_TO_MPH : 1),
+        vys: vel.vys * (state.useMph ? MS_TO_MPH : 1),
+        unit: state.useMph ? 'mph' : 'm/s',
+      }
+    } else {
+      plugins.simVelocity = { enabled: false }
+    }
+    state.chart2.update('none')
+  }
 }
 
 /**
