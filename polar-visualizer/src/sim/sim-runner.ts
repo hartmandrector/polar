@@ -69,7 +69,7 @@ export function readWingsuitGamepad(): WingsuitGamepadInput | null {
   const rt = gp.buttons[7]?.value ?? 0
 
   return {
-    pitchThrottle: applyDeadzone(gp.axes[3] ?? 0, DEADZONE),  // right stick Y
+    pitchThrottle: -applyDeadzone(gp.axes[3] ?? 0, DEADZONE),  // right stick Y (inverted: forward = steeper)
     rollThrottle:  applyDeadzone(gp.axes[2] ?? 0, DEADZONE),  // right stick X
     yawThrottle:   rt - lt,                                     // triggers: RT=right, LT=left
   }
