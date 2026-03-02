@@ -87,6 +87,56 @@ const verticalLinePlugin = {
 
 Chart.register(verticalLinePlugin)
 
+// ─── Velocity vector plugin (line from origin to cursor on chart2) ───────────
+
+const velocityVectorPlugin = {
+  id: 'velocityVector',
+  afterDraw(chart: Chart) {
+    const opts = (chart.options.plugins as any)?.velocityVector
+    if (!opts?.enabled || !opts.x || !opts.y) return
+
+    const { ctx, chartArea, scales } = chart
+    const xScale = scales['x']
+    const yScale = scales['y']
+    if (!xScale || !yScale) return
+
+    const ox = xScale.getPixelForValue(0)
+    const oy = yScale.getPixelForValue(0)
+    const px = xScale.getPixelForValue(opts.x)
+    const py = yScale.getPixelForValue(opts.y)
+
+    // Only draw if origin and point are within chart area (roughly)
+    if (px < chartArea.left - 20 || px > chartArea.right + 20) return
+    if (py < chartArea.top - 20 || py > chartArea.bottom + 20) return
+
+    ctx.save()
+
+    // Velocity line from origin to cursor
+    ctx.beginPath()
+    ctx.moveTo(ox, oy)
+    ctx.lineTo(px, py)
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'
+    ctx.setLineDash([])
+    ctx.stroke()
+
+    // Speed label at midpoint
+    const speed = Math.sqrt(opts.x * opts.x + opts.y * opts.y)
+    const unit = opts.unit ?? 'm/s'
+    const mx = (ox + px) / 2
+    const my = (oy + py) / 2
+    ctx.font = '10px monospace'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(`${speed.toFixed(1)} ${unit}`, mx + 4, my - 2)
+
+    ctx.restore()
+  }
+}
+
+Chart.register(velocityVectorPlugin)
+
 // ─── Chart configuration helpers ─────────────────────────────────────────────
 
 const CHART1_LABELS: Record<Chart1View, { title: string, yLabel: string }> = {
@@ -458,6 +508,12 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
           },
         },
         glideLines: { enabled: true, mode: chart2View === 'polar' ? 'polar' : 'speed' },
+        velocityVector: chart2View === 'speed' && cursor ? {
+          enabled: true,
+          x: cursor.x,
+          y: cursor.y,
+          unit: state.useMph ? 'mph' : 'm/s',
+        } : { enabled: false },
       } as any,
       scales: {
         x: {
@@ -620,13 +676,20 @@ export function updateChartCursor(currentAlpha: number): void {
     state.chart1.update('none')
   }
 
-  // Chart 2: move cursor point (always the last dataset)
+  // Chart 2: move cursor point + velocity vector (always the last dataset)
   if (state.chart2) {
     const cursor = cursorPoint2(state.chart2View, state.points, currentAlpha)
     const datasets = state.chart2.data.datasets
     const cursorDataset = datasets[datasets.length - 1]
     if (cursorDataset && cursor) {
       cursorDataset.data = [cursor]
+    }
+    // Update velocity vector plugin
+    const plugins = state.chart2.options.plugins as any
+    if (plugins.velocityVector && state.chart2View === 'speed' && cursor) {
+      plugins.velocityVector.enabled = true
+      plugins.velocityVector.x = cursor.x
+      plugins.velocityVector.y = cursor.y
     }
     state.chart2.update('none')
   }
