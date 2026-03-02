@@ -462,7 +462,6 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
         x: {
           ...baseScaleOptions(info.xLabel),
           reverse: chart2View === 'polar',
-          ...(chart2View === 'speed' ? { min: 0 } : {}),
         },
         y: {
           ...baseScaleOptions(info.yLabel),
