@@ -47,6 +47,24 @@ let hudUpdateInterval = 0
 const MENU_BUTTON = 9
 let menuWasPressed = false
 
+/** Gamepad Back/View button (button 8) — cycle view frame */
+const VIEW_BUTTON = 8
+let viewWasPressed = false
+
+/** Gamepad bumpers (LB=4, RB=5) — cycle polar selection */
+const LB_BUTTON = 4
+const RB_BUTTON = 5
+let lbWasPressed = false
+let rbWasPressed = false
+
+/** Cycle a <select> element forward or backward, triggering change event */
+function cycleSelect(selectId: string, direction: 1 | -1): void {
+  const sel = document.getElementById(selectId) as HTMLSelectElement | null
+  if (!sel || sel.options.length === 0) return
+  sel.selectedIndex = (sel.selectedIndex + direction + sel.options.length) % sel.options.length
+  sel.dispatchEvent(new Event('change'))
+}
+
 // ─── Gamepad Visualization ──────────────────────────────────────────────────
 
 const STICK_SIZE = 64        // px — diameter of stick circle
@@ -268,13 +286,33 @@ export function setupSimUI(ctx: SimUIContext): void {
       updateGamepadViz(modelType)
     }
 
-    // Menu button (button 9) — edge-triggered toggle
+    // Menu button (button 9) — edge-triggered sim toggle
     const gp = navigator.getGamepads()[0]
     const menuPressed = gp ? (gp.buttons[MENU_BUTTON]?.pressed ?? false) : false
     if (menuPressed && !menuWasPressed) {
       toggleSim(ctx)
     }
     menuWasPressed = menuPressed
+
+    // View button (button 8) — cycle view frame (Body ↔ Inertial)
+    const viewPressed = gp ? (gp.buttons[VIEW_BUTTON]?.pressed ?? false) : false
+    if (viewPressed && !viewWasPressed) {
+      cycleSelect('frame-select', 1)
+    }
+    viewWasPressed = viewPressed
+
+    // Bumpers (LB=4, RB=5) — cycle polar selection
+    const lbPressed = gp ? (gp.buttons[LB_BUTTON]?.pressed ?? false) : false
+    if (lbPressed && !lbWasPressed) {
+      cycleSelect('polar-select', -1)
+    }
+    lbWasPressed = lbPressed
+
+    const rbPressed = gp ? (gp.buttons[RB_BUTTON]?.pressed ?? false) : false
+    if (rbPressed && !rbWasPressed) {
+      cycleSelect('polar-select', 1)
+    }
+    rbWasPressed = rbPressed
   }, 100)
 }
 
