@@ -44,7 +44,7 @@ interface ChartState {
   minAlpha: number
   maxAlpha: number
   /** Sim actual velocity — blue dot on speed polar (null when sim not running) */
-  simVelocity: { vxs: number, vys: number } | null
+  simVelocity: { vxs: number, vys: number, aH: number, aV: number } | null
 }
 
 // ─── Module state ────────────────────────────────────────────────────────────
@@ -185,6 +185,44 @@ const simVelocityPlugin = {
 }
 
 Chart.register(simVelocityPlugin)
+
+// ─── Acceleration dot plugin (white dot under blue velocity dot) ─────────────
+
+// Scale: 10 mph per g → 4.4704 m/s per 9.81 m/s² ≈ 0.4557 s
+const ACCEL_SCALE_MS = 4.4704 / 9.81   // m/s per (m/s²) — 10 mph/g in metric
+const ACCEL_SCALE_MPH = 10 / 9.81      // mph per (m/s²) — 10 mph/g
+const ACCEL_DOT_RADIUS = 9
+const ACCEL_DOT_COLOR = '#ffffff'
+
+const accelDotPlugin = {
+  id: 'accelDot',
+  beforeDraw(chart: Chart) {
+    const opts = (chart.options.plugins as any)?.accelDot
+    if (!opts?.enabled) return
+
+    const { ctx, scales } = chart
+    const xScale = scales['x']
+    const yScale = scales['y']
+    if (!xScale || !yScale) return
+
+    const px = xScale.getPixelForValue(opts.ax)
+    const py = yScale.getPixelForValue(opts.ay)
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(px, py, ACCEL_DOT_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = ACCEL_DOT_COLOR
+    ctx.globalAlpha = 0.5
+    ctx.fill()
+    ctx.globalAlpha = 1.0
+    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
+Chart.register(accelDotPlugin)
 
 // ─── Chart configuration helpers ─────────────────────────────────────────────
 
@@ -569,6 +607,15 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
           vys: state.simVelocity.vys * (state.useMph ? MS_TO_MPH : 1),
           unit: state.useMph ? 'mph' : 'm/s',
         } : { enabled: false },
+        accelDot: chart2View === 'speed' && state.simVelocity ? (() => {
+          const k = state.useMph ? MS_TO_MPH : 1
+          const s = state.useMph ? ACCEL_SCALE_MPH : ACCEL_SCALE_MS
+          return {
+            enabled: true,
+            ax: state.simVelocity.vxs * k + state.simVelocity.aH * s,
+            ay: state.simVelocity.vys * k + state.simVelocity.aV * s,
+          }
+        })() : { enabled: false },
       } as any,
       scales: {
         x: {
@@ -711,20 +758,28 @@ export function updateChartSweep(
  * Pass null to clear (when sim stops).
  * vxs/vys in m/s — mph conversion handled internally.
  */
-export function setSimVelocity(vel: { vxs: number, vys: number } | null): void {
+export function setSimVelocity(vel: { vxs: number, vys: number, aH: number, aV: number } | null): void {
   state.simVelocity = vel
   // Update plugin opts on existing chart without full rebuild
   if (state.chart2 && state.chart2View === 'speed') {
     const plugins = state.chart2.options.plugins as any
     if (vel) {
+      const k = state.useMph ? MS_TO_MPH : 1
+      const s = state.useMph ? ACCEL_SCALE_MPH : ACCEL_SCALE_MS
       plugins.simVelocity = {
         enabled: true,
-        vxs: vel.vxs * (state.useMph ? MS_TO_MPH : 1),
-        vys: vel.vys * (state.useMph ? MS_TO_MPH : 1),
+        vxs: vel.vxs * k,
+        vys: vel.vys * k,
         unit: state.useMph ? 'mph' : 'm/s',
+      }
+      plugins.accelDot = {
+        enabled: true,
+        ax: vel.vxs * k + vel.aH * s,
+        ay: vel.vys * k + vel.aV * s,
       }
     } else {
       plugins.simVelocity = { enabled: false }
+      plugins.accelDot = { enabled: false }
     }
     state.chart2.update('none')
   }

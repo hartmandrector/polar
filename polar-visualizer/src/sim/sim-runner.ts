@@ -192,6 +192,11 @@ export class SimRunner {
   private simTime = 0
   private modelType: 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
   private callbacks: SimRunnerCallbacks
+  // Acceleration tracking (finite difference on inertial velocity)
+  private prevGS = 0   // previous ground speed [m/s]
+  private prevVS = 0   // previous vertical speed [m/s]
+  private accH = 0     // horizontal acceleration [m/s²]
+  private accV = 0     // vertical acceleration [m/s²]
 
   constructor(
     initialFlightState: FlightState,
@@ -262,6 +267,12 @@ export class SimRunner {
     return this.inertialVelocity.vd
   }
 
+  /** Horizontal acceleration [m/s²] */
+  get horizontalAccel(): number { return this.accH }
+
+  /** Vertical acceleration [m/s²] (positive = increasing sink) */
+  get verticalAccel(): number { return this.accV }
+
   /** Current SimState (read-only access for telemetry) */
   get state(): Readonly<SimState> { return this.simState }
 
@@ -326,6 +337,16 @@ export class SimRunner {
       accumulator -= DT
       this.simTime += DT
     }
+
+    // Update acceleration (finite difference on inertial velocity)
+    const gs = this.groundSpeed
+    const vs = this.verticalSpeed
+    if (elapsed > 0) {
+      this.accH = (gs - this.prevGS) / elapsed
+      this.accV = (vs - this.prevVS) / elapsed
+    }
+    this.prevGS = gs
+    this.prevVS = vs
 
     // Push updated state to viewer — merge gamepad overrides so
     // updateVisualization sees the control inputs for rendering

@@ -247,8 +247,13 @@ function updateHUD(r: SimRunner, modelType: string): void {
     <div>β: ${(Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI).toFixed(1)}°</div>
   `
 
-  // Push actual sim velocity to speed polar as blue dot
-  setSimVelocity({ vxs: r.groundSpeed, vys: r.verticalSpeed })
+  // Push actual sim velocity + acceleration to speed polar
+  setSimVelocity({
+    vxs: r.groundSpeed,
+    vys: r.verticalSpeed,
+    aH: r.horizontalAccel,
+    aV: r.verticalAccel,
+  })
 
   updateGamepadViz(modelType)
 }
