@@ -334,11 +334,15 @@ For a symmetric vehicle ($I_{xy} = I_{yz} = 0$, $I_{xz} \neq 0$):
 
 $$\Gamma = I_{xx}I_{zz} - I_{xz}^2$$
 
-$$\dot{p} = \frac{1}{\Gamma}\Big[I_{zz}L + I_{xz}N - I_{xz}\bigl(I_{xx} - I_{yy} + I_{zz}\bigr)pq + \bigl(I_{xz}^2 + I_{zz}\bigl(I_{zz} - I_{yy}\bigr)\bigr)qr\Big]$$
+$$\dot{p} = \frac{1}{\Gamma}\left[I_{zz}L + I_{xz}N - c_1 pq + c_2 qr\right]$$
 
-$$\dot{q} = \frac{1}{I_{yy}}\Big[M - (I_{xx} - I_{zz})pr - I_{xz}(p^2 - r^2)\Big]$$
+where $c_1 = I_{xz}(I_{xx} - I_{yy} + I_{zz})$ and $c_2 = I_{xz}^2 + I_{zz}(I_{zz} - I_{yy})$
 
-$$\dot{r} = \frac{1}{\Gamma}\Big[I_{xz}L + I_{xx}N + I_{xz}\bigl(I_{zz} - I_{yy} + I_{xx}\bigr)qr - \bigl(I_{xz}^2 + I_{xx}\bigl(I_{xx} - I_{yy}\bigr)\bigr)pq\Big]$$
+$$\dot{q} = \frac{1}{I_{yy}}\left[M - (I_{xx} - I_{zz})pr - I_{xz}(p^2 - r^2)\right]$$
+
+$$\dot{r} = \frac{1}{\Gamma}\left[I_{xz}L + I_{xx}N + c_3 qr - c_4 pq\right]$$
+
+where $c_3 = I_{xz}(I_{zz} - I_{yy} + I_{xx})$ and $c_4 = I_{xz}^2 + I_{xx}(I_{xx} - I_{yy})$
 
 The $\vec{\omega} \times [I]\vec{\omega}$ terms produce gyroscopic coupling
 between axes — rolling while yawing creates a pitching moment, etc.
