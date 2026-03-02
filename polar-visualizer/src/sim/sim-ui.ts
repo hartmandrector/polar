@@ -1,10 +1,14 @@
 /**
- * Simulation UI — Start/Stop button and HUD overlay.
+ * Simulation UI — Control panel with gamepad visualization and HUD.
  *
- * Wires SimRunner into the existing viewer by:
- *   1. Building SimConfig from the current polar + controls
- *   2. Feeding sim output back through updateVisualization()
- *   3. Showing a minimal HUD (altitude, speed, sim time)
+ * Positioned on the right edge of the viewport, just left of the chart column.
+ * Shows:
+ *   - Start/Stop button
+ *   - HUD telemetry (alt, speed, α, β, time)
+ *   - Gamepad connection status
+ *   - Two analog stick visualizations (circles with moving dots)
+ *   - Two trigger bar visualizations
+ *   - Semantic control labels (vehicle-aware)
  */
 
 import { SimRunner } from './sim-runner.ts'
@@ -35,66 +39,229 @@ export interface SimUIContext {
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let runner: SimRunner | null = null
-let hudEl: HTMLDivElement | null = null
+let panelEl: HTMLDivElement | null = null
 let buttonEl: HTMLButtonElement | null = null
 let hudUpdateInterval = 0
 
-// ─── HUD ────────────────────────────────────────────────────────────────────
+// ─── Gamepad Visualization ──────────────────────────────────────────────────
 
-function createHUD(): HTMLDivElement {
-  const hud = document.createElement('div')
-  hud.id = 'sim-hud'
-  hud.style.cssText = `
-    position: fixed; top: 10px; right: 10px; z-index: 1000;
-    background: rgba(0,0,0,0.75); color: #0f0; font-family: monospace;
-    font-size: 14px; padding: 8px 12px; border-radius: 6px;
-    pointer-events: none; min-width: 180px;
+const STICK_SIZE = 64        // px — diameter of stick circle
+const STICK_DOT = 10         // px — diameter of moving dot
+const TRIGGER_W = 20         // px — trigger bar width
+const TRIGGER_H = 50         // px — trigger bar height
+
+function createStickSVG(id: string): string {
+  const r = STICK_SIZE / 2
+  const dr = STICK_DOT / 2
+  return `
+    <svg id="${id}" width="${STICK_SIZE}" height="${STICK_SIZE}" viewBox="0 0 ${STICK_SIZE} ${STICK_SIZE}">
+      <circle cx="${r}" cy="${r}" r="${r - 1}" fill="none" stroke="#555" stroke-width="1"/>
+      <line x1="${r}" y1="2" x2="${r}" y2="${STICK_SIZE - 2}" stroke="#333" stroke-width="0.5"/>
+      <line x1="2" y1="${r}" x2="${STICK_SIZE - 2}" y2="${r}" stroke="#333" stroke-width="0.5"/>
+      <circle id="${id}-dot" cx="${r}" cy="${r}" r="${dr}" fill="#0f0"/>
+    </svg>
   `
-  document.body.appendChild(hud)
-  return hud
 }
 
-function updateHUD(r: SimRunner): void {
+function createTriggerSVG(id: string): string {
+  return `
+    <svg id="${id}" width="${TRIGGER_W}" height="${TRIGGER_H}" viewBox="0 0 ${TRIGGER_W} ${TRIGGER_H}">
+      <rect x="1" y="1" width="${TRIGGER_W - 2}" height="${TRIGGER_H - 2}" fill="none" stroke="#555" stroke-width="1" rx="2"/>
+      <rect id="${id}-fill" x="2" y="${TRIGGER_H - 2}" width="${TRIGGER_W - 4}" height="0" fill="#0f0" rx="1"/>
+    </svg>
+  `
+}
+
+function updateStick(id: string, x: number, y: number): void {
+  const dot = document.getElementById(`${id}-dot`)
+  if (!dot) return
+  const r = STICK_SIZE / 2
+  const range = r - STICK_DOT / 2 - 2
+  dot.setAttribute('cx', String(r + x * range))
+  dot.setAttribute('cy', String(r + y * range))
+
+  // Color: green at center, yellow at edges
+  const mag = Math.sqrt(x * x + y * y)
+  const g = Math.round(255 - mag * 100)
+  const rr = Math.round(mag * 200)
+  dot.setAttribute('fill', `rgb(${rr},${g},0)`)
+}
+
+function updateTrigger(id: string, value: number): void {
+  const fill = document.getElementById(`${id}-fill`)
+  if (!fill) return
+  const h = value * (TRIGGER_H - 4)
+  fill.setAttribute('y', String(TRIGGER_H - 2 - h))
+  fill.setAttribute('height', String(h))
+
+  // Color: green→yellow→red
+  const r = Math.round(Math.min(255, value * 2 * 255))
+  const g = Math.round(Math.min(255, (1 - value) * 2 * 255))
+  fill.setAttribute('fill', `rgb(${r},${g},0)`)
+}
+
+// ─── Panel Construction ─────────────────────────────────────────────────────
+
+function createPanel(): HTMLDivElement {
+  const panel = document.createElement('div')
+  panel.id = 'sim-panel'
+  panel.style.cssText = `
+    position: fixed;
+    top: 10px;
+    right: 490px;
+    z-index: 1000;
+    background: rgba(0,0,0,0.65);
+    color: #0f0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    pointer-events: auto;
+    min-width: 200px;
+    user-select: none;
+  `
+
+  panel.innerHTML = `
+    <div id="sim-hud" style="margin-bottom: 8px;">
+      <div style="color:#888; font-size:11px;">SIM IDLE</div>
+    </div>
+
+    <div style="border-top: 1px solid #333; padding-top: 8px; margin-bottom: 6px;">
+      <div id="gp-status" style="color:#888; font-size:11px; margin-bottom: 6px;">Gamepad: —</div>
+
+      <div id="gp-controls" style="display: flex; gap: 12px; align-items: flex-start;">
+        <!-- Left side: LT trigger + left stick -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div style="font-size:10px; color:#888;" id="lt-label">LT</div>
+          ${createTriggerSVG('lt')}
+          <div style="font-size:10px; color:#888;" id="ls-label">L Stick</div>
+          ${createStickSVG('ls')}
+          <div id="ls-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+        </div>
+
+        <!-- Right side: RT trigger + right stick -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div style="font-size:10px; color:#888;" id="rt-label">RT</div>
+          ${createTriggerSVG('rt')}
+          <div style="font-size:10px; color:#888;" id="rs-label">R Stick</div>
+          ${createStickSVG('rs')}
+          <div id="rs-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+        </div>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(panel)
+  return panel
+}
+
+function updateGamepadViz(modelType: string): void {
+  const gp = navigator.getGamepads()[0]
+  const statusEl = document.getElementById('gp-status')
+
+  if (!gp) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:#888;">Gamepad: —</span>'
+    updateStick('ls', 0, 0)
+    updateStick('rs', 0, 0)
+    updateTrigger('lt', 0)
+    updateTrigger('rt', 0)
+    return
+  }
+
+  if (statusEl) statusEl.innerHTML = '<span style="color:#0f0;">🎮 Connected</span>'
+
+  // Raw axes
+  const lx = gp.axes[0] ?? 0
+  const ly = gp.axes[1] ?? 0
+  const rx = gp.axes[2] ?? 0
+  const ry = gp.axes[3] ?? 0
+  const lt = gp.buttons[6]?.value ?? 0
+  const rt = gp.buttons[7]?.value ?? 0
+
+  updateStick('ls', lx, ly)
+  updateStick('rs', rx, ry)
+  updateTrigger('lt', lt)
+  updateTrigger('rt', rt)
+
+  // Numeric values
+  const lsVal = document.getElementById('ls-values')
+  const rsVal = document.getElementById('rs-values')
+  if (lsVal) lsVal.textContent = `${lx.toFixed(2)}, ${ly.toFixed(2)}`
+  if (rsVal) rsVal.textContent = `${rx.toFixed(2)}, ${ry.toFixed(2)}`
+
+  // Update labels based on vehicle type
+  const ltLabel = document.getElementById('lt-label')
+  const rtLabel = document.getElementById('rt-label')
+  const lsLabel = document.getElementById('ls-label')
+  const rsLabel = document.getElementById('rs-label')
+
+  const isCanopy = modelType === 'Canopy'
+  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'LT'
+  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'RT'
+  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Yaw'
+  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
+}
+
+// ─── HUD Update ─────────────────────────────────────────────────────────────
+
+function updateHUD(r: SimRunner, modelType: string): void {
+  const hudEl = document.getElementById('sim-hud')
   if (!hudEl) return
+
   const alt = r.altitude
   const spd = r.speed
   const t = r.time
   const s = r.state
 
-  // Vertical speed: NED z-dot (positive = descending)
-  const vspeed = s.u * Math.sin(s.theta) - s.v * Math.sin(s.phi) * Math.cos(s.theta) - s.w * Math.cos(s.phi) * Math.cos(s.theta)
-  // Approximation: body-frame w projected to inertial vertical ≈ -zDot
-  // More precise: use the full DCM, but this is close enough for HUD
-
   hudEl.innerHTML = `
-    <div style="color:#ff6; font-weight:bold; margin-bottom:4px;">⏱ SIM RUNNING</div>
+    <div style="color:#ff6; font-weight:bold; margin-bottom:2px;">⏱ SIM RUNNING</div>
     <div>t: ${t.toFixed(1)}s</div>
     <div>Alt: ${alt.toFixed(0)}m</div>
     <div>V: ${spd.toFixed(1)} m/s (${(spd * 2.237).toFixed(0)} mph)</div>
     <div>α: ${(Math.atan2(s.w, s.u) * 180 / Math.PI).toFixed(1)}°</div>
     <div>β: ${(Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI).toFixed(1)}°</div>
-    <div style="color:#888; font-size:11px; margin-top:4px;">Gamepad: ${navigator.getGamepads()[0] ? '🎮 Connected' : '—'}</div>
   `
+
+  updateGamepadViz(modelType)
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Create and inject the Start/Stop Simulation button.
+ * Create and inject the simulation control panel.
  */
 export function setupSimUI(ctx: SimUIContext): void {
+  panelEl = createPanel()
+
+  // Add Start/Stop button at the bottom of the panel
   const btn = document.createElement('button')
   btn.id = 'sim-toggle'
   btn.textContent = '▶ Start Sim'
   btn.style.cssText = `
-    position: fixed; bottom: 10px; right: 10px; z-index: 1000;
-    background: #1a5; color: white; border: none; border-radius: 6px;
-    padding: 10px 18px; font-size: 14px; font-weight: bold; cursor: pointer;
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    background: #1a5;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
     font-family: system-ui, sans-serif;
   `
   btn.addEventListener('click', () => toggleSim(ctx))
-  document.body.appendChild(btn)
+  panelEl.appendChild(btn)
   buttonEl = btn
+
+  // Poll gamepad even when sim isn't running (shows connection status)
+  setInterval(() => {
+    if (!runner?.isRunning) {
+      const polar = ctx.getPolar()
+      updateGamepadViz(polar.type ?? '')
+    }
+  }, 200)
 }
 
 function toggleSim(ctx: SimUIContext): void {
@@ -116,7 +283,7 @@ function startSim(ctx: SimUIContext): void {
     getSimConfig: (): SimConfig => {
       const polar = ctx.getPolar()
       const massRef = ctx.getMassReference()
-      const state = ctx.getFlightState()  // for controls
+      const state = ctx.getFlightState()
       const controls = ctx.buildControls(state)
 
       const segments = polar.aeroSegments ?? []
@@ -126,10 +293,6 @@ function startSim(ctx: SimUIContext): void {
       const inertia = polar.massSegments
         ? computeInertia(polar.inertiaMassSegments ?? polar.massSegments, massRef, polar.m)
         : ZERO_INERTIA
-
-      // TODO: Apparent mass integration — currently using isotropic mass.
-      // Apparent mass is computed dynamically in composite-frame.ts;
-      // will need to be wired in for canopy sim (affects translational EOM).
 
       return {
         segments,
@@ -148,11 +311,12 @@ function startSim(ctx: SimUIContext): void {
   runner = new SimRunner(flightState, callbacks)
   runner.start()
 
-  // HUD
-  hudEl = createHUD()
+  // HUD update at 10 Hz
+  const polar = ctx.getPolar()
+  const modelType = polar.type ?? ''
   hudUpdateInterval = window.setInterval(() => {
-    if (runner) updateHUD(runner)
-  }, 100)  // 10 Hz HUD update
+    if (runner) updateHUD(runner, modelType)
+  }, 100)
 
   if (buttonEl) {
     buttonEl.textContent = '⏹ Stop Sim'
@@ -165,14 +329,15 @@ function stopSim(): void {
     runner.stop()
     runner = null
   }
-  if (hudEl) {
-    hudEl.remove()
-    hudEl = null
-  }
   if (hudUpdateInterval) {
     clearInterval(hudUpdateInterval)
     hudUpdateInterval = 0
   }
+
+  // Reset HUD to idle
+  const hudEl = document.getElementById('sim-hud')
+  if (hudEl) hudEl.innerHTML = '<div style="color:#888; font-size:11px;">SIM IDLE</div>'
+
   if (buttonEl) {
     buttonEl.textContent = '▶ Start Sim'
     buttonEl.style.background = '#1a5'
