@@ -602,6 +602,7 @@ function updateVisualization(state: FlightState): void {
     currentModel?.type === 'canopy' ? state.deploy : 1.0,
     currentModel?.canopyScaleRatio ?? 1.0,
     currentModel?.pilotSizeCompensation ?? 1.0,
+    state.modelType,
   )
 
   // Update model rotation (only in inertial frame — body frame keeps model fixed)

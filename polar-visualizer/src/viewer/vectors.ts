@@ -184,7 +184,8 @@ export interface ForceVectors {
   group: THREE.Group
 }
 
-const FORCE_SCALE = 0.03   // N → visual units (10× original for low-airspeed visibility)
+const FORCE_SCALE_CANOPY = 0.03   // N → visual units (tuned for ~25 mph canopy)
+const FORCE_SCALE_WINGSUIT = 0.0075  // ¼ scale for ~100 mph wingsuit
 const TORQUE_SCALE = 0.002  // N·m → radians of arc sweep
 
 export function createForceVectors(): ForceVectors {
@@ -299,7 +300,12 @@ export function updateForceVectors(
   deploy: number = 1.0,
   canopyScaleRatio: number = 1.0,
   pilotSizeCompensation: number = 1.0,
+  modelType: string = 'canopy',
 ): void {
+  // ── Vehicle-aware vector scaling ──
+  const isWingsuit = modelType === 'wingsuit'
+  const FORCE_SCALE = isWingsuit ? FORCE_SCALE_WINGSUIT : FORCE_SCALE_CANOPY
+  const VEL_SCALE = isWingsuit ? 0.075 : 0.3  // ¼ for wingsuit
   // ── Wind frame & forces ──
   const { windDir, dragDir, liftDir, sideDir } = computeWindFrame(alpha_deg, beta_deg)
 
@@ -445,7 +451,6 @@ export function updateForceVectors(
       }
 
       // Velocity arrow — per-segment local wind direction (§16.3)
-      const VEL_SCALE = 0.3
       if (perSegmentData && perSegmentData[i]) {
         const ps = perSegmentData[i]
         const velNED = ps.localVelocity
