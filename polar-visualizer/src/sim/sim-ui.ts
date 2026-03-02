@@ -14,6 +14,8 @@
 import { SimRunner } from './sim-runner.ts'
 import type { SimRunnerCallbacks } from './sim-runner.ts'
 import type { SimConfig } from '../polar/sim-state.ts'
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { Spherical, Vector3 } from 'three'
 import type { FlightState } from '../ui/controls.ts'
 import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import type { InertiaComponents } from '../polar/inertia.ts'
@@ -218,9 +220,9 @@ function updateGamepadViz(modelType: string): void {
   const rsLabel = document.getElementById('rs-label')
 
   const isCanopy = modelType === 'Canopy'
-  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'LT'
-  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'RT'
-  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Yaw'
+  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
+  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
+  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
   if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 }
 
@@ -394,4 +396,52 @@ function stopSim(): void {
     buttonEl.textContent = '▶ Start Sim'
     buttonEl.style.background = '#1a5'
   }
+}
+
+// ─── Gamepad Orbit Controls ─────────────────────────────────────────────────
+
+/** Orbit speed in radians per frame at full stick deflection */
+const ORBIT_SPEED = 0.03
+
+/** Deadzone for orbit stick (same as flight controls) */
+const ORBIT_DEADZONE = 0.08
+
+/**
+ * Drive orbit camera from left stick (wingsuit mode only).
+ * Call this every frame from the render loop.
+ *
+ * Left stick X → azimuthal rotation (orbit horizontal)
+ * Left stick Y → polar rotation (orbit vertical)
+ *
+ * Only active when a wingsuit polar is selected (canopy uses left stick for risers).
+ */
+export function updateGamepadOrbit(controls: OrbitControls, polarType: string): void {
+  if (polarType === 'Canopy') return  // canopy uses left stick for risers
+
+  const gp = navigator.getGamepads()[0]
+  if (!gp) return
+
+  const lx = gp.axes[0] ?? 0
+  const ly = gp.axes[1] ?? 0
+
+  // Apply deadzone
+  const dx = Math.abs(lx) > ORBIT_DEADZONE ? lx : 0
+  const dy = Math.abs(ly) > ORBIT_DEADZONE ? ly : 0
+
+  if (dx === 0 && dy === 0) return
+
+  // Compute spherical offset relative to target
+  const offset = controls.object.position.clone().sub(controls.target)
+  const spherical = new Spherical().setFromVector3(offset)
+
+  // OrbitControls uses theta for azimuthal (horizontal), phi for polar (vertical)
+  spherical.theta -= dx * ORBIT_SPEED
+  spherical.phi   -= dy * ORBIT_SPEED
+
+  // Clamp phi to avoid flipping (stay within 0.1 – π-0.1)
+  spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi))
+
+  offset.setFromSpherical(spherical)
+  controls.object.position.copy(controls.target).add(offset)
+  controls.object.lookAt(controls.target)
 }
