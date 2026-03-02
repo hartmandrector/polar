@@ -161,6 +161,153 @@ const TICK_COLOR = '#8888aa'
 const TITLE_COLOR = '#e94560'
 const CURSOR_COLOR = '#ffffff'
 
+// ─── Glide line colors ──────────────────────────────────────────────────────
+
+/** Positive glide ratios: brighter, more saturated */
+const GLIDE_COLORS_POS = ['#44aaff', '#44dd88', '#dddd44']  // 1:1, 2:1, 3:1
+/** Negative glide ratios: dimmer, desaturated */
+const GLIDE_COLORS_NEG = ['#665577', '#556655', '#666644']  // -1:1, -2:1, -3:1
+const GLIDE_RATIOS = [1, 2, 3]
+
+// ─── Glide line plugin ──────────────────────────────────────────────────────
+
+/**
+ * Draws L/D glide ratio reference lines on chart2 (polar curve and speed polar).
+ * Lines radiate from origin at slopes corresponding to 1:1, 2:1, 3:1 glide ratios.
+ */
+const glideLinesPlugin = {
+  id: 'glideLines',
+  afterDraw(chart: Chart) {
+    const opts = (chart.options.plugins as any)?.glideLines
+    if (!opts?.enabled) return
+
+    const { ctx, chartArea, scales } = chart
+    const xScale = scales['x']
+    const yScale = scales['y']
+    if (!xScale || !yScale) return
+
+    ctx.save()
+    ctx.setLineDash([6, 4])
+    ctx.lineWidth = 1
+
+    const mode: 'polar' | 'speed' = opts.mode
+
+    for (let i = 0; i < GLIDE_RATIOS.length; i++) {
+      const ratio = GLIDE_RATIOS[i]
+
+      // Positive glide ratio
+      drawGlideLine(ctx, chartArea, xScale, yScale, mode, ratio, GLIDE_COLORS_POS[i], opts.labelSide ?? 'right')
+      // Negative glide ratio
+      drawGlideLine(ctx, chartArea, xScale, yScale, mode, -ratio, GLIDE_COLORS_NEG[i], opts.labelSide ?? 'right')
+    }
+
+    ctx.restore()
+  }
+}
+
+function drawGlideLine(
+  ctx: CanvasRenderingContext2D,
+  chartArea: { left: number, right: number, top: number, bottom: number },
+  xScale: any,
+  yScale: any,
+  mode: 'polar' | 'speed',
+  ratio: number,  // positive or negative L/D
+  color: string,
+  labelSide: string,
+): void {
+  // Origin in pixel coords
+  const ox = xScale.getPixelForValue(0)
+  const oy = yScale.getPixelForValue(0)
+
+  // Compute a far endpoint along the glide line
+  // Polar curve (CL vs CD): CL = ratio * CD → y = ratio * x
+  // Speed polar (Vxs vs Vys): Vys = Vxs / ratio → y = x / ratio
+  // Note: both charts may have reversed axes, so we extend in data space
+  // and let the scale conversion handle pixel direction.
+
+  let farX: number, farY: number
+  if (mode === 'polar') {
+    // Extend along CD axis; x-axis is reversed (high CD on left)
+    // Use a large CD value to extend line to chart edge
+    farX = 2.0  // CD
+    farY = ratio * farX  // CL
+  } else {
+    // Speed polar: extend along Vxs axis
+    farX = 500  // Vxs (large enough for any unit)
+    farY = farX / ratio  // Vys = Vxs / L/D
+  }
+
+  const ex = xScale.getPixelForValue(farX)
+  const ey = yScale.getPixelForValue(farY)
+
+  // Clip to chart area
+  const clipped = clipLine(ox, oy, ex, ey, chartArea)
+  if (!clipped) return
+
+  ctx.beginPath()
+  ctx.strokeStyle = color
+  ctx.moveTo(clipped.x1, clipped.y1)
+  ctx.lineTo(clipped.x2, clipped.y2)
+  ctx.stroke()
+
+  // Label at the edge of the line
+  const labelX = clipped.x2
+  const labelY = clipped.y2
+  const label = `${ratio > 0 ? '' : ''}${ratio}:1`
+
+  ctx.setLineDash([])
+  ctx.font = '10px monospace'
+  ctx.fillStyle = color
+  ctx.textAlign = labelSide === 'right' ? 'left' : 'right'
+  ctx.textBaseline = 'bottom'
+  ctx.fillText(label, labelX + (labelSide === 'right' ? 3 : -3), labelY - 2)
+  ctx.setLineDash([6, 4])
+}
+
+/** Cohen-Sutherland style line clipping to a rect */
+function clipLine(
+  x1: number, y1: number, x2: number, y2: number,
+  area: { left: number, right: number, top: number, bottom: number },
+): { x1: number, y1: number, x2: number, y2: number } | null {
+  const { left, right, top, bottom } = area
+  const dx = x2 - x1
+  const dy = y2 - y1
+
+  let tMin = 0, tMax = 1
+
+  // Clip against each edge
+  const edges = [
+    { p: -dx, q: x1 - left },
+    { p: dx, q: right - x1 },
+    { p: -dy, q: y1 - top },
+    { p: dy, q: bottom - y1 },
+  ]
+
+  for (const { p, q } of edges) {
+    if (Math.abs(p) < 1e-10) {
+      if (q < 0) return null  // parallel and outside
+    } else {
+      const t = q / p
+      if (p < 0) {
+        tMin = Math.max(tMin, t)
+      } else {
+        tMax = Math.min(tMax, t)
+      }
+    }
+  }
+
+  if (tMin > tMax) return null
+
+  return {
+    x1: x1 + tMin * dx,
+    y1: y1 + tMin * dy,
+    x2: x1 + tMax * dx,
+    y2: y1 + tMax * dy,
+  }
+}
+
+Chart.register(glideLinesPlugin)
+
 function baseScaleOptions(label: string): any {
   return {
     grid: { color: GRID_COLOR },
@@ -309,10 +456,20 @@ function createChart2(canvas: HTMLCanvasElement): Chart {
             },
           },
         },
-      },
+        glideLines: { enabled: true, mode: chart2View === 'polar' ? 'polar' : 'speed' },
+      } as any,
       scales: {
-        x: { ...baseScaleOptions(info.xLabel), reverse: chart2View === 'polar' },
-        y: { ...baseScaleOptions(info.yLabel), reverse: chart2View === 'speed' },
+        x: {
+          ...baseScaleOptions(info.xLabel),
+          reverse: chart2View === 'polar',
+          ...(chart2View === 'speed' ? { min: 0 } : {}),
+        },
+        y: {
+          ...baseScaleOptions(info.yLabel),
+          reverse: chart2View === 'speed',
+          ...(chart2View === 'speed' ? { min: 0 } : {}),
+          ...(chart2View === 'polar' ? {} : {}),
+        },
       },
     },
   })
