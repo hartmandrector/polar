@@ -43,6 +43,10 @@ let panelEl: HTMLDivElement | null = null
 let buttonEl: HTMLButtonElement | null = null
 let hudUpdateInterval = 0
 
+/** Gamepad Menu button (button 9) toggle — edge-triggered */
+const MENU_BUTTON = 9
+let menuWasPressed = false
+
 // ─── Gamepad Visualization ──────────────────────────────────────────────────
 
 const STICK_SIZE = 64        // px — diameter of stick circle
@@ -255,13 +259,23 @@ export function setupSimUI(ctx: SimUIContext): void {
   panelEl.appendChild(btn)
   buttonEl = btn
 
-  // Poll gamepad even when sim isn't running (shows connection status)
+  // Poll gamepad even when sim isn't running (shows connection status + menu button)
   setInterval(() => {
+    const polar = ctx.getPolar()
+    const modelType = polar.type ?? ''
+
     if (!runner?.isRunning) {
-      const polar = ctx.getPolar()
-      updateGamepadViz(polar.type ?? '')
+      updateGamepadViz(modelType)
     }
-  }, 200)
+
+    // Menu button (button 9) — edge-triggered toggle
+    const gp = navigator.getGamepads()[0]
+    const menuPressed = gp ? (gp.buttons[MENU_BUTTON]?.pressed ?? false) : false
+    if (menuPressed && !menuWasPressed) {
+      toggleSim(ctx)
+    }
+    menuWasPressed = menuPressed
+  }, 100)
 }
 
 function toggleSim(ctx: SimUIContext): void {
