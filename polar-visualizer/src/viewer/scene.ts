@@ -53,8 +53,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   scene.add(gridHelper)
 
   // Axes helper (small)
-  const axesHelper = new THREE.AxesHelper(1.5)
-  scene.add(axesHelper)
+  // Axis labels only — AxesHelper removed (labels sufficient)
 
   // Compass labels (N/E/D) — inertial frame reference
   const compassLabels = createCompassLabels()
