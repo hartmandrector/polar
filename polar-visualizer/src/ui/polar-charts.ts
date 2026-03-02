@@ -228,13 +228,14 @@ function drawGlideLine(
   let farX: number, farY: number
   if (mode === 'polar') {
     // Extend along CD axis; x-axis is reversed (high CD on left)
-    // Use a large CD value to extend line to chart edge
     farX = 2.0  // CD
     farY = ratio * farX  // CL
   } else {
-    // Speed polar: extend along Vxs axis
-    farX = 500  // Vxs (large enough for any unit)
-    farY = farX / ratio  // Vys = Vxs / L/D
+    // Speed polar: Vxs/Vys = L/D, drag always positive (Vys > 0)
+    // Positive L/D → positive Vxs (forward flight)
+    // Negative L/D → negative Vxs (backflying), Vys still positive
+    farX = ratio > 0 ? 500 : -500  // Vxs sign follows L/D sign
+    farY = Math.abs(farX / ratio)   // Vys always positive (sinking)
   }
 
   const ex = xScale.getPixelForValue(farX)
