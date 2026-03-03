@@ -501,7 +501,7 @@ export function updateForceVectors(
     const sysMoment = system.moment
     let pitchArcVal: number, yawArcVal: number, rollArcVal: number
     if (inertia) {
-      const ACCEL_SCALE = 0.005
+      const ACCEL_SCALE = 0.01
       pitchArcVal = inertia.Iyy > 0.001 ? -(sysMoment.y / inertia.Iyy) * ACCEL_SCALE : 0
       yawArcVal   = inertia.Izz > 0.001 ? -(sysMoment.z / inertia.Izz) * ACCEL_SCALE : 0
       rollArcVal  = inertia.Ixx > 0.001 ?  (sysMoment.x / inertia.Ixx) * ACCEL_SCALE : 0
@@ -513,15 +513,15 @@ export function updateForceVectors(
 
     vectors.pitchArc.setAngle(pitchArcVal)
     vectors.pitchArc.position.copy(cgOrigin)
-    vectors.pitchArc.visible = Math.abs(pitchArcVal) > 0.02
+    vectors.pitchArc.visible = Math.abs(pitchArcVal) > 0.005
 
     vectors.yawArc.setAngle(yawArcVal)
     vectors.yawArc.position.copy(cgOrigin)
-    vectors.yawArc.visible = Math.abs(yawArcVal) > 0.02
+    vectors.yawArc.visible = Math.abs(yawArcVal) > 0.005
 
     vectors.rollArc.setAngle(rollArcVal)
     vectors.rollArc.position.copy(cgOrigin)
-    vectors.rollArc.visible = Math.abs(rollArcVal) > 0.02
+    vectors.rollArc.visible = Math.abs(rollArcVal) > 0.005
 
     // ── Weight (at CG) ──
     const gDir = gravityDir ?? new THREE.Vector3(0, -1, 0)
@@ -605,7 +605,7 @@ export function updateForceVectors(
 
     let pitchArc: number, yawArc: number, rollArc: number
     if (inertia) {
-      const ACCEL_SCALE = 0.005
+      const ACCEL_SCALE = 0.01
       const pitchAccel = inertia.Iyy > 0.001 ? pitchTorque / inertia.Iyy : 0
       const yawAccel = inertia.Izz > 0.001 ? yawTorque / inertia.Izz : 0
       const rollAccel = inertia.Ixx > 0.001 ? rollTorque / inertia.Ixx : 0
@@ -620,15 +620,15 @@ export function updateForceVectors(
 
     vectors.pitchArc.setAngle(pitchArc)
     vectors.pitchArc.position.copy(cgOrigin)
-    vectors.pitchArc.visible = Math.abs(pitchArc) > 0.02
+    vectors.pitchArc.visible = Math.abs(pitchArc) > 0.005
 
     vectors.yawArc.setAngle(yawArc)
     vectors.yawArc.position.copy(cgOrigin)
-    vectors.yawArc.visible = Math.abs(yawArc) > 0.02
+    vectors.yawArc.visible = Math.abs(yawArc) > 0.005
 
     vectors.rollArc.setAngle(rollArc)
     vectors.rollArc.position.copy(cgOrigin)
-    vectors.rollArc.visible = Math.abs(rollArc) > 0.02
+    vectors.rollArc.visible = Math.abs(rollArc) > 0.005
   }
 
   // ── Rotate moment arcs into inertial frame ──
@@ -647,7 +647,7 @@ export function updateForceVectors(
   }
 
   // ── Rate arcs (angular velocity visualization — §15.5) ──
-  const RATE_SCALE = 0.3  // rad/s → arc sweep
+  const RATE_SCALE = 0.6  // rad/s → arc sweep
   if (bodyRates) {
     const pArc = bodyRates.p * RATE_SCALE
     const qArc = -bodyRates.q * RATE_SCALE  // pitch sign convention
