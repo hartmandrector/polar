@@ -22,6 +22,9 @@ import {
   rotationalEOM,
   eulerRates,
   bodyToInertialVelocity,
+  pilotPendulumEOM,
+  pilotLateralEOM,
+  pilotTwistEOM,
 } from './eom.ts'
 
 // ─── Derivative Evaluation ──────────────────────────────────────────────────
@@ -104,6 +107,69 @@ export function computeDerivatives(
     pDot: rotAccel.pDot,
     qDot: rotAccel.qDot,
     rDot: rotAccel.rDot,
+    // Pilot coupling derivatives (zero when not active)
+    ...computePilotCouplingDerivatives(state, config, rotAccel.qDot),
+  }
+}
+
+// ─── Pilot Coupling Derivative Helper ───────────────────────────────────────
+
+import type { SimStateExtended } from './sim-state.ts'
+
+/**
+ * Compute pilot coupling derivatives for all 3 relative DOFs.
+ * Returns empty object when pilotCoupling is not configured.
+ */
+function computePilotCouplingDerivatives(
+  state: SimState,
+  config: SimConfig,
+  qDotCanopy: number,
+): Partial<SimDerivatives> {
+  const pc = config.pilotCoupling
+  if (!pc) return {}
+
+  // Cast to extended state (fields default to 0 if absent)
+  const ext = state as Partial<SimStateExtended>
+  const thetaPilot = ext.thetaPilot ?? 0
+  const thetaPilotDot = ext.thetaPilotDot ?? 0
+  const pilotRoll = ext.pilotRoll ?? 0
+  const pilotRollDot = ext.pilotRollDot ?? 0
+  const pilotYaw = ext.pilotYaw ?? 0
+  const pilotYawDot = ext.pilotYawDot ?? 0
+
+  // Pitch pendulum — gravity restoring + canopy coupling
+  const pitchDDot = pilotPendulumEOM(
+    {
+      pilotMass: pc.pilotMass,
+      Iy_riser: pc.pitchInertia,
+      riserToCG: pc.riserLength,
+      cgOffset: { x: 0, z: -pc.riserLength },  // simplified: CG directly below pivot
+    },
+    thetaPilot,
+    state.theta,  // canopy pitch
+    -pc.pitchSpring * thetaPilot - pc.pitchDamp * thetaPilotDot,  // spring-damper as aeroTorque
+    qDotCanopy,
+  )
+
+  // Lateral weight shift — stiff spring
+  const lateralDDot = pilotLateralEOM(
+    pilotRoll, pilotRollDot,
+    pc.lateralSpring, pc.lateralDamp, pc.lateralInertia,
+  )
+
+  // Line twist — sinusoidal restoring torque
+  const twistDDot = pilotTwistEOM(
+    pilotYaw, pilotYawDot,
+    pc.twistStiffness, pc.twistDamp, pc.twistInertia,
+  )
+
+  return {
+    thetaPilotDot: thetaPilotDot,
+    thetaPilotDDot: pitchDDot,
+    pilotRollDot: pilotRollDot,
+    pilotRollDDot: lateralDDot,
+    pilotYawDot: pilotYawDot,
+    pilotYawDDot: twistDDot,
   }
 }
 
@@ -123,7 +189,7 @@ export function forwardEuler(
   deriv: SimDerivatives,
   dt: number,
 ): SimState {
-  return {
+  const base: SimState = {
     x:     state.x     + deriv.xDot     * dt,
     y:     state.y     + deriv.yDot     * dt,
     z:     state.z     + deriv.zDot     * dt,
@@ -137,6 +203,25 @@ export function forwardEuler(
     q:     state.q     + deriv.qDot     * dt,
     r:     state.r     + deriv.rDot     * dt,
   }
+
+  // Integrate pilot coupling states when present
+  if (deriv.thetaPilotDDot !== undefined) {
+    const ext = state as Partial<SimStateExtended>
+    ;(base as SimStateExtended).thetaPilot =
+      (ext.thetaPilot ?? 0) + (deriv.thetaPilotDot ?? 0) * dt
+    ;(base as SimStateExtended).thetaPilotDot =
+      (ext.thetaPilotDot ?? 0) + deriv.thetaPilotDDot * dt
+    ;(base as SimStateExtended).pilotRoll =
+      (ext.pilotRoll ?? 0) + (deriv.pilotRollDot ?? 0) * dt
+    ;(base as SimStateExtended).pilotRollDot =
+      (ext.pilotRollDot ?? 0) + (deriv.pilotRollDDot ?? 0) * dt
+    ;(base as SimStateExtended).pilotYaw =
+      (ext.pilotYaw ?? 0) + (deriv.pilotYawDot ?? 0) * dt
+    ;(base as SimStateExtended).pilotYawDot =
+      (ext.pilotYawDot ?? 0) + (deriv.pilotYawDDot ?? 0) * dt
+  }
+
+  return base
 }
 
 // ─── RK4 Integrator ─────────────────────────────────────────────────────────
@@ -180,9 +265,28 @@ export function rk4Step(
     pDot:     (k1.pDot     + 2 * k2.pDot     + 2 * k3.pDot     + k4.pDot)     / 6,
     qDot:     (k1.qDot     + 2 * k2.qDot     + 2 * k3.qDot     + k4.qDot)     / 6,
     rDot:     (k1.rDot     + 2 * k2.rDot     + 2 * k3.rDot     + k4.rDot)     / 6,
+    // Pilot coupling (when present)
+    ...rk4AvgPilot(k1, k2, k3, k4),
   }
 
   return forwardEuler(state, avg, dt)
+}
+
+/** RK4 weighted average for pilot coupling derivatives. */
+function rk4AvgPilot(
+  k1: SimDerivatives, k2: SimDerivatives, k3: SimDerivatives, k4: SimDerivatives,
+): Partial<SimDerivatives> {
+  if (k1.thetaPilotDDot === undefined) return {}
+  const avg = (a?: number, b?: number, c?: number, d?: number) =>
+    ((a ?? 0) + 2 * (b ?? 0) + 2 * (c ?? 0) + (d ?? 0)) / 6
+  return {
+    thetaPilotDot:  avg(k1.thetaPilotDot, k2.thetaPilotDot, k3.thetaPilotDot, k4.thetaPilotDot),
+    thetaPilotDDot: avg(k1.thetaPilotDDot, k2.thetaPilotDDot, k3.thetaPilotDDot, k4.thetaPilotDDot),
+    pilotRollDot:   avg(k1.pilotRollDot, k2.pilotRollDot, k3.pilotRollDot, k4.pilotRollDot),
+    pilotRollDDot:  avg(k1.pilotRollDDot, k2.pilotRollDDot, k3.pilotRollDDot, k4.pilotRollDDot),
+    pilotYawDot:    avg(k1.pilotYawDot, k2.pilotYawDot, k3.pilotYawDot, k4.pilotYawDot),
+    pilotYawDDot:   avg(k1.pilotYawDDot, k2.pilotYawDDot, k3.pilotYawDDot, k4.pilotYawDDot),
+  }
 }
 
 // ─── Multi-Step Runner ──────────────────────────────────────────────────────

@@ -488,3 +488,77 @@ export function pilotSwingDampingTorque(
 
   return torque
 }
+
+// ─── Lateral Weight Shift EOM ───────────────────────────────────────────────
+
+/**
+ * Lateral weight shift equation of motion.
+ *
+ * Stiff spring + critical damping — geometric deformation, not a pendulum.
+ * See docs/sim/PILOT-COUPLING.md §6.2.
+ *
+ *   I_φ · δ̈_φ = −k_φ · δ_φ − c_φ · δ̇_φ + τ_input
+ *
+ * @param deltaRoll      Pilot roll angle relative to canopy [rad]
+ * @param deltaRollDot   Pilot roll rate [rad/s]
+ * @param lateralSpring  Spring constant k_φ [N·m/rad] (stiff)
+ * @param lateralDamp    Damping coefficient c_φ [N·m·s/rad]
+ * @param lateralInertia Moment of inertia I_φ [kg·m²] about confluence
+ * @param inputTorque    External torque from gamepad [N·m] (default 0)
+ */
+export function pilotLateralEOM(
+  deltaRoll: number,
+  deltaRollDot: number,
+  lateralSpring: number,
+  lateralDamp: number,
+  lateralInertia: number,
+  inputTorque: number = 0,
+): number {
+  if (lateralInertia < 1e-10) return 0
+
+  const tau_spring = -lateralSpring * deltaRoll
+  const tau_damp = -lateralDamp * deltaRollDot
+
+  return (tau_spring + tau_damp + inputTorque) / lateralInertia
+}
+
+// ─── Line Twist EOM ─────────────────────────────────────────────────────────
+
+/**
+ * Line twist equation of motion.
+ *
+ * Sinusoidal restoring torque from line geometry, clamped at ±180°.
+ * See docs/sim/PILOT-COUPLING.md §6.3.
+ *
+ *   I_ψ · δ̈_ψ = τ_lines − c_ψ · δ̇_ψ + τ_input
+ *
+ * where:
+ *   τ_lines = −k_ψ · sin(δ_ψ)   for |δ_ψ| ≤ π
+ *   τ_lines = 0                   for |δ_ψ| > π
+ *
+ * @param deltaYaw       Pilot yaw angle relative to canopy [rad]
+ * @param deltaYawDot    Pilot yaw rate [rad/s]
+ * @param twistStiffness Torsional stiffness k_ψ [N·m]
+ * @param twistDamp      Damping coefficient c_ψ [N·m·s/rad]
+ * @param twistInertia   Moment of inertia I_ψ [kg·m²] about confluence
+ * @param inputTorque    External torque from gamepad [N·m] (default 0)
+ */
+export function pilotTwistEOM(
+  deltaYaw: number,
+  deltaYawDot: number,
+  twistStiffness: number,
+  twistDamp: number,
+  twistInertia: number,
+  inputTorque: number = 0,
+): number {
+  if (twistInertia < 1e-10) return 0
+
+  // Sinusoidal restoring torque, clamped to zero beyond ±180°
+  const tau_lines = Math.abs(deltaYaw) <= Math.PI
+    ? -twistStiffness * Math.sin(deltaYaw)
+    : 0
+
+  const tau_damp = -twistDamp * deltaYawDot
+
+  return (tau_lines + tau_damp + inputTorque) / twistInertia
+}

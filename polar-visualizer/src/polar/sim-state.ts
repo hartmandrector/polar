@@ -24,16 +24,30 @@ export interface SimState {
   p: number;  q: number;  r: number
 }
 
-// ─── Extended State (Pilot Pendulum) ─────────────────────────────────────────
+// ─── Extended State (Pilot–Canopy Coupling) ─────────────────────────────────
 
 /**
- * 12-state + 2 pilot pendulum degrees of freedom.
+ * 12-state + 6 pilot coupling degrees of freedom.
+ *
+ * Three relative rotation axes at the riser confluence point
+ * (see docs/sim/PILOT-COUPLING.md):
+ *   - Pitch (fore/aft swing) — gravity-restoring pendulum
+ *   - Roll (lateral weight shift) — stiff spring, geometric deformation
+ *   - Yaw (line twist) — sinusoidal restoring torque from line geometry
  */
 export interface SimStateExtended extends SimState {
-  /** Pilot pitch angle relative to risers [rad] */
+  /** Pilot pitch angle relative to risers [rad] — pendulum swing */
   thetaPilot: number
   /** Pilot pitch rate [rad/s] */
   thetaPilotDot: number
+  /** Pilot roll angle relative to canopy [rad] — lateral weight shift */
+  pilotRoll: number
+  /** Pilot roll rate [rad/s] */
+  pilotRollDot: number
+  /** Pilot yaw angle relative to canopy [rad] — line twist */
+  pilotYaw: number
+  /** Pilot yaw rate [rad/s] */
+  pilotYawDot: number
 }
 
 // ─── Derivative Vectors ──────────────────────────────────────────────────────
@@ -51,6 +65,10 @@ export interface SimDerivatives {
   phiDot: number;  thetaDot: number;  psiDot: number
   // Body angular acceleration [rad/s²] — from rotational dynamics
   pDot: number;  qDot: number;  rDot: number
+  // Pilot coupling derivatives (optional — zero when not active)
+  thetaPilotDot?: number;  thetaPilotDDot?: number
+  pilotRollDot?: number;   pilotRollDDot?: number
+  pilotYawDot?: number;    pilotYawDDot?: number
 }
 
 // ─── Simulation Configuration ────────────────────────────────────────────────
@@ -88,4 +106,34 @@ export interface SimConfig {
   height: number
   /** Air density [kg/m³] */
   rho: number
+  /** Pilot–canopy coupling parameters (optional — disabled when absent) */
+  pilotCoupling?: PilotCouplingConfig
+}
+
+// ─── Pilot–Canopy Coupling Configuration ─────────────────────────────────────
+
+/**
+ * Parameters for 3-DOF pilot–canopy relative rotation.
+ * See docs/sim/PILOT-COUPLING.md §8.
+ */
+export interface PilotCouplingConfig {
+  /** Distance from pilot CG to riser confluence [m] */
+  riserLength: number
+  /** Pilot mass [kg] */
+  pilotMass: number
+
+  // Pitch (fore/aft swing) — gravity-restoring pendulum
+  pitchSpring: number    // k_θ [N·m/rad] — additional spring beyond gravity
+  pitchDamp: number      // c_θ [N·m·s/rad]
+  pitchInertia: number   // I_θ [kg·m²] about confluence
+
+  // Lateral (weight shift) — stiff spring, geometric deformation
+  lateralSpring: number  // k_φ [N·m/rad] — stiff
+  lateralDamp: number    // c_φ [N·m·s/rad] — critical damping
+  lateralInertia: number // I_φ [kg·m²] about confluence
+
+  // Twist (line twist) — sinusoidal restoring torque
+  twistStiffness: number // k_ψ [N·m] — line set torsional stiffness
+  twistDamp: number      // c_ψ [N·m·s/rad]
+  twistInertia: number   // I_ψ [kg·m²] about confluence
 }
