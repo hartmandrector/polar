@@ -215,11 +215,11 @@ Most of these can be **derived** from the existing mass model:
 
 ### 9.1  CG Shift
 
-When the payload swings, the **system CG shifts**. For small angles:
+When the payload rotates relative to the canopy, the **system CG shifts**. For small angles:
 
-$$\Delta x_{CG} \approx \frac{m_P}{M}\,l\,\delta_\theta \qquad \Delta y_{CG} \approx \frac{m_P}{M}\,l\,\delta_\phi$$
+$$\Delta x_{CG} \approx \frac{m_P}{M}\,l\,\delta_\theta \qquad \Delta y_{CG} \approx \frac{m_P}{M}\,d_{\text{riser}}\,\delta_\phi$$
 
-This is the primary control mechanism for weight-shift steering — the pilot's lateral swing moves the system CG, which offsets the aerodynamic moment balance.
+Pitch CG shift comes from the pendulum swing ($l$ = riser length). Lateral CG shift comes from the harness geometric deformation ($d_{\text{riser}}$ = lateral riser spacing). The lateral shift is the primary control mechanism for weight-shift steering — it offsets the aerodynamic moment balance, producing a turn.
 
 ### 9.2  Inertia Coupling
 
@@ -240,8 +240,8 @@ These are secondary effects for later implementation. Note: twist during deploym
 
 | Input | DOF | Effect |
 |-------|-----|--------|
-| Left stick Y | $\delta_\theta$ | Fore/aft weight shift (existing) |
-| Left stick X | $\delta_\phi$ | Lateral weight shift |
+| Left stick Y | $\delta_\theta$ | Pitch pendulum (fore/aft swing) |
+| Left stick X | $\delta_\phi$ | Lateral weight shift (harness geometry) |
 | Face button (hold) | $\delta_\psi$ | Counter-torque (twist recovery) |
 
 For canopy: weight shift and twist recovery complement brake/riser inputs.
@@ -251,10 +251,10 @@ For wingsuit: lateral weight shift maps to existing roll throttle.
 
 ## 11  Implementation Phases
 
-1. **Generalize pendulum** — Replace scalar `thetaPilot` with 3-axis relative rotation. Wire pitch + lateral with gravity-restoring spring-damper.
+1. **Generalize pendulum** — Replace scalar `thetaPilot` with 3-axis relative rotation. Wire pitch with gravity-restoring pendulum, lateral with stiff spring.
 2. **Wire lateral weight shift to gamepad** — Left stick X for canopy lateral input.
-3. **Add twist DOF with linear spring** — Get coupling working, verify energy conservation.
-4. **Nonlinear twist spring** — Tune $k_0$, $k_{nl}$, $\delta_{\text{ref}}$ to match real line twist behavior.
+3. **Add twist DOF with sinusoidal spring** — $-k_\psi \sin(\delta_\psi)$, clamped at 180°. Verify energy conservation.
+4. **Tune twist stiffness** — Set $k_\psi$ for full-span flight (small twist from normal inputs) and explore reduced $k_\psi$ for deployment scenarios.
 5. **Gamepad twist recovery** — Face button → counter-torque.
 6. **Secondary effects** — Riser shortening, brake authority degradation.
 
