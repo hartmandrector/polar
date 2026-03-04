@@ -908,11 +908,11 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   cl_beta: -0.12,
 
   // Pitching moment
-  cm_0: -0.03,
+  cm_0: 0.1,
   cm_alpha: -0.10,
 
   // Center of pressure
-  cp_0: 0.40,
+  cp_0: 0.25,
   cp_alpha: -0.01,
 
   // CG / CP lateral (per-cell, not system-level)
@@ -1253,10 +1253,10 @@ export const ibexulContinuous: ContinuousPolar = {
   cn_beta: 0.12,
   cl_beta: -0.12,
 
-  cm_0: -0.03,
+  cm_0: 0.1,
   cm_alpha: -0.10,
 
-  cp_0: 0.40,
+  cp_0: 0.25,
   cp_alpha: -0.01,
 
   cg: 0.35,

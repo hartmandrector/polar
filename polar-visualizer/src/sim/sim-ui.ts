@@ -487,7 +487,7 @@ const ORBIT_DEADZONE = 0.08
  * Only active when a wingsuit polar is selected (canopy uses left stick for risers).
  */
 export function updateGamepadOrbit(controls: OrbitControls, polarType: string): void {
-  if (polarType === 'Canopy') return  // canopy uses left stick for risers
+  if (polarType === 'Canopy' || polarType === 'canopy') return  // canopy uses left stick for risers
 
   const gp = navigator.getGamepads()[0]
   if (!gp) return

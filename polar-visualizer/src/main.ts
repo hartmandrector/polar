@@ -851,7 +851,7 @@ async function init(): Promise<void> {
   function animate(): void {
     requestAnimationFrame(animate)
     const polar = continuousPolars[flightState.polarKey] ?? continuousPolars.aurafive
-    updateGamepadOrbit(sceneCtx.controls, polar.type ?? '')
+    updateGamepadOrbit(sceneCtx.controls, flightState.modelType ?? polar.type ?? '')
     sceneCtx.controls.update()
     sceneCtx.renderer.render(sceneCtx.scene, sceneCtx.camera)
   }
