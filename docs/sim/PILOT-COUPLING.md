@@ -124,20 +124,23 @@ Same physics as pitch — gravity-restoring pendulum on a different axis. $I_\ph
 
 ### 6.3  Twist (Line Twist / Relative Yaw)
 
-$$\ddot{\delta}_\psi = -\frac{k_\psi(\delta_\psi)}{I_\psi}\,\delta_\psi - \frac{c_\psi}{I_\psi}\,\dot{\delta}_\psi + \frac{\tau_{\text{input}}}{I_\psi}$$
+$$\ddot{\delta}_\psi = \frac{\tau_{\text{lines}} + \tau_{\text{input}}}{I_\psi} - \frac{c_\psi}{I_\psi}\,\dot{\delta}_\psi$$
 
-**No gravity restoring torque** — twist axis is vertical (parallel to gravity in trimmed flight). The restoring force comes entirely from line torsional stiffness.
+**No gravity restoring torque** — twist axis is vertical (parallel to gravity in trimmed flight). The restoring force comes entirely from line set geometry.
 
-**Nonlinear spring:**
+**Sinusoidal restoring torque** — the parallel line set behaves like a pendulum:
 
-$$k_\psi(\delta_\psi) = k_0 + k_{nl}\left(\frac{\delta_\psi}{\delta_{\text{ref}}}\right)^2$$
+$$\tau_{\text{lines}} = \begin{cases} -k_\psi \sin(\delta_\psi) & |\delta_\psi| \leq \pi \\ 0 & |\delta_\psi| > \pi \end{cases}$$
 
-- $k_0$: base torsional stiffness (very small — lines twist freely)
-- $k_{nl}$: nonlinear stiffening coefficient
-- $\delta_{\text{ref}}$: reference angle for stiffening onset (~90°)
+Physical behavior:
+- **0–90°**: Restoring force **increases** with twist — lines resist crossing. Maximum at 90°.
+- **90–180°**: Force **drops off** — lines approaching fully crossed state.
+- **180°**: Zero restoring torque — unstable equilibrium (lines fully crossed).
+- **>180°**: Clamped to zero — no natural restoring force. Recovery requires pilot input.
 
-At $|\delta_\psi| \ll \delta_{\text{ref}}$: spring ≈ $k_0$ (weak).
-At $|\delta_\psi| \gg \delta_{\text{ref}}$: spring grows quadratically (lines bundling).
+Normal flight with full span produces large $k_\psi$ — control inputs cause only a few degrees of twist. During deployment (shorter span, fewer inflated cells), $k_\psi$ is much smaller and twist can develop easily.
+
+**Single tunable parameter:** $k_\psi$ [N·m] — torsional stiffness of the line set. Depends on line count, span, and inflation state.
 
 ---
 
@@ -181,9 +184,7 @@ interface PilotCoupling {
   lateralDamp: number          // c_φ [N·m·s/rad]
 
   // Twist (line twist)
-  twistStiffness_k0: number    // k_0 [N·m/rad] — base (weak)
-  twistStiffness_knl: number   // k_nl [N·m/rad³] — nonlinear
-  twistRefAngle_deg: number    // δ_ref [deg] — stiffening onset
+  twistStiffness: number       // k_ψ [N·m] — line set torsional stiffness
   twistDamp: number            // c_ψ [N·m·s/rad]
 
   // Pilot inertia about confluence
@@ -217,11 +218,11 @@ Payload rotation changes the system inertia tensor. The cross-products of inerti
 ### 9.3  Twist Effects
 
 Line twist beyond ~180° produces:
-- **Riser shortening**: effective line length decreases as lines spiral
+- **Riser shortening**: effective line length decreases as lines spiral — this is the only restoring mechanism beyond 180° (nearly negligible)
 - **Brake authority loss**: control lines wrap, reducing brake range
 - **Canopy distortion**: asymmetric line tension warps the canopy shape
 
-These are secondary effects for Phase 3+ implementation.
+These are secondary effects for later implementation. Note: twist during deployment (shorter span, pre-inflation) is a separate problem — the sinusoidal model with reduced $k_\psi$ covers the basic physics, but deployment-phase dynamics are deferred.
 
 ---
 
