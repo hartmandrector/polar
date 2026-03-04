@@ -183,6 +183,9 @@ export function simStateToFlightState(
   const alpha = V > 0.1 ? Math.atan2(sim.w, sim.u) : 0
   const beta  = V > 0.1 ? Math.asin(Math.max(-1, Math.min(1, sim.v / V))) : 0
 
+  // Extract pilot coupling angles if present (SimStateExtended)
+  const ext = sim as Partial<SimStateExtended>
+
   return {
     ...base,
     alpha_deg: alpha * RAD,
@@ -194,6 +197,8 @@ export function simStateToFlightState(
     phiDot_degps:   sim.p * RAD,
     thetaDot_degps: sim.q * RAD,
     psiDot_degps:   sim.r * RAD,
+    // Pilot coupling → drives 3D model rotation via pilotPivot
+    pilotPitch: (ext.thetaPilot ?? 0) * RAD,
   }
 }
 
@@ -358,6 +363,16 @@ export class SimRunner {
           yawThrottle: gp.yawThrottle,
           rollThrottle: gp.rollThrottle,
         }
+      }
+    }
+
+    // Inject pilot coupling state into aero controls so segment factories
+    // see the physics-computed pilot pitch (not the slider value)
+    if (config.pilotCoupling) {
+      const ext = this.simState as Partial<SimStateExtended>
+      config.controls = {
+        ...config.controls,
+        pilotPitch: (ext.thetaPilot ?? 0) * RAD,
       }
     }
 
