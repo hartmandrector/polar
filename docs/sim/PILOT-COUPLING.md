@@ -257,12 +257,14 @@ For wingsuit: lateral weight shift maps to existing roll throttle.
 
 ## 11  Implementation Phases
 
-1. **Generalize pendulum** — Replace scalar `thetaPilot` with 3-axis relative rotation. Wire pitch with gravity-restoring pendulum, lateral with stiff spring.
-2. **Wire lateral weight shift to gamepad** — Left stick X for canopy lateral input.
-3. **Add twist DOF with sinusoidal spring** — $-k_\psi \sin(\delta_\psi)$, clamped at 180°. Verify energy conservation.
-4. **Tune twist stiffness** — Set $k_\psi$ for full-span flight (small twist from normal inputs) and explore reduced $k_\psi$ for deployment scenarios.
-5. **Gamepad twist recovery** — Face button → counter-torque.
-6. **Secondary effects** — Riser shortening, brake authority degradation.
+1. ✅ **Generalize pendulum** — `SimStateExtended` extended to 6 pilot states (pitch/lateral/twist × angle+rate). Three EOM functions in `eom.ts`: `pilotPendulumEOM()` (gravity), `pilotLateralEOM()` (stiff spring), `pilotTwistEOM()` (sinusoidal). `PilotCouplingConfig` on `SimConfig`. RK4 integrates all 18 states. Commits `41c1f7c`, `b5a21a1`.
+2. ✅ **Wire lateral weight shift to gamepad** — Left stick X → `lateralInputTorque` (scale 50 N·m). Canopy only.
+3. ✅ **Add twist DOF with sinusoidal spring** — $-k_\psi \sin(\delta_\psi)$, clamped at ±π. `TWIST_INPUT_SCALE = 2` N·m (~10% of $k_\psi$).
+4. ⬜ **Tune coupling parameters** — Default values set (`riserLength=0.5m`, `lateralSpring=200`, `twistStiffness=20`, `pitchSpring=5`). Need flight testing to dial in.
+5. ✅ **Gamepad twist recovery** — Right stick X → counter-torque.  Commit `b5a21a1`.
+6. ⬜ **Pilot aero torque** — `pilotSwingDampingTorque()` exists but not wired. At speed, drag on pilot body should pitch it forward.
+7. ⬜ **Secondary effects** — Riser shortening, brake authority degradation, lateral→turn coupling.
+8. ✅ **3D model rendering** — `thetaPilot` drives `pilotPivot.rotation.x` and `controls.pilotPitch` for aero segments. Commit `713842b`.
 
 ---
 

@@ -27,12 +27,15 @@ Deadzone: 0.08 (values below this magnitude → 0)
 | Left rear riser | Left stick back | 0–1 | Pull back = pull rears |
 | Right front riser | Right stick forward | 0–1 | Push forward = pull fronts |
 | Right rear riser | Right stick back | 0–1 | Pull back = pull rears |
+| Lateral weight shift | Left stick X | −1 to +1 | Right = shift right |
+| Twist recovery | Right stick X | −1 to +1 | Counter-torque for line twists |
 
-**Key behavior:** All riser inputs are simultaneous — no mode selector needed during sim. Brakes and risers can be applied together (e.g. brake turn + rear riser).
+**Pilot coupling (3-DOF):**
+- **Pitch**: No gamepad input — pendulum swings freely under gravity, coupled to canopy pitch acceleration
+- **Lateral**: Left stick X → stiff spring tracks near-instantly (geometric harness deformation)
+- **Twist**: Right stick X → weak counter-torque (~10% of line stiffness), effective for recovery from >90° twists
 
-**Stick-to-riser split:** Each stick Y axis is split at center:
-- Negative Y (forward push) → front riser magnitude
-- Positive Y (back pull) → rear riser magnitude
+**Key behavior:** Brakes, risers, and pilot coupling inputs are all simultaneous. Stick Y splits into front/rear riser; stick X drives weight shift independently.
 
 ---
 
