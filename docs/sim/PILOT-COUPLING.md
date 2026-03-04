@@ -116,11 +116,21 @@ where $l$ is the riser length (CG-to-confluence distance for the payload).
 
 ### 6.2  Lateral (Weight Shift)
 
-$$\ddot{\delta}_\phi = -\frac{k_\phi}{I_\phi}\,\delta_\phi - \frac{c_\phi}{I_\phi}\,\dot{\delta}_\phi + \frac{\tau_{g,\phi}}{I_\phi}$$
+$$\ddot{\delta}_\phi = -\frac{k_\phi}{I_\phi}\,\delta_\phi - \frac{c_\phi}{I_\phi}\,\dot{\delta}_\phi + \frac{\tau_{\text{input},\phi}}{I_\phi}$$
 
-$$\tau_{g,\phi} = -m_P\,g\,l\,\sin(\delta_\phi)$$
+**Not a pendulum.** Unlike pitch, there is no gravity-restoring swing. The pilot shifts hip/leg geometry within the harness, changing the relative height of the left vs right riser sets. This is a **geometric deformation** of the harness-riser system, not a dynamic swing.
 
-Same physics as pitch — gravity-restoring pendulum on a different axis. $I_\phi$ is the payload moment of inertia about the roll axis through $C$.
+**Riser height differential:**
+
+$$\Delta h = d_{\text{riser}} \cdot \sin(\delta_\phi)$$
+
+where $d_{\text{riser}}$ is the lateral distance between left and right riser attachment points. This height difference causes the center cell of the canopy to twist, producing asymmetric lift → turn.
+
+**Stiff spring model:** Use a high spring constant $k_\phi$ with critical damping so that $\delta_\phi$ tracks the commanded input nearly instantaneously with no oscillation. This keeps the integrator structure uniform across all three axes while correctly representing the non-dynamic nature of the lateral shift.
+
+- Normal flight: essentially a kinematic constraint (stiff spring ≈ instant response)
+- Deployment: could soften $k_\phi$ to model harness settling dynamics
+- High-performance canopies: tune sensitivity of $\Delta h$ → turn rate coupling
 
 ### 6.3  Twist (Line Twist / Relative Yaw)
 
