@@ -73,7 +73,7 @@ export interface SimDerivatives {
 
 // ─── Simulation Configuration ────────────────────────────────────────────────
 
-import type { AeroSegment, SegmentControls } from './continuous-polar.ts'
+import type { AeroSegment, SegmentControls, MassSegment } from './continuous-polar.ts'
 import type { Vec3NED } from './aero-segment.ts'
 import type { InertiaComponents } from './inertia.ts'
 
@@ -136,6 +136,11 @@ export interface PilotCouplingConfig {
   twistStiffness: number // k_ψ [N·m] — line set torsional stiffness
   twistDamp: number      // c_ψ [N·m·s/rad]
   twistInertia: number   // I_ψ [kg·m²] about confluence
+
+  // Pilot mass segments (for aero damping torque computation)
+  pilotSegments?: MassSegment[]
+  /** Pivot point in NED normalised coords (riser confluence) */
+  pivotNED?: { x: number; z: number }
 
   // Gamepad input torques (set per frame, not persistent)
   lateralInputTorque?: number  // τ_input for weight shift [N·m]

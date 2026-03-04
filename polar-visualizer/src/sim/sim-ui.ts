@@ -366,6 +366,16 @@ function buildPilotCoupling(
   const twistStiffness = 20   // [N·m] — strong in full flight
   const twistDamp = 2 * Math.sqrt(twistStiffness * twistInertia) * 0.5  // underdamped
 
+  // Filter pilot-body mass segments (exclude canopy cells)
+  const CANOPY_NAMES = ['center', 'inner', 'outer', 'tip', 'brake']
+  const pilotSegments = (polar.massSegments ?? []).filter(
+    seg => !CANOPY_NAMES.some(cn => seg.name.toLowerCase().includes(cn))
+  )
+
+  // Pivot point — riser confluence in NED normalised coords
+  // Approximation: top of pilot body (x ≈ CG_x, z ≈ 0)
+  const pivotNED = { x: 0.4, z: 0 }
+
   return {
     riserLength,
     pilotMass,
@@ -378,6 +388,8 @@ function buildPilotCoupling(
     twistStiffness,
     twistDamp,
     twistInertia,
+    pilotSegments,
+    pivotNED,
   }
 }
 

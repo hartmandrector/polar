@@ -25,6 +25,7 @@ import {
   pilotPendulumEOM,
   pilotLateralEOM,
   pilotTwistEOM,
+  pilotSwingDampingTorque,
 } from './eom.ts'
 
 // ─── Derivative Evaluation ──────────────────────────────────────────────────
@@ -137,17 +138,32 @@ function computePilotCouplingDerivatives(
   const pilotYaw = ext.pilotYaw ?? 0
   const pilotYawDot = ext.pilotYawDot ?? 0
 
-  // Pitch pendulum — gravity restoring + canopy coupling
+  // Aerodynamic damping torque on pilot body due to pitch swing
+  // Drag opposes swing — natural stabilization at speed
+  let aeroDampTorque = 0
+  if (pc.pilotSegments && pc.pivotNED && Math.abs(thetaPilotDot) > 1e-6) {
+    aeroDampTorque = pilotSwingDampingTorque(
+      pc.pilotSegments,
+      pc.pivotNED.x,
+      pc.pivotNED.z,
+      thetaPilotDot,
+      config.rho,
+      config.height,
+      pc.pilotMass,
+    )
+  }
+
+  // Pitch pendulum — gravity restoring + canopy coupling + aero damping
   const pitchDDot = pilotPendulumEOM(
     {
       pilotMass: pc.pilotMass,
       Iy_riser: pc.pitchInertia,
       riserToCG: pc.riserLength,
-      cgOffset: { x: 0, z: -pc.riserLength },  // simplified: CG directly below pivot
+      cgOffset: { x: 0, z: -pc.riserLength },
     },
     thetaPilot,
-    state.theta,  // canopy pitch
-    -pc.pitchSpring * thetaPilot - pc.pitchDamp * thetaPilotDot,  // spring-damper as aeroTorque
+    state.theta,
+    -pc.pitchSpring * thetaPilot - pc.pitchDamp * thetaPilotDot + aeroDampTorque,
     qDotCanopy,
   )
 
