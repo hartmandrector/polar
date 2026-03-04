@@ -256,6 +256,7 @@ export interface AeroSegment {
     cy: number    // side force coefficient
     cm: number    // pitching moment coefficient (about segment AC)
     cp: number    // center of pressure (chord fraction, for force application)
+    cellPitchRad?: number  // geometric cell pitch from riser input [rad] — rotates force vector in body x-z plane
   }
 
   /**

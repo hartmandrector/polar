@@ -30,6 +30,7 @@ export interface SegmentForceResult {
   side: number     // [N] side force magnitude (can be negative)
   moment: number   // [N·m] segment's own pitching moment (from CM, about its AC)
   cp: number       // chord fraction where total aero force acts
+  cellPitchRad: number  // geometric cell pitch from riser [rad] — rotates force vector
 }
 
 /** System-level summed force and moment about CG */
@@ -178,13 +179,14 @@ export function computeSegmentForce(
   airspeed: number,
 ): SegmentForceResult {
   const q = 0.5 * rho * airspeed * airspeed
-  const { cl, cd, cy, cm, cp } = seg.getCoeffs(alpha_deg, beta_deg, controls)
+  const { cl, cd, cy, cm, cp, cellPitchRad } = seg.getCoeffs(alpha_deg, beta_deg, controls)
   return {
     lift:   q * seg.S * cl,
     drag:   q * seg.S * cd,
     side:   q * seg.S * cy,
     moment: q * seg.S * seg.chord * cm,
     cp,
+    cellPitchRad: cellPitchRad ?? 0,
   }
 }
 
@@ -231,9 +233,19 @@ export function sumAllSegments(
 
     // Force vector in body NED frame [N]
     // lift along liftDir, drag opposes wind (= -windDir), side along sideDir
-    const fx = liftDir.x * f.lift - windDir.x * f.drag + sideDir.x * f.side
+    let fx = liftDir.x * f.lift - windDir.x * f.drag + sideDir.x * f.side
     const fy = liftDir.y * f.lift - windDir.y * f.drag + sideDir.y * f.side
-    const fz = liftDir.z * f.lift - windDir.z * f.drag + sideDir.z * f.side
+    let fz = liftDir.z * f.lift - windDir.z * f.drag + sideDir.z * f.side
+
+    // Rotate force vector by cell geometric pitch (riser-induced tilt)
+    // Front riser: positive cellPitchRad → nose down → lift tilts forward
+    // Rear riser: negative cellPitchRad → nose up → lift tilts backward
+    if (Math.abs(f.cellPitchRad) > 1e-6) {
+      const cosP = Math.cos(f.cellPitchRad), sinP = Math.sin(f.cellPitchRad)
+      const fx0 = fx, fz0 = fz
+      fx = fx0 * cosP - fz0 * sinP
+      fz = fx0 * sinP + fz0 * cosP
+    }
 
     totalFx += fx
     totalFy += fy
@@ -403,9 +415,17 @@ export function evaluateAeroForcesDetailed(
     const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha_local, beta_local)
 
     // Force vector in body NED [N]
-    const fx = liftDir.x * f.lift - windDir.x * f.drag + sideDir.x * f.side
+    let fx = liftDir.x * f.lift - windDir.x * f.drag + sideDir.x * f.side
     const fy = liftDir.y * f.lift - windDir.y * f.drag + sideDir.y * f.side
-    const fz = liftDir.z * f.lift - windDir.z * f.drag + sideDir.z * f.side
+    let fz = liftDir.z * f.lift - windDir.z * f.drag + sideDir.z * f.side
+
+    // Rotate force vector by cell geometric pitch (riser-induced tilt)
+    if (Math.abs(f.cellPitchRad) > 1e-6) {
+      const cosP = Math.cos(f.cellPitchRad), sinP = Math.sin(f.cellPitchRad)
+      const fx0 = fx, fz0 = fz
+      fx = fx0 * cosP - fz0 * sinP
+      fz = fx0 * sinP + fz0 * cosP
+    }
 
     totalFx += fx
     totalFy += fy

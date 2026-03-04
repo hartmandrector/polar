@@ -29,6 +29,10 @@ export interface ControlConstants {
   MAX_FLAP_DEFLECTION_DEG: number
   /** Maximum additional arc roll added to a flap segment at full brake [deg] */
   MAX_FLAP_ROLL_INCREMENT_DEG: number
+  /** CD₀ increase per unit front riser input — leading-edge distortion drag */
+  FRONT_RISER_CD_BUMP: number
+  /** Maximum geometric cell pitch from full riser input [rad] — tilts force vector */
+  RISER_PITCH_MAX_RAD: number
 }
 
 /** Default control constants — current Ibexul tuning. */
@@ -37,6 +41,8 @@ export const DEFAULT_CONSTANTS: ControlConstants = {
   BRAKE_ALPHA_COUPLING_DEG: 2.5,
   MAX_FLAP_DEFLECTION_DEG: 50,
   MAX_FLAP_ROLL_INCREMENT_DEG: 20,
+  FRONT_RISER_CD_BUMP: 0.15,
+  RISER_PITCH_MAX_RAD: 0.08,  // ~4.6° at full input — 16" pull on ~18ft lines
 }
 
 // ─── Deployment Constants ────────────────────────────────────────────────────
@@ -167,6 +173,11 @@ export function makeCanopyCellSegment(
       const deltaAlphaRiser = (-frontRiser + rearRiser) * ctrl.ALPHA_MAX_RISER * riserSensitivity
       const alphaEffective = alphaLocal + deltaAlphaRiser
 
+      // ── Riser → geometric cell pitch (tilts force vector in body x-z plane) ──
+      // Front riser: positive pitch (nose down) → lift tilts forward → yaw toward input
+      // Rear riser: negative pitch (nose up) → lift tilts backward → yaw toward input
+      const cellPitchRad = (frontRiser - rearRiser) * ctrl.RISER_PITCH_MAX_RAD * riserSensitivity
+
       // ── Brake → δ camber change ──
       let brakeInput: number
       if (side === 'center') {
@@ -183,18 +194,24 @@ export function makeCanopyCellSegment(
       // increasing the effective AoA of the main cell body.
       const deltaAlphaBrake = brakeInput * brakeSensitivity * ctrl.BRAKE_ALPHA_COUPLING_DEG
 
+      // ── Front riser → drag increase (leading-edge distortion) ──
+      // Pulling a front riser distorts the leading edge, adding parasitic drag.
+      // Asymmetric drag across the span creates a natural yaw moment toward
+      // the pulled side — this is the primary turn mechanism for front risers.
+      const riserDragBump = frontRiser * ctrl.FRONT_RISER_CD_BUMP
+
       // ── Evaluate Kirchhoff model at (α_effective + brake α coupling, β_local, δ_effective) ──
       // During deployment, morph polar coefficients to model uninflated fabric
       const evalPolar = d < 1 ? {
         ...polar,
-        cd_0: polar.cd_0 * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
+        cd_0: (polar.cd_0 + riserDragBump) * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
         cl_alpha: polar.cl_alpha * (DEPLOY_CL_ALPHA_FRACTION + (1 - DEPLOY_CL_ALPHA_FRACTION) * d),
         cd_n: polar.cd_n * (DEPLOY_CD_N_MULTIPLIER + (1 - DEPLOY_CD_N_MULTIPLIER) * d),
         alpha_stall_fwd: polar.alpha_stall_fwd + DEPLOY_STALL_FWD_OFFSET * (1 - d),
         s1_fwd: polar.s1_fwd * (DEPLOY_S1_FWD_MULTIPLIER + (1 - DEPLOY_S1_FWD_MULTIPLIER) * d),
-      } : polar
+      } : (riserDragBump > 0 ? { ...polar, cd_0: polar.cd_0 + riserDragBump } : polar)
       const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, evalPolar)
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp, cellPitchRad }
     },
   }
 }
@@ -543,6 +560,11 @@ export function makeBrakeFlapSegment(
       const brakeInput = side === 'right' ? controls.brakeRight : controls.brakeLeft
       const effectiveBrake = brakeInput * brakeSensitivity
 
+      // ── Riser → geometric cell pitch (flap inherits parent cell's tilt) ──
+      const frontRiser = side === 'right' ? controls.frontRiserRight : controls.frontRiserLeft
+      const rearRiser = side === 'right' ? controls.rearRiserRight : controls.rearRiserLeft
+      const cellPitchRad = (frontRiser - rearRiser) * ctrl.RISER_PITCH_MAX_RAD
+
       // ── Variable area and chord ──
       // Flap area grows from 0 to maxFlapS as brake is applied
       this.S = effectiveBrake * maxFlapS
@@ -560,7 +582,7 @@ export function makeBrakeFlapSegment(
       // If no brake input, return zeroes (S=0 means zero force anyway)
       if (effectiveBrake < 0.001) {
         this.orientation = { roll_deg: rollDeg }
-        return { cl: 0, cd: 0, cy: 0, cm: 0, cp: 0.25 }
+        return { cl: 0, cd: 0, cy: 0, cm: 0, cp: 0.25, cellPitchRad }
       }
 
       // ── Dynamic roll angle ──
@@ -616,7 +638,7 @@ export function makeBrakeFlapSegment(
       const cl = c.cl * cosT
       const cy = c.cy + c.cl * sinT
 
-      return { cl, cd: c.cd, cy, cm: c.cm, cp: c.cp }
+      return { cl, cd: c.cd, cy, cm: c.cm, cp: c.cp, cellPitchRad }
     },
   }
 }
