@@ -240,9 +240,15 @@ These are secondary effects for later implementation. Note: twist during deploym
 
 | Input | DOF | Effect |
 |-------|-----|--------|
-| Left stick Y | $\delta_\theta$ | Pitch pendulum (fore/aft swing) |
 | Left stick X | $\delta_\phi$ | Lateral weight shift (harness geometry) |
-| Face button (hold) | $\delta_\psi$ | Counter-torque (twist recovery) |
+| Right stick X | $\delta_\psi$ | Twist recovery torque (direct yaw input) |
+
+Pitch pendulum ($\delta_\theta$) has **no gamepad input** — it is a freely swinging pendulum from the riser confluence. The pilot cannot directly control fore/aft swing.
+
+**Twist recovery design:** Right stick X applies direct torque in the twist DOF. The input torque should be:
+- **Weak relative to $k_\psi$ in normal flight** — pushing the stick at full span should produce negligible twist (a few degrees at most)
+- **Strong enough to overcome damping in line twists** — when $|\delta_\psi| > 90°$ and the sinusoidal restoring force is dropping off, stick input provides the torque needed to kick back under 90° where the natural restoring force takes over
+- Scale: `TWIST_INPUT_TORQUE` ≪ $k_\psi$ (tunable, start at ~10% of $k_\psi$)
 
 For canopy: weight shift and twist recovery complement brake/riser inputs.
 For wingsuit: lateral weight shift maps to existing roll throttle.
