@@ -151,16 +151,18 @@ function computePilotCouplingDerivatives(
     qDotCanopy,
   )
 
-  // Lateral weight shift — stiff spring
+  // Lateral weight shift — stiff spring + gamepad input
   const lateralDDot = pilotLateralEOM(
     pilotRoll, pilotRollDot,
     pc.lateralSpring, pc.lateralDamp, pc.lateralInertia,
+    pc.lateralInputTorque ?? 0,
   )
 
-  // Line twist — sinusoidal restoring torque
+  // Line twist — sinusoidal restoring torque + gamepad input
   const twistDDot = pilotTwistEOM(
     pilotYaw, pilotYawDot,
     pc.twistStiffness, pc.twistDamp, pc.twistInertia,
+    pc.twistInputTorque ?? 0,
   )
 
   return {

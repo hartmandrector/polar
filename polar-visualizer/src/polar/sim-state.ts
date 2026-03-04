@@ -136,4 +136,8 @@ export interface PilotCouplingConfig {
   twistStiffness: number // k_ψ [N·m] — line set torsional stiffness
   twistDamp: number      // c_ψ [N·m·s/rad]
   twistInertia: number   // I_ψ [kg·m²] about confluence
+
+  // Gamepad input torques (set per frame, not persistent)
+  lateralInputTorque?: number  // τ_input for weight shift [N·m]
+  twistInputTorque?: number    // τ_input for twist recovery [N·m]
 }

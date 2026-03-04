@@ -9,7 +9,7 @@
  * No Three.js dependency — communicates via FlightState.
  */
 
-import type { SimState, SimConfig } from '../polar/sim-state.ts'
+import type { SimState, SimConfig, SimStateExtended, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
 
@@ -23,6 +23,14 @@ const DT = 1 / 200
 
 /** Max physics steps per frame to prevent spiral of death */
 const MAX_STEPS_PER_FRAME = 10
+
+// ─── Pilot Coupling Input Scaling ───────────────────────────────────────────
+
+/** Lateral weight shift input torque scale [N·m] — stiff, tracks instantly */
+const LATERAL_INPUT_SCALE = 50
+
+/** Twist recovery input torque scale [N·m] — weak in normal flight, effective in twists */
+const TWIST_INPUT_SCALE = 2
 
 // ─── Gamepad Input ──────────────────────────────────────────────────────────
 
@@ -89,6 +97,8 @@ export interface CanopyGamepadInput {
   frontRiserRight: number // [0, 1]
   rearRiserLeft: number   // [0, 1]
   rearRiserRight: number  // [0, 1]
+  lateralShift: number    // [-1, +1] — left stick X: weight shift
+  twistInput: number      // [-1, +1] — right stick X: twist recovery
 }
 
 export function readCanopyGamepad(): CanopyGamepadInput | null {
@@ -103,6 +113,11 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
   const leftY  = applyDeadzone(gp.axes[1] ?? 0, DEADZONE)
   const rightY = applyDeadzone(gp.axes[3] ?? 0, DEADZONE)
 
+  // Lateral weight shift: left stick X
+  const leftX  = applyDeadzone(gp.axes[0] ?? 0, DEADZONE)
+  // Twist recovery: right stick X
+  const rightX = applyDeadzone(gp.axes[2] ?? 0, DEADZONE)
+
   // Back (positive Y) → rear riser, forward (negative Y) → front riser
   // not really sure if this is correct but looks right in testing
   return {
@@ -112,6 +127,8 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
     frontRiserRight: Math.max(0, rightY),
     rearRiserLeft:   Math.max(0,  -leftY),   // back = rear riser
     rearRiserRight:  Math.max(0,  -rightY),
+    lateralShift:    leftX,                   // left stick X: weight shift
+    twistInput:      rightX,                  // right stick X: twist recovery
   }
 }
 
@@ -122,7 +139,7 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
  *
  * Maps α/β/airspeed/attitude into the 12-state body velocity + orientation.
  */
-export function flightStateToSimState(fs: FlightState): SimState {
+export function flightStateToSimState(fs: FlightState): SimStateExtended {
   const alpha = fs.alpha_deg * DEG
   const beta  = fs.beta_deg * DEG
   const V     = fs.airspeed
@@ -142,6 +159,13 @@ export function flightStateToSimState(fs: FlightState): SimState {
     p: fs.phiDot_degps   * DEG,
     q: fs.thetaDot_degps * DEG,
     r: fs.psiDot_degps   * DEG,
+    // Pilot coupling — start at equilibrium
+    thetaPilot: 0,
+    thetaPilotDot: 0,
+    pilotRoll: 0,
+    pilotRollDot: 0,
+    pilotYaw: 0,
+    pilotYawDot: 0,
   }
 }
 
@@ -310,6 +334,13 @@ export class SimRunner {
           canopyControlMode: 'brakes' as const,
           canopyLeftHand: gp.brakeLeft,
           canopyRightHand: gp.brakeRight,
+        }
+        // Inject pilot coupling gamepad inputs
+        if (config.pilotCoupling) {
+          config.pilotCoupling.lateralInputTorque =
+            gp.lateralShift * LATERAL_INPUT_SCALE
+          config.pilotCoupling.twistInputTorque =
+            gp.twistInput * TWIST_INPUT_SCALE
         }
       }
     } else {

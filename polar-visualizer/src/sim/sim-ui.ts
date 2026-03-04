@@ -13,7 +13,7 @@
 
 import { SimRunner } from './sim-runner.ts'
 import type { SimRunnerCallbacks } from './sim-runner.ts'
-import type { SimConfig } from '../polar/sim-state.ts'
+import type { SimConfig, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Spherical, Vector3 } from 'three'
 import type { FlightState } from '../ui/controls.ts'
@@ -335,6 +335,52 @@ function toggleSim(ctx: SimUIContext): void {
   }
 }
 
+// ─── Pilot Coupling Defaults ────────────────────────────────────────────────
+
+/**
+ * Build PilotCouplingConfig for the current vehicle.
+ * Returns undefined for non-canopy vehicles (no coupling yet).
+ */
+function buildPilotCoupling(
+  polar: ContinuousPolar,
+  _state: FlightState,
+): PilotCouplingConfig | undefined {
+  // Only canopy vehicles have pilot coupling for now
+  if (polar.type !== 'Canopy') return undefined
+
+  const pilotMass = polar.m * 0.85  // ~85% of system mass is pilot
+  const riserLength = 0.5           // m — riser confluence to pilot CG
+
+  // Pitch pendulum — gravity-restoring
+  const pitchInertia = pilotMass * riserLength * riserLength
+  const pitchSpring = 5     // small additional spring [N·m/rad]
+  const pitchDamp = 2 * Math.sqrt(pitchSpring * pitchInertia) * 0.7  // ~70% critical
+
+  // Lateral — stiff spring (geometric, tracks instantly)
+  const lateralInertia = pilotMass * 0.15 * 0.15  // ~15cm lateral radius
+  const lateralSpring = 200   // stiff [N·m/rad]
+  const lateralDamp = 2 * Math.sqrt(lateralSpring * lateralInertia)  // critical damping
+
+  // Twist — sinusoidal restoring from line geometry
+  const twistInertia = pilotMass * 0.2 * 0.2  // ~20cm twist radius
+  const twistStiffness = 20   // [N·m] — strong in full flight
+  const twistDamp = 2 * Math.sqrt(twistStiffness * twistInertia) * 0.5  // underdamped
+
+  return {
+    riserLength,
+    pilotMass,
+    pitchSpring,
+    pitchDamp,
+    pitchInertia,
+    lateralSpring,
+    lateralDamp,
+    lateralInertia,
+    twistStiffness,
+    twistDamp,
+    twistInertia,
+  }
+}
+
 function startSim(ctx: SimUIContext): void {
   const flightState = ctx.getFlightState()
 
@@ -365,6 +411,7 @@ function startSim(ctx: SimUIContext): void {
         mass: polar.m,
         height: polar.referenceLength,
         rho: state.rho,
+        pilotCoupling: buildPilotCoupling(polar, state),
       }
     },
 
