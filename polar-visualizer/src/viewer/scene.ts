@@ -10,7 +10,7 @@ export interface SceneContext {
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
   controls: OrbitControls
-  gridHelper: THREE.GridHelper
+  gridHelper: THREE.GridHelper | null
   compassLabels: THREE.Group
   bodyAxisLabels: THREE.Group
 }
@@ -48,9 +48,9 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   dirLight2.position.set(-5, 3, -5)
   scene.add(dirLight2)
 
-  // Grid
-  const gridHelper = new THREE.GridHelper(20, 20, 0x333355, 0x222244)
-  scene.add(gridHelper)
+  // Grid (disabled — trail provides motion context, grid adds clutter)
+  // const gridHelper = new THREE.GridHelper(20, 20, 0x333355, 0x222244)
+  // scene.add(gridHelper)
 
   // Axes helper (small)
   // Axis labels only — AxesHelper removed (labels sufficient)
@@ -65,7 +65,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   bodyAxisLabels.visible = false
   scene.add(bodyAxisLabels)
 
-  return { scene, camera, renderer, controls, gridHelper, compassLabels, bodyAxisLabels }
+  return { scene, camera, renderer, controls, gridHelper: null, compassLabels, bodyAxisLabels }
 }
 
 // ─── Compass Labels ──────────────────────────────────────────────────────────

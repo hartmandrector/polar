@@ -13,9 +13,11 @@
 
 import { SimRunner } from './sim-runner.ts'
 import type { SimRunnerCallbacks } from './sim-runner.ts'
+import { TrailRenderer } from '../viewer/trail.ts'
 import type { SimConfig, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Spherical, Vector3 } from 'three'
+import type * as THREE from 'three'
 import type { FlightState } from '../ui/controls.ts'
 import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
 import type { InertiaComponents } from '../polar/inertia.ts'
@@ -37,11 +39,14 @@ export interface SimUIContext {
   buildControls: (state: FlightState) => SegmentControls
   /** Push updated FlightState to the viewer */
   updateVisualization: (state: FlightState) => void
+  /** Get the Three.js scene for trail rendering */
+  getScene: () => THREE.Scene
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let runner: SimRunner | null = null
+let trail: TrailRenderer | null = null
 let panelEl: HTMLDivElement | null = null
 let buttonEl: HTMLButtonElement | null = null
 let hudUpdateInterval = 0
@@ -433,11 +438,21 @@ function startSim(ctx: SimUIContext): void {
   runner = new SimRunner(flightState, callbacks)
   runner.start()
 
+  // Create trail renderer (reset on each sim start)
+  if (trail) trail.dispose()
+  trail = new TrailRenderer(ctx.getScene())
   // HUD update at 10 Hz
   const polar = ctx.getPolar()
   const modelType = polar.type ?? ''
   hudUpdateInterval = window.setInterval(() => {
-    if (runner) updateHUD(runner, modelType)
+    if (runner) {
+      updateHUD(runner, modelType)
+      if (trail) {
+        const inertial = ctx.getFlightState().frameMode === 'inertial'
+        trail.visible = inertial
+        if (inertial) trail.update(runner.state)
+      }
+    }
   }, 100)
 
   if (buttonEl) {
@@ -450,6 +465,10 @@ function stopSim(): void {
   if (runner) {
     runner.stop()
     runner = null
+  }
+  if (trail) {
+    trail.dispose()
+    trail = null
   }
   if (hudUpdateInterval) {
     clearInterval(hudUpdateInterval)

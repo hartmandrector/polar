@@ -845,6 +845,7 @@ async function init(): Promise<void> {
     getInertia: () => currentInertia,
     buildControls: buildSegmentControls,
     updateVisualization,
+    getScene: () => sceneCtx.scene,
   })
 
   // Render loop
