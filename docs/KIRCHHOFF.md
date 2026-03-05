@@ -277,26 +277,98 @@ $$\beta_{\text{local}} = -\alpha \sin\theta + \beta \cos\theta$$
 
 This captures how a rolled panel sees a reduced effective α and gains a component of sideslip.
 
-### 6.3  Riser → α Offset
+### 6.3  Riser Controls
 
-Front and rear riser inputs create an angle of attack change:
+Front and rear riser inputs apply five independent effects per cell.  All effects scale by `riserSensitivity` (1.0 for all current cells).
 
-$$\Delta\alpha_{\text{riser}} = (-\text{frontRiser} + \text{rearRiser}) \cdot \text{ALPHA MAX RISER} \cdot \text{riserSensitivity}$$
+**α offset** — front risers decrease AoA, rear risers increase:
 
-Default `ALPHA_MAX_RISER = 10°`.  Front riser decreases α (steeper dive), rear riser increases α (flatter glide).
+$$\Delta\alpha_{\text{riser}} = (-\text{frontRiser} \cdot \text{ALPHA MAX FRONT RISER} + \text{rearRiser} \cdot \text{ALPHA MAX RISER}) \cdot \text{riserSensitivity}$$
 
-### 6.4  Brake → δ and α Coupling
+| Constant | Default | Effect |
+|----------|---------|--------|
+| `ALPHA_MAX_FRONT_RISER` | 6° | Front riser α decrease (steeper dive) |
+| `ALPHA_MAX_RISER` | 6° | Rear riser α increase (flatter glide) |
 
-Brake input produces two effects:
+**Force vector tilt (cellPitchRad)** — geometric rotation of the entire force vector in the body x-z plane.  This is the primary asymmetric turn mechanism:
 
-1. **Camber change (δ):**  `deltaEffective = brakeInput * brakeSensitivity` — fed through the SymmetricControl derivatives (§5).
-2. **Cross-coupling to α:**  `deltaAlphaBrake = brakeInput * brakeSensitivity * BRAKE_ALPHA_COUPLING_DEG` — pulling brakes physically rotates the TE downward, slightly increasing effective AoA.  Default `BRAKE_ALPHA_COUPLING_DEG = 2.5°`.
+$$\text{riserPitch} = (\text{frontRiser} \cdot \text{RISER PITCH MAX RAD} - \text{rearRiser} \cdot \text{REAR RISER PITCH MAX RAD}) \cdot \text{riserSensitivity}$$
 
-The center cell has zero brake sensitivity — no brake lines reach it.
+| Constant | Default | Effect |
+|----------|---------|--------|
+| `RISER_PITCH_MAX_RAD` | −0.35 (~20° nose-up) | Front riser tilts lift backward → drag asymmetry → yaw toward input |
+| `REAR_RISER_PITCH_MAX_RAD` | 0.06 (~3.4° nose-up) | Rear riser tilts lift backward (small — AoA does the work) |
+
+Note: front riser tilt is **negative** (nose-up).  Positive (nose-down) tilt was tested but caused instability.  The nose-up tilt creates yaw through drag asymmetry on the pulled side rather than thrust.
+
+**Pitching moment (CM)** — direct system trim shift, independent of per-cell α:
+
+$$C_{M,\text{riser}} = \text{frontRiser} \cdot \text{FRONT RISER CM} + \text{rearRiser} \cdot \text{REAR RISER CM}$$
+
+| Constant | Default | Effect |
+|----------|---------|--------|
+| `FRONT_RISER_CM` | −0.15 | Nose-down → system trims to lower AoA → steeper/faster |
+| `REAR_RISER_CM` | +0.10 | Nose-up → system trims to higher AoA → flatter/slower |
+
+These are intentionally large for tuning range.  The CM is what makes front risers produce the speed increase characteristic of a real front-riser dive — without it, the α decrease alone gets canceled by the system seeking a new lift equilibrium.
+
+**Drag bump** — parasitic drag from riser-induced leading/trailing edge distortion:
+
+$$\Delta C_{D_0,\text{riser}} = \text{frontRiser} \cdot \text{FRONT RISER CD BUMP} + \text{rearRiser} \cdot \text{REAR RISER CD BUMP}$$
+
+Currently both bumps are set to 0 (disabled).
+
+### 6.4  Brake Controls
+
+Brake input produces five effects on the parent cell.  Each cell routes brake input by side: left cells use `brakeLeft`, right cells use `brakeRight`.  The center cell receives partial coupling through fabric tension:
+
+$$\text{brakeInput}_{\text{center}} = \frac{\text{brakeLeft} + \text{brakeRight}}{2} \times 0.5$$
+
+Each effect scales by `brakeSensitivity` (0 for center, 0.4–1.0 for outer cells).
+
+**Camber change (δ)** — fed through the SymmetricControl derivatives (§5):
+
+$$\delta_{\text{eff}} = \text{brakeInput} \cdot \text{brakeSensitivity}$$
+
+This drives `d_alpha_0` (−16), `d_cd_0` (0.04), `d_cl_alpha` (1.2), and `d_k` (0.02) — producing increased lift and moderate drag at full brake.
+
+**α cross-coupling** — trailing edge deflection physically rotates the TE downward:
+
+$$\Delta\alpha_{\text{brake}} = \text{brakeInput} \cdot \text{brakeSensitivity} \cdot \text{BRAKE ALPHA COUPLING DEG}$$
+
+Default `BRAKE_ALPHA_COUPLING_DEG = 2.5°`.
+
+**Force vector tilt** — same geometric mechanism as risers, nose-up direction:
+
+$$\text{brakePitch} = -\text{brakeInput} \cdot \text{brakeSensitivity} \cdot \text{BRAKE PITCH MAX RAD}$$
+
+Default `BRAKE_PITCH_MAX_RAD = 0.14` (~8°).  Creates asymmetric drag on the braked side → yaw toward input.
+
+**Drag bump** — trailing edge distortion parasitic drag:
+
+$$\Delta C_{D_0,\text{brake}} = \text{brakeInput} \cdot \text{brakeSensitivity} \cdot \text{BRAKE CD BUMP}$$
+
+Default `BRAKE_CD_BUMP = 0.12`.  Reinforces asymmetric yaw from the tilt.
+
+**Combined cell pitch** — riser and brake tilt are summed:
+
+$$\text{cellPitchRad} = \text{riserPitch} + \text{brakePitch}$$
+
+This rotates the entire force vector (lift + drag) in the body x-z plane:
+
+$$F_x' = F_x \cos\delta - F_z \sin\delta, \quad F_z' = F_x \sin\delta + F_z \cos\delta$$
+
+See `CANOPY-CONTROLS.md` for the full mechanism catalog and tuning history.
 
 ### 6.5  Final Evaluation
 
 $$\text{coeffs} = \texttt{getAllCoefficients}(\alpha_{\text{local}} + \Delta\alpha_{\text{riser}} + \Delta\alpha_{\text{brake}},\; \beta_{\text{local}},\; \delta_{\text{eff}},\; \text{evalPolar})$$
+
+### 6.6  Visualization
+
+Canopy acrobatics — combined riser and brake inputs with force vector tilt, pilot coupling, and flight trail:
+
+![Canopy acro](../polar-visualizer/docs/gifs/ACROBASE-ibexul.gif)
 
 ---
 
@@ -432,6 +504,14 @@ The effective dirty parameter for each wingsuit segment combines:
 $$\text{dirty}_{\text{eff}} = \text{clamp}\!\Big(\text{dirty}_{\text{base}} + \text{yawT} \cdot \text{YAW DIRTY COUPLING} \cdot \text{sideSign} + |\text{rollT}| \cdot \text{ROLL DIRTY COUPLING},\; 0,\; 1\Big)$$
 
 This is passed to `getAllCoefficients()` as the dirty parameter, which applies the dirty SymmetricControl derivatives to degrade the polar.
+
+### 10.6  Visualization
+
+Wingsuit throttle controls — pitch, roll, and yaw response with force and moment vectors:
+
+| Pitch | Roll | Yaw |
+|:-----:|:----:|:---:|
+| ![Pitch throttle](../polar-visualizer/docs/gifs/kirchhoff-wingsuit-throttles-pitch.gif) | ![Roll throttle](../polar-visualizer/docs/gifs/kirchhoff-wingsuit-throttles-roll.gif) | ![Yaw throttle](../polar-visualizer/docs/gifs/kirchhoff-wingsuit-throttles-yaw.gif) |
 
 ---
 
