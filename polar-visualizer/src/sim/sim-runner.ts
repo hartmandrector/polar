@@ -118,15 +118,15 @@ export function readCanopyGamepad(): CanopyGamepadInput | null {
   // Twist recovery: right stick X
   const rightX = applyDeadzone(gp.axes[2] ?? 0, DEADZONE)
 
-  // Back (positive Y) → rear riser, forward (negative Y) → front riser
-  // not really sure if this is correct but looks right in testing
+  // Pull back (positive Y) = front risers (reach forward, pull A-lines down)
+  // Push forward (negative Y) = rear risers (reach back, pull D-lines down)
   return {
     brakeLeft,
     brakeRight,
-    frontRiserLeft:  Math.max(0, leftY),   // forward = front riser
-    frontRiserRight: Math.max(0, rightY),
-    rearRiserLeft:   Math.max(0,  -leftY),   // back = rear riser
-    rearRiserRight:  Math.max(0,  -rightY),
+    frontRiserLeft:  Math.max(0, -leftY),   // push forward = front riser
+    frontRiserRight: Math.max(0, -rightY),
+    rearRiserLeft:   Math.max(0,  leftY),   // pull back = rear riser
+    rearRiserRight:  Math.max(0,  rightY),
     lateralShift:    leftX,                   // left stick X: weight shift
     twistInput:      rightX,                  // right stick X: twist recovery
   }

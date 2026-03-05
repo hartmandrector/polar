@@ -889,7 +889,7 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   alpha_0: -3,
 
   // Drag model — cell-only, parasitic bodies handle the rest
-  cd_0: 0.035,
+  cd_0: 0.055,
   k: 0.04,
 
   // Separated flow — same as lumped
@@ -927,10 +927,10 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   // Brake control derivatives (per-cell — same as lumped, applied via δ)
   controls: {
     brake: {
-      d_alpha_0: -5,
-      d_cd_0: 0.09,
-      d_cl_alpha: 0.35,
-      d_k: 0.03,
+      d_alpha_0: -16,
+      d_cd_0: 0.04,
+      d_cl_alpha: 1.2,
+      d_k: 0.02,
       d_alpha_stall_fwd: -4,
       cm_delta: -0.04,
     }
@@ -959,24 +959,24 @@ const BRAKE_FLAP_POLAR: ContinuousPolar = {
   name: 'Brake Flap',
   type: 'Canopy',
 
-  // Lift model — fabric trailing edge, lower efficiency than main airfoil
-  cl_alpha: 4.0,        // ~thin flat plate theory, fabric efficiency loss
+  // Lift model — fabric trailing edge, low efficiency
+  cl_alpha: 2.0,        // loose fabric panel, well below thin plate theory
   alpha_0: 0,           // flap neutral when aligned with local flow
 
-  // Drag model — clean fabric at low deflection, low parasitic drag
-  cd_0: 0.02,
-  k: 0.05,              // flap in parent cell's flowfield — efficient lift production
+  // Drag model — deflected fabric has significant base drag
+  cd_0: 0.06,
+  k: 0.08,              // induced drag penalty from inefficient lift
 
   // Separated flow — fabric plate, high normal force
   cd_n: 1.2,
   cd_n_lateral: 0.8,
 
-  // Stall — fabric flap stays attached over the full deflection range.
-  // At full brake (50° deflection + ~12° α_local = 62°), the flap must
-  // still be in attached flow to produce the lift needed for landing flare.
-  // Real fabric trailing edges don't hard-stall like rigid airfoils.
-  alpha_stall_fwd: 70,
-  s1_fwd: 8,
+  // Stall — fabric separates early. At low brake (~10-15° deflection)
+  // the flap produces some lift. Beyond that, Kirchhoff transitions to
+  // separated flow where cd_n dominates — mostly drag, little lift.
+  // This is the key: high brake = drag plate, not lifting surface.
+  alpha_stall_fwd: 18,
+  s1_fwd: 5,
   alpha_stall_back: -5,
   s1_back: 3,
 

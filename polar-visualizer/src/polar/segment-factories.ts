@@ -23,26 +23,47 @@ const DEG2RAD = Math.PI / 180
 export interface ControlConstants {
   /** Maximum α change from full riser input [deg] */
   ALPHA_MAX_RISER: number
+  /** Maximum α shift from full front riser input [deg] — separate from rear for independent tuning */
+  ALPHA_MAX_FRONT_RISER: number
+  /** CD₀ increase per unit rear riser input — TE loading drag */
+  REAR_RISER_CD_BUMP: number
   /** Brake → α cross-coupling [deg per unit brake × sensitivity] */
   BRAKE_ALPHA_COUPLING_DEG: number
   /** Maximum trailing-edge deflection angle at full brake input [deg] */
   MAX_FLAP_DEFLECTION_DEG: number
   /** Maximum additional arc roll added to a flap segment at full brake [deg] */
   MAX_FLAP_ROLL_INCREMENT_DEG: number
+  /** Pitching moment from full front riser — nose down (negative) */
+  FRONT_RISER_CM: number
+  /** Pitching moment from full rear riser — nose up (positive) */
+  REAR_RISER_CM: number
   /** CD₀ increase per unit front riser input — leading-edge distortion drag */
   FRONT_RISER_CD_BUMP: number
   /** Maximum geometric cell pitch from full riser input [rad] — tilts force vector */
   RISER_PITCH_MAX_RAD: number
+  /** Maximum geometric cell pitch from full rear riser input [rad] — less tilt than fronts */
+  REAR_RISER_PITCH_MAX_RAD: number
+  /** Maximum geometric cell pitch from full brake input [rad] — TE down = nose up (negative) */
+  BRAKE_PITCH_MAX_RAD: number
+  /** CD₀ increase per unit brake input — TE distortion drag */
+  BRAKE_CD_BUMP: number
 }
 
 /** Default control constants — current Ibexul tuning. */
 export const DEFAULT_CONSTANTS: ControlConstants = {
-  ALPHA_MAX_RISER: 10,
+  ALPHA_MAX_RISER: 6,
+  ALPHA_MAX_FRONT_RISER: 6,
+  REAR_RISER_CD_BUMP: 0,
   BRAKE_ALPHA_COUPLING_DEG: 2.5,
   MAX_FLAP_DEFLECTION_DEG: 50,
   MAX_FLAP_ROLL_INCREMENT_DEG: 20,
-  FRONT_RISER_CD_BUMP: 0.15,
-  RISER_PITCH_MAX_RAD: 0.08,  // ~4.6° at full input — 16" pull on ~18ft lines
+  FRONT_RISER_CM: -0.15,
+  REAR_RISER_CM: 0.10,
+  FRONT_RISER_CD_BUMP: 0,
+  RISER_PITCH_MAX_RAD: 0.15,  // ~8.6° front riser tilt
+  REAR_RISER_PITCH_MAX_RAD: 0.06,  // ~3.4° rear riser tilt
+  BRAKE_PITCH_MAX_RAD: 0.06,  // ~3.4° at full brake — TE pull is shorter lever than riser
+  BRAKE_CD_BUMP: 0.08,        // TE distortion drag — less than front riser LE distortion
 }
 
 // ─── Deployment Constants ────────────────────────────────────────────────────
@@ -170,18 +191,14 @@ export function makeCanopyCellSegment(
         frontRiser = controls.frontRiserLeft
         rearRiser = controls.rearRiserLeft
       }
-      const deltaAlphaRiser = (-frontRiser + rearRiser) * ctrl.ALPHA_MAX_RISER * riserSensitivity
+      const deltaAlphaRiser = (-frontRiser * ctrl.ALPHA_MAX_FRONT_RISER + rearRiser * ctrl.ALPHA_MAX_RISER) * riserSensitivity
       const alphaEffective = alphaLocal + deltaAlphaRiser
-
-      // ── Riser → geometric cell pitch (tilts force vector in body x-z plane) ──
-      // Front riser: positive pitch (nose down) → lift tilts forward → yaw toward input
-      // Rear riser: negative pitch (nose up) → lift tilts backward → yaw toward input
-      const cellPitchRad = (frontRiser - rearRiser) * ctrl.RISER_PITCH_MAX_RAD * riserSensitivity
 
       // ── Brake → δ camber change ──
       let brakeInput: number
       if (side === 'center') {
-        brakeInput = 0  // center cell: no brake lines reach it
+        // Center cell gets partial brake coupling through fabric tension / spanwise continuity
+        brakeInput = (controls.brakeLeft + controls.brakeRight) / 2 * 0.5
       } else if (side === 'right') {
         brakeInput = controls.brakeRight
       } else {
@@ -189,29 +206,43 @@ export function makeCanopyCellSegment(
       }
       const deltaEffective = brakeInput * brakeSensitivity
 
+      // ── Geometric cell pitch (tilts force vector in body x-z plane) ──
+      // Front riser: positive pitch (nose down) → lift tilts forward → yaw toward input
+      // Rear riser: negative pitch (nose up) → lift tilts backward → yaw toward input
+      // Brake: negative pitch (nose up) — TE pulled down acts like rear riser
+      const riserPitch = (frontRiser * ctrl.RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD) * riserSensitivity
+      const brakePitch = -brakeInput * brakeSensitivity * ctrl.BRAKE_PITCH_MAX_RAD
+      const cellPitchRad = riserPitch + brakePitch
+
       // ── Brake → α cross-coupling ──
       // Pulling brakes physically pulls the canopy TE down, slightly
       // increasing the effective AoA of the main cell body.
       const deltaAlphaBrake = brakeInput * brakeSensitivity * ctrl.BRAKE_ALPHA_COUPLING_DEG
 
       // ── Front riser → drag increase (leading-edge distortion) ──
-      // Pulling a front riser distorts the leading edge, adding parasitic drag.
-      // Asymmetric drag across the span creates a natural yaw moment toward
-      // the pulled side — this is the primary turn mechanism for front risers.
-      const riserDragBump = frontRiser * ctrl.FRONT_RISER_CD_BUMP
+      // ── Rear riser → drag increase (trailing-edge loading) ──
+      // ── Brake → drag increase (trailing-edge distortion) ──
+      const riserDragBump = frontRiser * ctrl.FRONT_RISER_CD_BUMP + rearRiser * ctrl.REAR_RISER_CD_BUMP
+      const brakeDragBump = brakeInput * brakeSensitivity * ctrl.BRAKE_CD_BUMP
+      const totalDragBump = riserDragBump + brakeDragBump
 
       // ── Evaluate Kirchhoff model at (α_effective + brake α coupling, β_local, δ_effective) ──
       // During deployment, morph polar coefficients to model uninflated fabric
       const evalPolar = d < 1 ? {
         ...polar,
-        cd_0: (polar.cd_0 + riserDragBump) * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
+        cd_0: (polar.cd_0 + totalDragBump) * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
         cl_alpha: polar.cl_alpha * (DEPLOY_CL_ALPHA_FRACTION + (1 - DEPLOY_CL_ALPHA_FRACTION) * d),
         cd_n: polar.cd_n * (DEPLOY_CD_N_MULTIPLIER + (1 - DEPLOY_CD_N_MULTIPLIER) * d),
         alpha_stall_fwd: polar.alpha_stall_fwd + DEPLOY_STALL_FWD_OFFSET * (1 - d),
         s1_fwd: polar.s1_fwd * (DEPLOY_S1_FWD_MULTIPLIER + (1 - DEPLOY_S1_FWD_MULTIPLIER) * d),
-      } : (riserDragBump > 0 ? { ...polar, cd_0: polar.cd_0 + riserDragBump } : polar)
+      } : (totalDragBump > 0 ? { ...polar, cd_0: polar.cd_0 + totalDragBump } : polar)
       const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, evalPolar)
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp, cellPitchRad }
+
+      // ── Riser pitching moment — direct trim shift ──
+      const riserCM = frontRiser * ctrl.FRONT_RISER_CM * riserSensitivity
+                    + rearRiser * ctrl.REAR_RISER_CM * riserSensitivity
+
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm + riserCM, cp: c.cp, cellPitchRad }
     },
   }
 }
@@ -563,7 +594,7 @@ export function makeBrakeFlapSegment(
       // ── Riser → geometric cell pitch (flap inherits parent cell's tilt) ──
       const frontRiser = side === 'right' ? controls.frontRiserRight : controls.frontRiserLeft
       const rearRiser = side === 'right' ? controls.rearRiserRight : controls.rearRiserLeft
-      const cellPitchRad = (frontRiser - rearRiser) * ctrl.RISER_PITCH_MAX_RAD
+      const cellPitchRad = (frontRiser * ctrl.RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD)
 
       // ── Variable area and chord ──
       // Flap area grows from 0 to maxFlapS as brake is applied
