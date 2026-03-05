@@ -60,10 +60,10 @@ export const DEFAULT_CONSTANTS: ControlConstants = {
   FRONT_RISER_CM: -0.15,
   REAR_RISER_CM: 0.10,
   FRONT_RISER_CD_BUMP: 0,
-  RISER_PITCH_MAX_RAD: 0.15,  // ~8.6° front riser tilt
+  RISER_PITCH_MAX_RAD: -0.35,  // ~10.9° front riser tilt
   REAR_RISER_PITCH_MAX_RAD: 0.06,  // ~3.4° rear riser tilt
-  BRAKE_PITCH_MAX_RAD: 0.06,  // ~3.4° at full brake — TE pull is shorter lever than riser
-  BRAKE_CD_BUMP: 0.08,        // TE distortion drag — less than front riser LE distortion
+  BRAKE_PITCH_MAX_RAD: 0.14,  // ~8° at full brake
+  BRAKE_CD_BUMP: 0.12,        // TE distortion drag — asymmetric drag reinforces yaw
 }
 
 // ─── Deployment Constants ────────────────────────────────────────────────────
