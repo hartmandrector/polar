@@ -57,7 +57,7 @@ Wait for the log line:
 The gateway requires an auth token. Open the Simple Browser at:
 
 ```
-http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877
+http://127.0.0.1:18789/?token=<your-token>
 ```
 
 **Do not** open `http://127.0.0.1:18789/` without the token — it will fail with "unauthorized: gateway token missing".
@@ -77,7 +77,7 @@ When the user asks to "start OpenClaw" or "connect to OpenClaw", do exactly this
    wsl -d Ubuntu -- bash -lc "/usr/bin/node /home/hartmanr/openclaw/dist/index.js gateway --port 18789"
    ```
 2. Wait a few seconds, then check the terminal output for `[gateway] listening on ws://127.0.0.1:18789`.
-3. Open Simple Browser at `http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877`
+3. Open Simple Browser at `http://127.0.0.1:18789/?token=<your-token>`
 4. Done.
 
 **Do not:**
@@ -93,7 +93,7 @@ When the user asks to "start OpenClaw" or "connect to OpenClaw", do exactly this
 ### Dashboard URL (bookmark this)
 
 ```
-http://127.0.0.1:18789/?token=4c92d5b0d66f7b62143f292948dee5f9674880d0b9022877
+http://127.0.0.1:18789/?token=<your-token>
 ```
 
 ### Useful Commands (WSL terminal)

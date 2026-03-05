@@ -19,3 +19,14 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# OpenClaw private files
+.openclaw/
+SOUL.md
+USER.md
+IDENTITY.md
+MEMORY.md
+memory.md
+memory/
+HEARTBEAT.md
+BOOTSTRAP.md
