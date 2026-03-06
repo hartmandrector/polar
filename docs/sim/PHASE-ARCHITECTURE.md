@@ -150,12 +150,15 @@ The sim panel expands into a nested visualization — outer scenario wrapping ph
 │                                                  │
 │  ┌─ Phase: Freefall ─────────────────────────┐  │
 │  │  t: 14.2s  │  V: 52 m/s  │  α: 38°       │  │
-│  │  Segments: 6 (wingsuit)                    │  │
-│  │  Controls: pitch/roll/yaw                  │  │
-│  │  Next: deployment (button or auto)         │  │
+│  │                                            │  │
+│  │  ┌─ Gamepad ───────────┐  Segments: 6     │  │
+│  │  │  [SVG stick/trigger │  Next: PC toss   │  │
+│  │  │   visualization]    │  (A button)      │  │
+│  │  │  pitch/roll/yaw     │                  │  │
+│  │  └─────────────────────┘                  │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
-│  Trail: 287 pts  │  Alt: 458m AGL               │
+│  Alt: 458m AGL  │  Trail: 287 pts               │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -171,14 +174,48 @@ During deployment, the inner box expands to show sub-states:
 └──────────────────────────────────────────────┘
 ```
 
+During canopy flight with a malfunction:
+
+```
+┌─ Phase: Canopy ──────────────────────────────┐
+│  ⚠ LINE TWIST: 270° right                    │
+│  Recovery: spread risers + kick left          │
+│                                               │
+│  ┌─ Gamepad ───────────┐  GR: 2.8  V: 14   │
+│  │  [SVG stick/trigger │  Brakes: L42% R0%  │
+│  │   visualization]    │  Twist rate: -15°/s│
+│  │  risers/brakes/wt   │                    │
+│  └─────────────────────┘                    │
+│  Next: cutaway (X) or ride it out            │
+└──────────────────────────────────────────────┘
+```
+
+The gamepad visualization (existing SVG stick circles + trigger bars) moves into the phase box. It automatically switches layout when the phase changes — wingsuit sticks become canopy riser/brake controls. The current HUD telemetry (speed, α, rates) also lives here.
+
+### Scenario-Level Context
+
+The outer scenario box provides persistent awareness across all phases:
+
+| Field | Purpose |
+|-------|---------|
+| **Alt AGL** | Altitude above ground — critical for BASE, useful for all |
+| **Δh / Δd from exit** | Vertical drop and horizontal distance from jump point |
+| **Trail** | Point count (visual confirmation trail is recording) |
+| **Time** | Total scenario elapsed time |
+
+Future scenario-level features (not yet planned for implementation):
+- **Landing area** — target zone rendered on ground plane with distance/bearing
+- **Terrain collision** — ground contact detection for actual landing simulation
+- **Wind field** — ambient wind affecting all phases
+
 ### Telemetry Per Phase
 
 | Phase | Key Readouts |
 |-------|-------------|
 | **Prelaunch** | Altitude, wind, countdown |
-| **Freefall** | Δh, Δd from exit, speed, α, glide ratio, time |
-| **Deployment** | Sub-state, deploy %, g-force, snatch load, opening time |
-| **Canopy** | Altitude AGL, groundspeed, glide ratio, brake %, riser input |
+| **Freefall** | Δh, Δd from exit, speed, α, glide ratio, time, gamepad (pitch/roll/yaw) |
+| **Deployment** | Sub-state, deploy %, g-force, snatch load, opening time, malfunctions |
+| **Canopy** | Altitude AGL, groundspeed, glide ratio, brake %, riser input, gamepad (risers/brakes/wt), malfunctions (line twist °, recovery guidance) |
 | **Landed** | Total flight time, max speed, max g, distance from exit |
 
 ### Connection to Flight Computer / GPS Work
