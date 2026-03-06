@@ -111,12 +111,67 @@ Example scenarios:
 
 ## Build Order
 
-1. **Phase FSM shell** — state machine above SimRunner, manual phase switching via gamepad button
-2. **Pilot chute rigid body** — position/velocity/drag, throw from hand, trajectory rendering
-3. **Bridle tension chain** — multi-segment extraction driven by pilot chute drag
-4. **Deployment timing from aero** — connect pilot chute drag → extraction speed → inflation rate
-5. **Vehicle assembly swap** — wingsuit model → canopy+pilot model transition during deployment
-6. **Continuous mode toggle** — switch between debug (manual sliders) and continuous (aero-driven)
-7. **Scenario system** — data-driven initial conditions and phase sequences
+1. **Phase FSM shell** — state machine above SimRunner, UI-driven phase control (not gamepad)
+2. **FSM status panel** — nested scenario/phase/sub-state display with telemetry
+3. **Remove LB/RB vehicle cycling** — replace with scenario/phase selection in UI
+4. **Pilot chute rigid body** — position/velocity/drag, throw from hand, trajectory rendering
+5. **Bridle tension chain** — multi-segment extraction driven by pilot chute drag
+6. **Deployment timing from aero** — connect pilot chute drag → extraction speed → inflation rate
+7. **Vehicle assembly swap** — wingsuit model → canopy+pilot model transition during deployment
+8. **Continuous mode toggle** — switch between debug (manual sliders) and continuous (aero-driven)
+9. **Scenario system** — data-driven initial conditions and phase sequences
 
-Steps 1-2 are next. Everything else builds on them.
+Steps 1-3 are next. Everything else builds on them.
+
+## UI: Phase Control & Status Panel
+
+**Remove LB/RB gamepad vehicle cycling.** It's dangerous with a running sim (can crash on unbuilt vehicles like airplane/slick) and opaque about what's happening. Vehicle/phase selection belongs in the UI where it's explicit and safe.
+
+### Nested Status Display
+
+The sim panel expands into a nested visualization — outer scenario wrapping phase wrapping sub-state:
+
+```
+┌─ Scenario: BASE Wingsuit ──────────────────────┐
+│  Exit: 800m AGL  │  Δh: -342m  │  Δd: 1.2 km  │
+│                                                  │
+│  ┌─ Phase: Freefall ─────────────────────────┐  │
+│  │  t: 14.2s  │  V: 52 m/s  │  α: 38°       │  │
+│  │  Segments: 6 (wingsuit)                    │  │
+│  │  Controls: pitch/roll/yaw                  │  │
+│  │  Next: deployment (button or auto)         │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+│  Trail: 287 pts  │  Alt: 458m AGL               │
+└──────────────────────────────────────────────────┘
+```
+
+During deployment, the inner box expands to show sub-states:
+
+```
+┌─ Phase: Deployment ──────────────────────────┐
+│  ┌─ Sub: canopy inflation ────────────────┐  │
+│  │  deploy: 0.43  │  snatch: 2.1g         │  │
+│  │  pilot chute: stable  │  bridle: taut  │  │
+│  └────────────────────────────────────────┘  │
+│  Elapsed: 3.2s  │  Opening: 43%              │
+└──────────────────────────────────────────────┘
+```
+
+### Telemetry Per Phase
+
+| Phase | Key Readouts |
+|-------|-------------|
+| **Prelaunch** | Altitude, wind, countdown |
+| **Freefall** | Δh, Δd from exit, speed, α, glide ratio, time |
+| **Deployment** | Sub-state, deploy %, g-force, snatch load, opening time |
+| **Canopy** | Altitude AGL, groundspeed, glide ratio, brake %, riser input |
+| **Landed** | Total flight time, max speed, max g, distance from exit |
+
+### Connection to Flight Computer / GPS Work
+
+The phase FSM maps directly to the GPS flight computer's dynamic model switching problem:
+- Sensor data → state estimation → phase detection → appropriate nav filter
+- Same FSM concept, different domain: sim uses physics to drive phases, GPS uses sensor fusion to detect them
+- Phase detection heuristics (freefall vs deployment vs canopy) are shared knowledge between both systems
+
