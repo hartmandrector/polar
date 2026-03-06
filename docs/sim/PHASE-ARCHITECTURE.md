@@ -127,6 +127,19 @@ Steps 1-3 are next. Everything else builds on them.
 
 **Remove LB/RB gamepad vehicle cycling.** It's dangerous with a running sim (can crash on unbuilt vehicles like airplane/slick) and opaque about what's happening. Vehicle/phase selection belongs in the UI where it's explicit and safe.
 
+### Gamepad Events vs FSM State
+
+The gamepad triggers **events**, not state changes. The FSM transitions based on **physics**.
+
+| Button | Event | FSM Effect |
+|--------|-------|------------|
+| **Start** (9) | Start/stop scenario | Launches current scenario or halts sim (existing behavior) |
+| **A** (0) | Pilot chute toss | Spawns pilot chute body with throw velocity. FSM stays in freefall until line stretch detected by physics. |
+
+The A button doesn't force a phase transition — it injects a physical object into the sim. The deployment phase begins when the bridle reaches full extension and canopy bag extraction starts. This is an aero-driven transition, not a button-driven one.
+
+Other buttons (X, Y, B) reserved for scenario-context actions (cutaway, mode selection, etc.) — to be defined per scenario as needed.
+
 ### Nested Status Display
 
 The sim panel expands into a nested visualization — outer scenario wrapping phase wrapping sub-state:
