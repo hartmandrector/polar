@@ -70,3 +70,34 @@ When locked: `thetaPilot` = slider value, no integration.
 3. Wire the three-way check into the integration loop
 4. Document gamepad mapping in [GAMEPAD.md](GAMEPAD.md) if applicable
 5. Update this doc
+
+## Phase Integration
+
+Each [simulation phase](PHASE-ARCHITECTURE.md) defines a constraint mode preset — which DOFs are simulated, locked, or gamepad-controlled. The FSM transitions between presets when changing phases.
+
+### Mode Presets Per Phase
+
+| DOF | Prelaunch | Freefall (wingsuit) | Deployment | Canopy |
+|-----|-----------|-------------------|------------|--------|
+| Translation (u,v,w) | Locked (0) | Simulated | Simulated | Simulated |
+| Rotation (p,q,r) | Locked (0) | Simulated | Simulated | Simulated |
+| Euler (φ,θ,ψ) | Locked | Simulated | Simulated | Simulated |
+| Pitch throttle | Locked | **Gamepad** | Locked (0) | — |
+| Roll throttle | Locked | **Gamepad** | Locked (0) | — |
+| Yaw throttle | Locked | **Gamepad** | Locked (0) | — |
+| Dihedral | Locked | **Gamepad** | Locked | — |
+| Deploy fraction | Locked (0) | Locked (0) | **Simulated** | Locked (1) |
+| Pilot pitch | Locked | Locked | **Simulated** | **Simulated** |
+| Lateral shift | Locked | — | Locked (0) | **Gamepad** |
+| Line twist | Locked | — | **Simulated** | **Gamepad** + Simulated |
+| Brake L/R | — | — | Locked (0) | **Gamepad** |
+| Front riser L/R | — | — | Locked (0) | **Gamepad** |
+| Rear riser L/R | — | — | Locked (0) | **Gamepad** |
+
+Key transitions:
+- **Freefall → Deployment**: Wingsuit throttles lock to 0 (body goes limp). Deploy fraction switches from locked to simulated. Pilot pitch becomes a pendulum.
+- **Deployment → Canopy**: Deploy locks at 1.0. Canopy controls (brakes, risers, weight shift) activate on gamepad. Line twist may carry over from deployment (simulated → gamepad+simulated).
+
+### Debug Override
+
+In debug mode, any DOF can be forced to **locked** regardless of phase preset. This lets you freeze deployment mid-inflation, hold pilot pitch at a specific angle, or zero out line twist — all while other DOFs continue simulating. The phase preset is the default; debug sliders override it.
