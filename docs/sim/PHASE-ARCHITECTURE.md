@@ -22,6 +22,8 @@ Each phase owns: active aero segments, control mapping, transition conditions, v
 
 ## Deployment Sequence (aero-driven)
 
+See [DEPLOYMENT-MECHANICS.md](DEPLOYMENT-MECHANICS.md) for the full deployment model — bridle segments, slider, 4-line-group abstraction, and visualization plan.
+
 The deployment phase is NOT a timer — each step is driven by aerodynamics:
 
 1. **Pilot chute throw** — initial position + velocity from hand throw. Drag model takes over.
