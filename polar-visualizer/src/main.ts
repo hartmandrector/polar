@@ -340,6 +340,13 @@ function updateVisualization(state: FlightState): void {
   // Mass reference is fixed per vehicle; pilot height slider only affects visual scale
   const massReference = getVehicleMassReference(vehicle, basePolar)
 
+  // Auto-switch GLB model when polar changes (e.g. deployment transition)
+  const modelType = vehicle.modelType ?? 'wingsuit'
+  if (currentModel && currentModel.type !== modelType) {
+    const pilotType = modelType === 'canopy' ? state.canopyPilotType : undefined
+    switchModel(vehicle, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar, massReference)
+  }
+
   // Rebuild segments when canopy pilot type changes (ibex only)
   if (state.modelType === 'canopy' && polar.aeroSegments) {
     const pilotHeightRatio = getPilotHeightCm() / 187.5
