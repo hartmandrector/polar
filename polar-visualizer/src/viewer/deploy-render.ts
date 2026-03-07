@@ -112,17 +112,29 @@ export class DeployRenderer {
 
   /**
    * Update all deployment visuals from render state.
-   * Called each frame from main.ts when deploy is active.
+   *
+   * Positions in state are body-relative INERTIAL NED (body CG at origin,
+   * but NOT rotated into body frame). The 3D model at scene origin IS rotated
+   * by attitude, so the container attachment must be rotated to match, but
+   * the chain beyond it stays in inertial space.
+   *
+   * @param state  Render state with body-relative inertial NED positions
+   * @param bodyQuat  Body attitude quaternion (from applyAttitude) — used to
+   *                  rotate the container attachment point into scene coords
    */
-  update(state: WingsuitDeployRenderState): void {
+  update(state: WingsuitDeployRenderState, bodyQuat?: THREE.Quaternion): void {
     this.group.visible = true
     const s = this.metersToScene
 
     // Build chain of visible points: container → freed segments (inboard→outboard) → bag? → PC
     const chainPoints: THREE.Vector3[] = []
 
-    // Start at container attachment
-    chainPoints.push(this.containerOffset.clone())
+    // Container attachment in body frame → rotate by attitude to match model
+    const containerScene = this.containerOffset.clone()
+    if (bodyQuat) {
+      containerScene.applyQuaternion(bodyQuat)
+    }
+    chainPoints.push(containerScene)
 
     // Segments: iterate from inboard (0) to outboard (9)
     for (let i = 0; i < state.segments.length; i++) {
