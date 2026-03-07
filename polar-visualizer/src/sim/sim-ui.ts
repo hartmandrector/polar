@@ -59,11 +59,9 @@ let menuWasPressed = false
 const VIEW_BUTTON = 8
 let viewWasPressed = false
 
-/** Gamepad bumpers (LB=4, RB=5) — cycle polar selection */
-const LB_BUTTON = 4
-const RB_BUTTON = 5
-let lbWasPressed = false
-let rbWasPressed = false
+/** Gamepad A button (button 0) — pilot chute toss event */
+const A_BUTTON = 0
+let aWasPressed = false
 
 /** Cycle a <select> element forward or backward, triggering change event */
 function cycleSelect(selectId: string, direction: 1 | -1): void {
@@ -317,19 +315,34 @@ export function setupSimUI(ctx: SimUIContext): void {
     }
     viewWasPressed = viewPressed
 
-    // Bumpers (LB=4, RB=5) — cycle polar selection
-    const lbPressed = gp ? (gp.buttons[LB_BUTTON]?.pressed ?? false) : false
-    if (lbPressed && !lbWasPressed) {
-      cycleSelect('polar-select', -1)
+    // A button (button 0) — pilot chute toss event (scenario mode only)
+    const aPressed = gp ? (gp.buttons[A_BUTTON]?.pressed ?? false) : false
+    if (aPressed && !aWasPressed) {
+      handlePilotChuteToss(ctx)
     }
-    lbWasPressed = lbPressed
-
-    const rbPressed = gp ? (gp.buttons[RB_BUTTON]?.pressed ?? false) : false
-    if (rbPressed && !rbWasPressed) {
-      cycleSelect('polar-select', 1)
-    }
-    rbWasPressed = rbPressed
+    aWasPressed = aPressed
   }, 100)
+}
+
+/** Handle pilot chute toss — transition from wingsuit to canopy in scenario mode */
+function handlePilotChuteToss(ctx: SimUIContext): void {
+  const state = ctx.getFlightState()
+  // Only works in scenario mode during a running sim
+  if (state.scenario === 'debug' || !runner?.isRunning) return
+
+  const canopyPolar = state.scenarioCanopyPolar
+  if (!canopyPolar) return
+
+  // Switch the polar dropdown to canopy (triggers model/segment swap)
+  const polarSelect = document.getElementById('polar-select') as HTMLSelectElement | null
+  if (polarSelect && canopyPolar) {
+    polarSelect.value = canopyPolar
+    polarSelect.dispatchEvent(new Event('change'))
+  }
+
+  // TODO: In the future, this spawns a pilot chute rigid body and the FSM
+  // waits for line stretch before transitioning. For now it's a hard cut.
+  console.log(`[FSM] Pilot chute toss → switching to canopy: ${canopyPolar}`)
 }
 
 function toggleSim(ctx: SimUIContext): void {

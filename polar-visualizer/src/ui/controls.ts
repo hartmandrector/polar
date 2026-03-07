@@ -5,6 +5,10 @@
 import { DEFAULT_VEHICLE_ID, getVehicleModelType, getVehicleOptions } from '../viewer/vehicle-registry.ts'
 
 export interface FlightState {
+  // ── Scenario ──
+  scenario: 'debug' | 'wingsuit-base'
+  scenarioWingsuitPolar: string   // polar key for wingsuit in scenario mode
+  scenarioCanopyPolar: string     // polar key for canopy in scenario mode
   alpha_deg: number
   beta_deg: number
   delta: number
@@ -57,6 +61,14 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const frameSelect = document.getElementById('frame-select') as HTMLSelectElement
   const showLegacy = document.getElementById('show-legacy') as HTMLInputElement
   const canopyPilotSelect = document.getElementById('canopy-pilot-select') as HTMLSelectElement
+
+  // Scenario controls
+  const scenarioSelect = document.getElementById('scenario-select') as HTMLSelectElement
+  const scenarioWingsuitGroup = document.getElementById('scenario-wingsuit-group')!
+  const scenarioCanopyGroup = document.getElementById('scenario-canopy-group')!
+  const scenarioWingsuitSelect = document.getElementById('scenario-wingsuit-select') as HTMLSelectElement
+  const scenarioCanopySelect = document.getElementById('scenario-canopy-select') as HTMLSelectElement
+  const polarGroup = document.getElementById('polar-group')!
 
   const rollSlider = document.getElementById('roll-slider') as HTMLInputElement
   const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement
@@ -150,6 +162,45 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const hasPrevious = previous && vehicleOptions.some((opt) => opt.id === previous)
     polarSelect.value = hasPrevious ? previous : DEFAULT_VEHICLE_ID
   }
+
+  // ── Populate scenario-specific polar selects ──
+  function populateScenarioSelects() {
+    const vehicleOpts = getVehicleOptions()
+
+    // Wingsuit options
+    scenarioWingsuitSelect.innerHTML = ''
+    for (const opt of vehicleOpts.filter(o => o.modelType === 'wingsuit')) {
+      const el = document.createElement('option')
+      el.value = opt.id
+      el.textContent = opt.name
+      scenarioWingsuitSelect.appendChild(el)
+    }
+
+    // Canopy options
+    scenarioCanopySelect.innerHTML = ''
+    for (const opt of vehicleOpts.filter(o => o.modelType === 'canopy')) {
+      const el = document.createElement('option')
+      el.value = opt.id
+      el.textContent = opt.name
+      scenarioCanopySelect.appendChild(el)
+    }
+  }
+  populateScenarioSelects()
+
+  // ── Scenario visibility logic ──
+  function updateScenarioUI() {
+    const scenario = scenarioSelect.value
+    const isScenario = scenario !== 'debug'
+    scenarioWingsuitGroup.style.display = isScenario ? '' : 'none'
+    scenarioCanopyGroup.style.display = isScenario ? '' : 'none'
+    polarGroup.style.display = isScenario ? 'none' : ''
+
+    // In scenario mode, set polar to wingsuit (freefall is initial phase)
+    if (isScenario && scenarioWingsuitSelect.value) {
+      polarSelect.value = scenarioWingsuitSelect.value
+    }
+  }
+  updateScenarioUI()
 
   function readState(): FlightState {
     const alpha = parseFloat(alphaSlider.value)
@@ -281,6 +332,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     }
 
     return {
+      scenario: scenarioSelect.value as 'debug' | 'wingsuit-base',
+      scenarioWingsuitPolar: scenarioWingsuitSelect.value || '',
+      scenarioCanopyPolar: scenarioCanopySelect.value || '',
       alpha_deg: alpha,
       beta_deg: beta,
       delta,
@@ -347,6 +401,20 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   for (const el of [frameSelect]) {
     el.addEventListener('change', onInput)
   }
+
+  // Scenario controls
+  scenarioSelect.addEventListener('change', () => {
+    updateScenarioUI()
+    onInput()
+  })
+  scenarioWingsuitSelect.addEventListener('change', () => {
+    // In scenario mode, sync polar dropdown to wingsuit selection (freefall phase)
+    if (scenarioSelect.value !== 'debug') {
+      polarSelect.value = scenarioWingsuitSelect.value
+    }
+    onInput()
+  })
+  scenarioCanopySelect.addEventListener('change', onInput)
 
   canopyPilotSelect.addEventListener('change', onInput)
 

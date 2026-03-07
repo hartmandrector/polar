@@ -12,6 +12,24 @@
       <h2>Polar Visualizer</h2>
 
       <div class="control-group">
+        <label>Scenario</label>
+        <select id="scenario-select">
+          <option value="debug">Debug</option>
+          <option value="wingsuit-base">Wingsuit BASE</option>
+        </select>
+      </div>
+
+      <div class="control-group" id="scenario-wingsuit-group" style="display:none;">
+        <label>Wingsuit</label>
+        <select id="scenario-wingsuit-select"></select>
+      </div>
+
+      <div class="control-group" id="scenario-canopy-group" style="display:none;">
+        <label>Canopy</label>
+        <select id="scenario-canopy-select"></select>
+      </div>
+
+      <div class="control-group" id="polar-group">
         <label>Polar</label>
         <select id="polar-select"></select>
       </div>
