@@ -415,9 +415,10 @@ export interface VehicleAssembly {
 
   /** Deployment sub-model scales (fraction of normalization scale) */
   readonly deployScales?: {
-    readonly pc: number       // pilot chute
-    readonly snivel: number   // canopy in bag
-    readonly bridle: number   // bridle line
+    readonly pc: number            // pilot chute
+    readonly snivel: number        // canopy in bag (standalone)
+    readonly 'snivel-slider': number  // canopy bag + slider combined (deployment extraction)
+    readonly bridle: number        // bridle line
   }
 
   // ── physics ──
@@ -1319,9 +1320,10 @@ export const CANOPY_WINGSUIT_ASSEMBLY: VehicleAssembly = {
   trailingEdgeShift: -0.30,       // bridle attachment shift toward canopy TE
 
   deployScales: {
-    pc: 0.8,       // PC model × normalization scale (0.4 × 2.0 for parentScale 3.0)
-    snivel: 1.2,   // snivel model × normalization scale (0.6 × 2.0 for parentScale 3.0)
-    bridle: 3.0,   // bridle model × normalization scale (1.5 × 2.0 for parentScale 3.0)
+    pc: 0.8,              // PC model × normalization scale (0.4 × 2.0 for parentScale 3.0)
+    snivel: 1.2,          // snivel model × normalization scale (0.6 × 2.0 for parentScale 3.0)
+    'snivel-slider': 1.2, // same scale as snivel — slider fits within snivel bbox
+    bridle: 3.0,          // bridle model × normalization scale (1.5 × 2.0 for parentScale 3.0)
   },
 
   // Overlay position alignment — maps NED positions to visual mesh coordinates.
