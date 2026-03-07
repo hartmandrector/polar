@@ -661,7 +661,11 @@ function updateVisualization(state: FlightState): void {
       }
     }
     // Wingsuit deployment visualization — sim-driven or slider-driven
-    if (currentModel.deployGroup) {
+    // Hide all deploy visuals when we've transitioned to canopy
+    if (state.modelType === 'canopy') {
+      if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
+      if (currentModel.deployGroup) currentModel.deployGroup.group.visible = false
+    } else if (currentModel.deployGroup) {
       const drs = state.deployRenderState
       if (drs) {
         // Full tension chain renderer
