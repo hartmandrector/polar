@@ -2,79 +2,143 @@
 
 Replace the current monolithic bridle+PC rendering with a **segmented system** — individual GLB segments with per-segment drag, mass, and position. This feeds into the phase FSM deployment sequence.
 
-## Current State
+## Physics Reference (from CloudBASE)
 
-- `bridalandpc.gltf` — single combined model (bridle line + pilot chute), scaled as one unit
-- `bridal.glb` — standalone bridle segment (unregistered, 2.1 KB)
-- `bridalsegment.glb` — individual bridle segment piece (unregistered, 2.2 KB)
-- `pc.glb` — standalone pilot chute (registered, measured)
-- `slider.glb` — slider rigid body (unregistered, 2.5 KB)
-- `snivel.glb` — canopy in bag (registered, measured)
-- Deployment visuals driven by `deploy` slider with continuous geometry morphing
+Key constants extracted from `simulatordeployment.ts` and `simulatorsequencer.ts`:
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| Pilot-to-attachment (total line length) | 5.23 m | `pilottoattachmentpoint` |
+| Bridle length | 3.29 m (3.3 in sequencer) | `bridallength` |
+| PC diameter | 38 inches (0.965 m) | `pcsize * metersperinch` |
+| PC area | π × (0.483)² ≈ 0.732 m² | computed |
+| PC mass | 0.057 kg | `pcmass` |
+| Canopy mass | 3.7 kg | `canopymass` |
+| PC drag coefficient formula | ½ × 0.9 × area / mass × ρ | `pcdragCoefficient` |
+| Slider top position | 3.37 m (normal) / 1.7 m (static line) | `slidertop` |
+
+### CloudBASE Deploy States (simulatorpc.ts)
+
+```
+stowed → throw → bridalextending → linesextending → extended
+```
+
+State machine in `PC.update()` drives transitions:
+- **stowed → throw**: `pcposition ≤ 0.5 && throwposition ≠ -0.2`
+- **throw → bridalextending**: `pcposition > 0.201` — calls `sdeployment.init()` with toss velocity (body velocity + 3 m/s lateral "right" component for throw arc)
+- **bridalextending → linesextending**: `sdeployment.bridalstretch()` returns true (PC-to-body distance ≥ bridallength) — triggers sequencer rewrite
+- **linesextending → extended**: `sdeployment.linestretch()` returns true (canopy-to-body distance ≥ pilottoattachmentpoint)
+
+### Physics Model (simulatordeployment.ts)
+
+Simple Euler integration per timestep:
+```
+dragForce = -dragCoeff × speed × velocity_unit  (opposing velocity)
+velocity += dragForce × dt
+position += velocity × dt
+```
+
+Two drag coefficients:
+- **Bridle extending**: `pcdragCoefficient` = ½ × 0.9 × upcarea / pcmass × 1.2 (small unopened PC area `upcr=0.035`)
+- **Post bridle stretch**: `totaldragCoefficient` = ½ × 0.9 × pcarea / (pcmass + canopymass) × 0.9 (full PC area, total mass)
+
+**Constraint enforcement**: After integration, clamp segment distances:
+```
+if distance(segment, anchor) > maxLength:
+    correction = direction × (currentLength - maxLength) / currentLength
+    segment.position -= correction
+```
+
+Two constraint passes per frame: PC-to-anchor (bridle length), lines-to-anchor (total length).
+
+### Deployment Timeline (simulatorsequencer.ts)
+
+12-event sequence with airspeed-dependent timing:
+
+| Event | Time offset formula | Position |
+|-------|-------------------|----------|
+| 0: Reach | 0 | — |
+| 1: Grab | +500ms | — |
+| 2: Pitch (throw) | +800ms | throwposition: -0.2 → -1.8 |
+| 3: Bridle stretch | +800 + `min(1600, 3000×(3/V))` | pcposition: 0.2 → 3.3 |
+| 4: Lines extending | + bridalstretchtime × 1.5 | linesposition: 0 → 5.23 |
+| 5-6: Line stretch | + `20V + 55.4` | slider starts descending |
+| 7: Extra middle | + `10.04V + 700` | slider at 70% |
+| 8: Last max AoA | + sliderdown/2 | slider at 40% |
+| 9: Slider down | + `-410×ln(V+1) + 4067` | slider at 20% |
+| 10: Transition | +1500ms | slider at 10% |
+| 11: Full flight | +2000ms | slider at 0 |
+
+AoA transitions through deployment: wingsuit AoA → 180° (vertical) → back through ~150°, 140°, 118°, 112°, 110° to full flight.
+
+## Current GLB Assets
+
+| File | Size | Status | Notes |
+|------|------|--------|-------|
+| `pc.glb` | 29 KB | ✅ Registered | Pilot chute, measured |
+| `snivel.glb` | 5.6 KB | ✅ Registered | Canopy in bag, measured |
+| `bridalandpc.gltf` | 46 KB | ✅ Registered | Combined model (to be replaced) |
+| `bridal.glb` | 2.1 KB | ❌ Unregistered | Standalone bridle segment |
+| `bridalsegment.glb` | 2.2 KB | ❌ Unregistered | Individual bridle piece |
+| `slider.glb` | 2.5 KB | ❌ Unregistered | Slider rigid body |
 
 ## Target: Segmented System
 
-### Components (each a registered GLB with aero properties)
-
-| Segment | GLB | Mass (kg) | Drag Area (m²) | Notes |
-|---------|-----|-----------|-----------------|-------|
-| Pilot chute | `pc.glb` | 0.3 | 0.7 | Already registered. Throw velocity + drag |
-| Bridle segment ×N | `bridalsegment.glb` | ~negligible | Per-segment CD×A | Sequential deployment along bridle |
-| Canopy bag | `snivel.glb` | Full canopy mass | Small (packed) | Not aero-loaded until line stretch |
-| Slider | `slider.glb` | 0.1 | Variable | Descends lines during inflation |
-
-### Segment Chain (deployment order)
+### Deploy State Machine
 
 ```
-Container → Bridle[0] → Bridle[1] → ... → Bridle[N] → PC
-                                              ↓
-                                         Canopy Bag
-                                              ↓
-                                    4-line-group + Slider
-                                              ↓
-                                         Riser attach
+packed → throw → bridle_extending → line_stretch → slider_down → flying
 ```
 
-Pilot chute toss launches PC with throw velocity. Bridle segments deploy sequentially from container outward as tension propagates. When last bridle segment deploys → line stretch event.
+Simplified from CloudBASE's 12-event timeline. Each state has:
+- Entry condition (physics-driven or event-driven)
+- Active segments (which GLBs visible)
+- Drag model (which coefficients apply)
+- Constraint set (max distances between segments)
 
-### Per-Segment Properties
+### Segment Chain
 
-Each segment needs:
-- **Position** — NED offset from previous segment (chain link)
-- **Drag model** — CD × reference area, applied along relative wind
-- **Mass** — for momentum transfer (most segments negligible)
-- **Visual state** — packed / deploying / deployed
-- **Tension** — force transmitted to next segment in chain
+```
+Container → Bridle → PC
+                      ↓ (at bridle stretch)
+               Canopy Bag / Lines
+                      ↓
+              Slider (descends)
+                      ↓
+              Riser attach points
+```
 
-### Integration with Phase FSM
+### Per-Segment Aero
 
-| Phase | Segment Behavior |
-|-------|-----------------|
-| Freefall (pre-toss) | All segments packed, invisible |
-| Extraction | PC visible + dragging, bridle segments appear sequentially |
-| Line stretch | All bridle segments deployed, snatch force event → FSM transition |
-| Slider down | 4-line-group visible, slider descends, canopy inflates |
-| Flying | Slider stowed, full canopy, segments hidden or minimal |
+| Segment | Drag Model | Notes |
+|---------|-----------|-------|
+| PC (pre-inflation) | CD=0.9, A=π×0.035² | Tiny — bridle-in-tow drag |
+| PC (inflated) | CD=0.9, A=π×0.483² ≈ 0.73 m² | Full drag after bridle stretch |
+| Bridle | Negligible | Thin line, no meaningful drag |
+| Canopy bag | Small parasitic | Not aero-loaded until line stretch |
+| Slider | Proportional to area exposed | Decreases as it descends |
+| Canopy (inflating) | Scales with deploy value | Existing aero system handles this |
 
-### Existing Code to Reference (not port)
+### Key Simplifications vs CloudBASE
 
-CloudBASE-era bridle mechanics exist with surface area, drag coefficients, and segment positions. Use as physics reference but implement fresh against our segment factory / registry pattern:
-- Segment drag: `F_drag = 0.5 * rho * V² * CD * A` per segment
-- Sequential deployment: each segment has a deployment threshold on the deploy slider
-- Tension propagation: upstream segment tension = downstream drag + downstream tension
+1. **No sequencer timeline** — physics-driven, not time-interpolated. CloudBASE pre-computed 12 keyframes and interpolated between them. We let the physics run.
+2. **Single bridle segment** — CloudBASE didn't segment the bridle either (just distance constraint). We render it but don't need N segments for physics.
+3. **Constraint solver same pattern** — clamp max distances, same as CloudBASE.
+4. **Deploy slider maps to physical state** — instead of sequencer driving positions, the sim integration drives deploy value which drives rendering.
 
 ## Build Order
 
 1. **Register GLBs** — measure `bridalsegment.glb`, `slider.glb`, `bridal.glb` bounding boxes, add to model-registry.ts
-2. **Define segment chain data** — positions, drag areas, deployment thresholds in polar-data or new deployment-data module
-3. **Render segment chain** — replace `bridalandpc.gltf` rendering with individual positioned segments
-4. **Wire to deploy slider** — segment visibility driven by deploy value (manual control first)
-5. **Add drag computation** — per-segment drag forces fed into EOM during deployment phase
-6. **Wire to FSM** — A button → PC toss → physics-driven deployment → line stretch event → canopy phase
+2. **Deploy state machine** — new `DeployState` enum + transition logic in sim-runner or dedicated module
+3. **PC toss physics** — Euler integration: throw velocity + drag deceleration + distance constraint (CloudBASE pattern)
+4. **Bridle stretch detection** — when PC-body distance ≥ bridle length → state transition
+5. **Line stretch → canopy phase** — FSM transition, camera zoom-out, control handoff
+6. **Slider descent** — driven by canopy inflation rate (maps to deploy slider)
+7. **Render segment chain** — replace `bridalandpc.gltf` with positioned individual segments
+8. **Camera zoom-out on deployment** — FSM camera control per phase
 
 ## Open Questions
 
-- How many bridle segments? (CloudBASE count vs simplified)
-- Bridle segment length in meters? (need GLB measurement for scale factor)
-- Does slider need its own drag model or is it captured in canopy area scaling?
-- Camera zoom-out on deployment trigger (noted — FSM camera control)
+- Use `bridalsegment.glb` or `bridal.glb` for the visual? (need to see both in viewer)
+- Slider descent rate model — physics-driven or mapped from deploy slider?
+- Throw velocity vector — CloudBASE uses 3 m/s lateral. Tunable?
