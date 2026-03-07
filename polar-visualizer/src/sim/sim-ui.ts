@@ -47,6 +47,14 @@ export interface SimUIContext {
 
 let runner: SimRunner | null = null
 let trail: TrailRenderer | null = null
+
+// Phase FSM state
+type SimPhase = 'idle' | 'freefall' | 'deployment' | 'canopy' | 'landed'
+let currentPhase: SimPhase = 'idle'
+let currentScenario: 'debug' | 'wingsuit-base' = 'debug'
+let phaseStartTime = 0       // sim time when current phase started
+let exitAltitude = 0          // altitude at sim start (for Δh calc)
+let exitPosition = { x: 0, y: 0 }  // NED position at sim start (for Δd calc)
 let panelEl: HTMLDivElement | null = null
 let buttonEl: HTMLButtonElement | null = null
 let hudUpdateInterval = 0
@@ -145,35 +153,66 @@ function createPanel(): HTMLDivElement {
     padding: 10px;
     border-radius: 6px;
     pointer-events: auto;
-    min-width: 200px;
+    min-width: 240px;
     user-select: none;
   `
 
   panel.innerHTML = `
+    <!-- Scenario box (outer) -->
+    <div id="scenario-box" style="border: 1px solid #444; border-radius: 4px; padding: 6px; margin-bottom: 8px; display: none;">
+      <div id="scenario-header" style="color: #ff6; font-weight: bold; font-size: 11px; margin-bottom: 4px;">Scenario: —</div>
+      <div id="scenario-telemetry" style="font-size: 11px; color: #aaa; margin-bottom: 6px;"></div>
+
+      <!-- Phase box (inner) -->
+      <div id="phase-box" style="border: 1px solid #555; border-radius: 3px; padding: 6px; background: rgba(0,0,0,0.3);">
+        <div id="phase-header" style="color: #0ff; font-weight: bold; font-size: 11px; margin-bottom: 4px;">Phase: —</div>
+        <div id="phase-telemetry" style="font-size: 11px; margin-bottom: 6px;"></div>
+
+        <!-- Gamepad viz lives inside phase box -->
+        <div style="border-top: 1px solid #333; padding-top: 6px;">
+          <div id="gp-status" style="color:#888; font-size:11px; margin-bottom: 6px;">Gamepad: —</div>
+          <div id="gp-controls" style="display: flex; gap: 12px; align-items: flex-start;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div style="font-size:10px; color:#888;" id="lt-label">LT</div>
+              ${createTriggerSVG('lt')}
+              <div style="font-size:10px; color:#888;" id="ls-label">L Stick</div>
+              ${createStickSVG('ls')}
+              <div id="ls-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div style="font-size:10px; color:#888;" id="rt-label">RT</div>
+              ${createTriggerSVG('rt')}
+              <div style="font-size:10px; color:#888;" id="rs-label">R Stick</div>
+              ${createStickSVG('rs')}
+              <div id="rs-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug mode HUD (when no scenario) -->
     <div id="sim-hud" style="margin-bottom: 8px;">
       <div style="color:#888; font-size:11px;">SIM IDLE</div>
     </div>
 
-    <div style="border-top: 1px solid #333; padding-top: 8px; margin-bottom: 6px;">
-      <div id="gp-status" style="color:#888; font-size:11px; margin-bottom: 6px;">Gamepad: —</div>
-
-      <div id="gp-controls" style="display: flex; gap: 12px; align-items: flex-start;">
-        <!-- Left side: LT trigger + left stick -->
+    <!-- Debug mode gamepad (outside scenario box) -->
+    <div id="debug-gamepad" style="border-top: 1px solid #333; padding-top: 8px; margin-bottom: 6px;">
+      <div id="gp-status-debug" style="color:#888; font-size:11px; margin-bottom: 6px;">Gamepad: —</div>
+      <div id="gp-controls-debug" style="display: flex; gap: 12px; align-items: flex-start;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-          <div style="font-size:10px; color:#888;" id="lt-label">LT</div>
-          ${createTriggerSVG('lt')}
-          <div style="font-size:10px; color:#888;" id="ls-label">L Stick</div>
-          ${createStickSVG('ls')}
-          <div id="ls-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+          <div style="font-size:10px; color:#888;" id="lt-label-debug">LT</div>
+          ${createTriggerSVG('lt-debug')}
+          <div style="font-size:10px; color:#888;" id="ls-label-debug">L Stick</div>
+          ${createStickSVG('ls-debug')}
+          <div id="ls-values-debug" style="font-size:10px; color:#666;">0.00, 0.00</div>
         </div>
-
-        <!-- Right side: RT trigger + right stick -->
         <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-          <div style="font-size:10px; color:#888;" id="rt-label">RT</div>
-          ${createTriggerSVG('rt')}
-          <div style="font-size:10px; color:#888;" id="rs-label">R Stick</div>
-          ${createStickSVG('rs')}
-          <div id="rs-values" style="font-size:10px; color:#666;">0.00, 0.00</div>
+          <div style="font-size:10px; color:#888;" id="rt-label-debug">RT</div>
+          ${createTriggerSVG('rt-debug')}
+          <div style="font-size:10px; color:#888;" id="rs-label-debug">R Stick</div>
+          ${createStickSVG('rs-debug')}
+          <div id="rs-values-debug" style="font-size:10px; color:#666;">0.00, 0.00</div>
         </div>
       </div>
     </div>
@@ -230,10 +269,56 @@ function updateGamepadViz(modelType: string): void {
   if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 }
 
+/** Update debug-mode gamepad viz (suffixed element IDs) */
+function updateGamepadVizDebug(modelType: string): void {
+  const gp = navigator.getGamepads()[0]
+  const statusEl = document.getElementById('gp-status-debug')
+
+  if (!gp) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:#888;">Gamepad: —</span>'
+    updateStick('ls-debug', 0, 0)
+    updateStick('rs-debug', 0, 0)
+    updateTrigger('lt-debug', 0)
+    updateTrigger('rt-debug', 0)
+    return
+  }
+
+  if (statusEl) statusEl.innerHTML = '<span style="color:#0f0;">🎮 Connected</span>'
+
+  const lx = gp.axes[0] ?? 0
+  const ly = gp.axes[1] ?? 0
+  const rx = gp.axes[2] ?? 0
+  const ry = gp.axes[3] ?? 0
+  const lt = gp.buttons[6]?.value ?? 0
+  const rt = gp.buttons[7]?.value ?? 0
+
+  updateStick('ls-debug', lx, ly)
+  updateStick('rs-debug', rx, ry)
+  updateTrigger('lt-debug', lt)
+  updateTrigger('rt-debug', rt)
+
+  const lsVal = document.getElementById('ls-values-debug')
+  const rsVal = document.getElementById('rs-values-debug')
+  if (lsVal) lsVal.textContent = `${lx.toFixed(2)}, ${ly.toFixed(2)}`
+  if (rsVal) rsVal.textContent = `${rx.toFixed(2)}, ${ry.toFixed(2)}`
+
+  const isCanopy = modelType === 'Canopy'
+  const ltLabel = document.getElementById('lt-label-debug')
+  const rtLabel = document.getElementById('rt-label-debug')
+  const lsLabel = document.getElementById('ls-label-debug')
+  const rsLabel = document.getElementById('rs-label-debug')
+  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
+  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
+  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
+  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
+}
+
 // ─── HUD Update ─────────────────────────────────────────────────────────────
 
-function updateHUD(r: SimRunner, modelType: string): void {
+function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
   const hudEl = document.getElementById('sim-hud')
+  const scenarioBox = document.getElementById('scenario-box')
+  const debugGamepad = document.getElementById('debug-gamepad')
   if (!hudEl) return
 
   const alt = r.altitude
@@ -241,14 +326,79 @@ function updateHUD(r: SimRunner, modelType: string): void {
   const t = r.time
   const s = r.state
 
-  hudEl.innerHTML = `
-    <div style="color:#ff6; font-weight:bold; margin-bottom:2px;">⏱ SIM RUNNING</div>
-    <div>t: ${t.toFixed(1)}s</div>
-    <div>Alt: ${alt.toFixed(0)}m</div>
-    <div>V: ${spd.toFixed(1)} m/s (${(spd * 2.237).toFixed(0)} mph)</div>
-    <div>α: ${(Math.atan2(s.w, s.u) * 180 / Math.PI).toFixed(1)}°</div>
-    <div>β: ${(Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI).toFixed(1)}°</div>
-  `
+  const isScenario = currentScenario !== 'debug'
+
+  if (isScenario && scenarioBox) {
+    // ── Scenario mode: nested display ──
+    scenarioBox.style.display = ''
+    hudEl.style.display = 'none'
+    if (debugGamepad) debugGamepad.style.display = 'none'
+
+    // Scenario header
+    const scenarioHeader = document.getElementById('scenario-header')
+    const scenarioLabels: Record<string, string> = { 'wingsuit-base': '🪂 Wingsuit BASE' }
+    if (scenarioHeader) scenarioHeader.textContent = scenarioLabels[currentScenario] || currentScenario
+
+    // Scenario telemetry
+    const scenarioTelemetry = document.getElementById('scenario-telemetry')
+    const deltaH = exitAltitude - alt
+    const dx = s.x - exitPosition.x
+    const dy = s.y - exitPosition.y
+    const deltaD = Math.sqrt(dx * dx + dy * dy)
+    if (scenarioTelemetry) {
+      scenarioTelemetry.innerHTML = `
+        <span>Alt: ${alt.toFixed(0)}m AGL</span> · 
+        <span>Δh: ${deltaH.toFixed(0)}m</span> · 
+        <span>Δd: ${deltaD.toFixed(0)}m</span> · 
+        <span>t: ${t.toFixed(1)}s</span>
+      `
+    }
+
+    // Phase header
+    const phaseHeader = document.getElementById('phase-header')
+    const phaseColors: Record<SimPhase, string> = {
+      idle: '#888', freefall: '#0ff', deployment: '#ff0', canopy: '#0f0', landed: '#888'
+    }
+    const phaseLabels: Record<SimPhase, string> = {
+      idle: 'Idle', freefall: '🦅 Freefall', deployment: '🪂 Deployment', canopy: '🪂 Canopy', landed: '🏁 Landed'
+    }
+    if (phaseHeader) {
+      phaseHeader.style.color = phaseColors[currentPhase]
+      phaseHeader.textContent = `Phase: ${phaseLabels[currentPhase]}`
+    }
+
+    // Phase telemetry
+    const phaseTelemetry = document.getElementById('phase-telemetry')
+    const alpha = Math.atan2(s.w, s.u) * 180 / Math.PI
+    const beta = Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI
+    const phaseT = t - phaseStartTime
+    if (phaseTelemetry) {
+      let html = `
+        <div>V: ${spd.toFixed(1)} m/s (${(spd * 2.237).toFixed(0)} mph) · α: ${alpha.toFixed(1)}° · β: ${beta.toFixed(1)}°</div>
+        <div>Phase t: ${phaseT.toFixed(1)}s · Controls: ${modelType === 'Canopy' ? 'risers/brakes' : 'pitch/roll/yaw'}</div>
+      `
+      if (currentPhase === 'canopy') {
+        html += `<div>Next: A = n/a · GR: ${(spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0).toFixed(1)}</div>`
+      } else if (currentPhase === 'freefall') {
+        html += `<div>Next: A = PC toss</div>`
+      }
+      phaseTelemetry.innerHTML = html
+    }
+  } else {
+    // ── Debug mode: classic HUD ──
+    if (scenarioBox) scenarioBox.style.display = 'none'
+    hudEl.style.display = ''
+    if (debugGamepad) debugGamepad.style.display = ''
+
+    hudEl.innerHTML = `
+      <div style="color:#ff6; font-weight:bold; margin-bottom:2px;">⏱ SIM RUNNING</div>
+      <div>t: ${t.toFixed(1)}s</div>
+      <div>Alt: ${alt.toFixed(0)}m</div>
+      <div>V: ${spd.toFixed(1)} m/s (${(spd * 2.237).toFixed(0)} mph)</div>
+      <div>α: ${(Math.atan2(s.w, s.u) * 180 / Math.PI).toFixed(1)}°</div>
+      <div>β: ${(Math.asin(Math.max(-1, Math.min(1, s.v / Math.max(spd, 0.1)))) * 180 / Math.PI).toFixed(1)}°</div>
+    `
+  }
 
   // Push actual sim velocity + acceleration to speed polar
   setSimVelocity({
@@ -258,7 +408,12 @@ function updateHUD(r: SimRunner, modelType: string): void {
     aV: r.verticalAccel,
   })
 
-  updateGamepadViz(modelType)
+  // Update gamepad viz (both scenario and debug use their respective elements)
+  if (isScenario) {
+    updateGamepadViz(modelType)
+  } else {
+    updateGamepadVizDebug(modelType)
+  }
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -327,11 +482,16 @@ export function setupSimUI(ctx: SimUIContext): void {
 /** Handle pilot chute toss — transition from wingsuit to canopy in scenario mode */
 function handlePilotChuteToss(ctx: SimUIContext): void {
   const state = ctx.getFlightState()
-  // Only works in scenario mode during a running sim
+  // Only works in scenario mode during freefall phase
   if (state.scenario === 'debug' || !runner?.isRunning) return
+  if (currentPhase !== 'freefall') return
 
   const canopyPolar = state.scenarioCanopyPolar
   if (!canopyPolar) return
+
+  // Transition to canopy phase (hard cut for now)
+  currentPhase = 'canopy'
+  phaseStartTime = runner.time
 
   // Switch the polar dropdown to canopy (triggers model/segment swap)
   const polarSelect = document.getElementById('polar-select') as HTMLSelectElement | null
@@ -340,9 +500,7 @@ function handlePilotChuteToss(ctx: SimUIContext): void {
     polarSelect.dispatchEvent(new Event('change'))
   }
 
-  // TODO: In the future, this spawns a pilot chute rigid body and the FSM
-  // waits for line stretch before transitioning. For now it's a hard cut.
-  console.log(`[FSM] Pilot chute toss → switching to canopy: ${canopyPolar}`)
+  console.log(`[FSM] Pilot chute toss → canopy phase: ${canopyPolar}`)
 }
 
 function toggleSim(ctx: SimUIContext): void {
@@ -414,6 +572,14 @@ function buildPilotCoupling(
 function startSim(ctx: SimUIContext): void {
   const flightState = ctx.getFlightState()
 
+  // Set up phase FSM
+  currentScenario = flightState.scenario
+  if (currentScenario === 'wingsuit-base') {
+    currentPhase = 'freefall'
+  } else {
+    currentPhase = 'freefall'  // debug mode — just label it freefall
+  }
+
   const callbacks: SimRunnerCallbacks = {
     onUpdate: (state: FlightState) => {
       ctx.updateVisualization(state)
@@ -451,15 +617,20 @@ function startSim(ctx: SimUIContext): void {
   runner = new SimRunner(flightState, callbacks)
   runner.start()
 
+  // Record exit conditions for telemetry
+  exitAltitude = runner.altitude
+  exitPosition = { x: runner.state.x, y: runner.state.y }
+  phaseStartTime = 0
+
   // Create trail renderer (reset on each sim start)
   if (trail) trail.dispose()
   trail = new TrailRenderer(ctx.getScene())
-  // HUD update at 10 Hz
-  const polar = ctx.getPolar()
-  const modelType = polar.type ?? ''
+  // HUD update at 10 Hz — read modelType dynamically for phase transitions
   hudUpdateInterval = window.setInterval(() => {
     if (runner) {
-      updateHUD(runner, modelType)
+      const polar = ctx.getPolar()
+      const mt = polar.type ?? ''
+      updateHUD(runner, mt, ctx)
       if (trail) {
         const inertial = ctx.getFlightState().frameMode === 'inertial'
         trail.visible = inertial
@@ -488,9 +659,19 @@ function stopSim(): void {
     hudUpdateInterval = 0
   }
 
+  // Reset phase state
+  currentPhase = 'idle'
+
   // Reset HUD to idle
   const hudEl = document.getElementById('sim-hud')
-  if (hudEl) hudEl.innerHTML = '<div style="color:#888; font-size:11px;">SIM IDLE</div>'
+  if (hudEl) {
+    hudEl.style.display = ''
+    hudEl.innerHTML = '<div style="color:#888; font-size:11px;">SIM IDLE</div>'
+  }
+  const scenarioBox = document.getElementById('scenario-box')
+  if (scenarioBox) scenarioBox.style.display = 'none'
+  const debugGamepad = document.getElementById('debug-gamepad')
+  if (debugGamepad) debugGamepad.style.display = ''
 
   // Clear sim velocity dot from speed polar
   setSimVelocity(null)
