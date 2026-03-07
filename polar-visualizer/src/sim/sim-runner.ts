@@ -112,7 +112,6 @@ export class DeploySubSim {
    * @returns true if line stretch just occurred
    */
   step(dt: number, bodyPos: { x: number; y: number; z: number }, rho: number): boolean {
-    if (this.lineStretched) return false
 
     // ─── PC drag ─────────────────────────────────────────────────────
     const pcRadius = this.bridleStretched ? PC_RADIUS_OPENED : PC_RADIUS_UNOPENED
@@ -152,16 +151,25 @@ export class DeploySubSim {
       this.pc.py -= dy * correction
       this.pc.pz -= dz * correction
 
+      // Project out radial velocity component (inelastic constraint)
+      const nx = dx / dist, ny = dy / dist, nz = dz / dist
+      const vRad = this.pc.vx * nx + this.pc.vy * ny + this.pc.vz * nz
+      if (vRad > 0) {  // only remove outward component
+        this.pc.vx -= vRad * nx
+        this.pc.vy -= vRad * ny
+        this.pc.vz -= vRad * nz
+      }
+
       // Check phase transitions
-      if (!this.bridleStretched) {
+      if (!this.bridleStretched && !this.lineStretched) {
         this.bridleStretched = true
         this.phase = 'bridle_extending'
         console.log(`[Deploy] Bridle stretch at dist=${dist.toFixed(2)}m`)
       }
     }
 
-    // Check line stretch (after constraint — use pre-constraint distance)
-    if (this.bridleStretched && dist >= TOTAL_LINE_LENGTH) {
+    // Check line stretch
+    if (this.bridleStretched && !this.lineStretched && dist >= TOTAL_LINE_LENGTH * 0.99) {
       this.lineStretched = true
       this.phase = 'line_stretch'
       console.log(`[Deploy] LINE STRETCH at dist=${dist.toFixed(2)}m`)
