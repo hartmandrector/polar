@@ -187,6 +187,16 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   }
   populateScenarioSelects()
 
+  // Set scenario polar defaults
+  if (scenarioWingsuitSelect.options.length > 0) {
+    const a5 = Array.from(scenarioWingsuitSelect.options).find(o => o.value === 'a5segments')
+    if (a5) scenarioWingsuitSelect.value = a5.value
+  }
+  if (scenarioCanopySelect.options.length > 0) {
+    const ibex = Array.from(scenarioCanopySelect.options).find(o => o.value === 'ibexul')
+    if (ibex) scenarioCanopySelect.value = ibex.value
+  }
+
   // ── Scenario visibility logic ──
   function updateScenarioUI() {
     const scenario = scenarioSelect.value
@@ -199,6 +209,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     if (isScenario && scenarioWingsuitSelect.value) {
       polarSelect.value = scenarioWingsuitSelect.value
     }
+
+    // Frame mode: inertial for scenarios, body for debug
+    frameSelect.value = isScenario ? 'inertial' : 'body'
   }
   updateScenarioUI()
 

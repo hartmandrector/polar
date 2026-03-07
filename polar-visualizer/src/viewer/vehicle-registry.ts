@@ -61,7 +61,7 @@ export interface VehicleDefinition {
   activeAeroComponentId?: string
 }
 
-export const DEFAULT_VEHICLE_ID = 'aurafive'
+export const DEFAULT_VEHICLE_ID = 'a5segments'
 
 export interface VehicleOption {
   id: string
