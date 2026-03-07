@@ -9,15 +9,40 @@ Owns **all** wingsuit deployment physics, tension propagation, GLB lifecycle, an
 The fundamental mechanism. Every state transition is driven by tension reaching a threshold.
 
 ```
-PC ←─ bridle[9] ←─ ... ←─ bridle[0] ←─ container ←─ risers ←─ pilot hips
-      ↑                                    ↑              ↑
-      drag force                     closure pins    weight shift
-      propagates ←─────────────────────────────────── bias
+PC ←─ bridle[9] ←─ ... ←─ bridle[0] ←─ PIN (0.5m from end) ←─ container ←─ risers ←─ pilot hips
+      ↑                                    ↑                        ↑              ↑
+      drag (tension-dependent)        release threshold      closure system    weight shift
+      propagates ←──────────────────────────────────────────────────────────── bias
 ```
 
-**10 bridle segments** (bridalsegment.glb = 0.33m each, total 3.3m).  
-Each segment is a point mass with position + velocity, constrained to its neighbors.  
+**10 bridle segments** (bridalsegment.glb = 0.33m each, total 3.3m).
+Each segment has mass (~10g) for acceleration computation.
 Tension propagates from PC inward: segment N pulls on N-1 when distance > rest length.
+
+**Pin location**: ~0.5m from container end of bridle (approximately segments 0–1).
+Everything outboard of the pin unstows sequentially via tension. The last 0.5m (pin-side)
+dumps all at once when pin tension exceeds release threshold.
+
+## PC Drag — Tension-Dependent Model
+
+The PC is **not** binary opened/unopened. Its drag coefficient is a continuous function of bridle tension:
+
+```
+effectiveCD = CD_min + (CD_max - CD_min) × tensionFactor
+tensionFactor = clamp(bridleTension / TENSION_FULL_INFLATION, 0, 1)
+```
+
+- **High tension** → PC fabric stretches taut, holds shape → high CD → more drag → more tension (positive feedback)
+- **Low tension** → PC collapses partially, shape distorts → low CD → less drag → less tension (negative feedback)
+- This creates realistic oscillation in the PC-bridle system: tension builds, overshoots, relaxes, rebuilds
+
+**CD range**: `CD_min ≈ 0.3` (collapsed), `CD_max ≈ 0.9` (fully inflated). Tunable.
+
+The PC area also varies with tension (fabric stretch), but area variation is smaller than CD variation.
+Start with CD-only model, add area scaling if needed.
+
+**PC persists through canopy flight** — stays attached to bridle, bouncing behind canopy.
+Same tension-drag interplay continues. No removal or collapse at handoff.
 
 ## Sub-States
 
@@ -25,18 +50,21 @@ Tension propagates from PC inward: segment N pulls on N-1 when distance > rest l
 IDLE
   │  [A button]
   ▼
-PC_TOSS ─── PC spawned, small drag (unopened), no bridle segments visible
-  │  [PC distance > segment 0 rest length → tension on segment 0]
+PC_TOSS ─── PC spawned, low drag (low tension → collapsed shape), no segments visible
+  │  [tension on segment nearest PC > unstow threshold]
   ▼
-BRIDLE_EXTENDING ─── segments unstow one at a time as tension propagates
-  │  each segment: hidden + constrained at container → tension threshold → visible + free
-  │  [all 10 segments free, distance ≈ 3.3m]
+BRIDLE_PAYING_OUT ─── segments unstow one at a time as tension propagates inward
+  │  each segment: constrained at stow point → tension threshold → free to move
+  │  PC drag increases as tension builds (feedback loop)
+  │  [tension reaches pin segment]
   ▼
-BRIDLE_STRETCHED ─── PC opens to full area (0.73 m²), drag jumps
-  │  [container tension > opening threshold]
+PIN_RELEASE ─── pin tension > release threshold → last 0.5m of bridle dumps at once
+  │  canopy released from container → snivel-slider.glb spawns
+  │  sudden tension increase as full chain + canopy bag mass now loading PC
   ▼
-CONTAINER_OPEN ─── canopy bag released, second rigid body spawns
-  │  canopy bag: bluff body drag, ±90° pitch/roll, free yaw
+CANOPY_EXTRACTING ─── canopy bag trailing, bluff body drag, ±90° pitch/roll, free yaw
+  │  PC drag high (strong tension from canopy bag mass)
+  │  line geometry tracking: 4 riser groups, slider position
   │  [total chain distance ≈ 5.23m]
   ▼
 LINE_STRETCH ─── snapshot everything → handoff to canopy deploy sub-module
@@ -44,34 +72,51 @@ LINE_STRETCH ─── snapshot everything → handoff to canopy deploy sub-modu
 
 ## Tension Model
 
-Per segment, each tick:
+Per-segment, each tick:
 
-```
-for i = 0 to N-1:
-    anchor = (i == 0) ? container_attach_point : segment[i-1].position
-    target = (i == N-1) ? pc_position : segment[i+1].position
+```ts
+// Propagate from PC inward
+for (i = N-1; i >= 0; i--) {
+    const outboard = (i === N-1) ? pc.position : segments[i+1].position
+    const dist = distance(segments[i].position, outboard)
     
-    # Constraint: max distance to anchor
-    dist = distance(segment[i], anchor)
-    if dist > REST_LENGTH:
-        # Taut — apply constraint
-        segment[i].position = clamp to REST_LENGTH from anchor
-        # Remove outward radial velocity (inelastic)
+    if (dist > REST_LENGTH) {
+        // Taut — compute tension
+        const stretch = dist - REST_LENGTH
+        const tensionMag = stretch * SPRING_STIFFNESS  // or constraint force
+        
+        // Apply constraint: clamp position
+        clamp segments[i] to REST_LENGTH from outboard
+        // Remove outward radial velocity (inelastic)
         project out radial component
-        # Tension propagates: this segment is now pulling on i-1
-        tension[i] = drag_force_component_along_chain
+        
+        // Record tension for:
+        // 1. PC drag feedback
+        // 2. Unstow threshold check on next inboard segment
+        // 3. Pin release check
+        tension[i] = tensionMag
+    }
+}
+
+// Check sequential unstow
+if (nextStowedSegment && tension[nextStowedSegment + 1] > UNSTOW_THRESHOLD) {
+    release(nextStowedSegment)  // mark visible, free to move
+}
+
+// Check pin release
+if (!pinReleased && tension[PIN_SEGMENT] > PIN_RELEASE_THRESHOLD) {
+    pinReleased = true
+    release all segments inboard of pin
+    spawnCanopyBag()
+}
 ```
-
-**Tension threshold** for unstowing next segment: when the last free segment's constraint force exceeds a threshold (~5N?), the next stowed segment releases.
-
-**Container opening threshold**: when bridle tension exceeds ~50N (tunable), container pins release and canopy bag spawns.
 
 ## Body Frame
 
 All positions computed in **wingsuit body frame** (NED, origin at wingsuit CG).
 
 - Segment positions: body-relative, updated each tick
-- PC position: body-relative (already implemented)
+- PC position: body-relative
 - Canopy bag position: body-relative
 - Weight shift offset: from pilot coupling lateral state → moves harness attach point in body Y
 
@@ -85,46 +130,49 @@ All positions computed in **wingsuit body frame** (NED, origin at wingsuit CG).
 6. Extract δ_ψ from accumulated canopy yaw (line twist)
 7. Extract θ_pilot from wingsuit pitch relative to tension axis
 
+## Canopy Bag Rigid Body (after PIN_RELEASE)
+
+- **Drag**: bluff body CD ≈ 1.0, area from snivel-slider.glb bbox
+- **Constraint**: distance to bridle endpoint (same pattern as segment constraints)
+- **Rotation**: Euler integration with hard stops at ±90° pitch/roll, free yaw
+- **Yaw accumulation**: tracked continuously → becomes initial line twist (δ_ψ) at line stretch
+- **No bag in BASE jumping**: canopy stowed directly in container, but mechanics are the same — fabric extracts from container after pin release
+
 ## GLB Lifecycle
 
 | Sub-State | Visible | Hidden |
 |-----------|---------|--------|
 | IDLE | — | all deploy meshes |
-| PC_TOSS | pc.glb, bridle line (body→PC) | segments, snivel-slider |
-| BRIDLE_EXTENDING | pc.glb, freed segments, bridle line | stowed segments, snivel-slider |
-| BRIDLE_STRETCHED | pc.glb, all segments, bridle line | snivel-slider |
-| CONTAINER_OPEN | pc.glb, all segments, snivel-slider.glb, 4 lines | — |
-| LINE_STRETCH | freeze all positions | — |
+| PC_TOSS | pc.glb, tension line (body→PC) | segments, snivel-slider |
+| BRIDLE_PAYING_OUT | pc.glb, freed segments, tension line | stowed segments, snivel-slider |
+| PIN_RELEASE | pc.glb, all segments, snivel-slider.glb | — |
+| CANOPY_EXTRACTING | pc.glb, all segments, snivel-slider.glb, 4 riser lines | — |
+| LINE_STRETCH | freeze all → handoff | — |
 
-Segments use `bridalsegment.glb` (0.33m, real-world scale). Positioned along the chain between anchors. Oriented along the tension direction between neighbors.
+Segments: `bridalsegment.glb` (0.33m real-world). Positioned along chain. Oriented along tension direction.
 
 ## Render Interface
-
-`deploy-wingsuit.ts` exports a state object each tick, consumed by renderer:
 
 ```ts
 interface WingsuitDeployState {
     phase: WingsuitDeployPhase
-    pcPosition: Vec3       // body-relative, meters
-    pcVelocity: Vec3
-    segments: {            // 10 bridle segments
-        position: Vec3     // body-relative
+    pcPosition: Vec3           // body-relative, meters
+    pcDragCoefficient: number  // current tension-dependent CD
+    segments: {
+        position: Vec3         // body-relative
         visible: boolean
-        orientation: Quat  // aligned along chain
+        orientation: Quat      // aligned along chain
     }[]
-    canopyBag?: {          // present after CONTAINER_OPEN
+    canopyBag?: {              // present after PIN_RELEASE
         position: Vec3
         orientation: Quat
-        visible: boolean
     }
-    bridleTension: number  // scalar, for HUD
-    containerTension: number
-    chainDistance: number   // total PC-to-hips
-    lineStretchSnapshot?: LineStretchSnapshot  // frozen at LINE_STRETCH
+    bridleTension: number      // scalar [N], for HUD + PC drag feedback
+    pinTension: number         // tension at pin segment [N]
+    chainDistance: number       // total PC-to-hips [m]
+    lineStretchSnapshot?: LineStretchSnapshot
 }
 ```
-
-Renderer reads this and drives Three.js. No physics imports in the render file, no Three.js imports in the physics file.
 
 ## SimRunner Integration
 
@@ -133,23 +181,23 @@ Renderer reads this and drives Three.js. No physics imports in the render file, 
 if (this.wsDeploy) {
     this.wsDeploy.step(DT, bodyState, rho)
     if (this.wsDeploy.phase === 'line_stretch') {
-        // Hand off to canopy deploy sub-module
         const snapshot = this.wsDeploy.snapshot
         this.transitionToCanopy(snapshot)
     }
 }
 ```
 
-SimRunner owns the deploy sub-module instance. Creates it on A button. Destroys it at canopy handoff (canopy deploy sub-module takes over).
+SimRunner owns the deploy sub-module. Creates on A button. PC persists into canopy flight
+(canopy deploy sub-module inherits the PC rigid body for continued tension-drag interplay).
 
 ## File Organization
 
 ```
 src/sim/
-    deploy-wingsuit.ts    (~400)  This module: tension chain, sub-states, GLB lifecycle, handoff
-    deploy-canopy.ts      (~300)  Future: slider descent, inflation, line twist recovery
+    deploy-wingsuit.ts    (~400)  Tension chain, sub-states, GLB lifecycle, handoff
+    deploy-canopy.ts      (~300)  Slider descent, inflation, line twist recovery
     deploy-render.ts      (~250)  Three.js rendering for both deploy modules
-    deploy-types.ts       (~80)   Shared types: WingsuitDeployState, LineStretchSnapshot, etc.
+    deploy-types.ts       (~80)   Shared types: WingsuitDeployState, LineStretchSnapshot, Vec3, etc.
     sim-runner.ts         (~350)  Core loop, owns deploy sub-modules
     sim-state-machine.ts  (~200)  Top-level FSM: freefall/deployment/canopy/landed
     sim-gamepad.ts        (~150)  Vehicle-aware gamepad reading
@@ -157,28 +205,31 @@ src/sim/
     sim-ui.ts             (~150)  Thin orchestrator: setup, event binding
 ```
 
-## Constants (from CloudBASE + tuning)
+## Constants
 
 | Constant | Value | Source |
 |----------|-------|--------|
 | `BRIDLE_SEGMENT_LENGTH` | 0.33 m | bridalsegment.glb |
 | `BRIDLE_SEGMENT_COUNT` | 10 | 3.3m / 0.33m |
-| `TOTAL_BRIDLE_LENGTH` | 3.3 m | bridal.glb measurement |
-| `TOTAL_LINE_LENGTH` | 5.23 m | CloudBASE `pilottoattachmentpoint` |
+| `PIN_POSITION` | segment 1 (~0.5m from container) | real geometry |
+| `TOTAL_BRIDLE_LENGTH` | 3.3 m | bridal.glb |
+| `TOTAL_LINE_LENGTH` | 5.23 m | CloudBASE |
 | `PC_MASS` | 0.057 kg | CloudBASE |
-| `PC_AREA_OPENED` | 0.732 m² | π × 0.483² |
-| `PC_AREA_UNOPENED` | 0.004 m² | π × 0.035² |
-| `PC_CD` | 0.9 | CloudBASE |
+| `PC_AREA` | 0.732 m² | π × 0.483² |
+| `PC_CD_MIN` | 0.3 | collapsed, low tension |
+| `PC_CD_MAX` | 0.9 | fully inflated, high tension |
+| `TENSION_FULL_INFLATION` | ~20 N | tunable: tension at which PC is fully inflated |
 | `CANOPY_BAG_MASS` | 3.7 kg | CloudBASE |
-| `CANOPY_BAG_CD` | 1.0 | bluff body estimate |
+| `CANOPY_BAG_CD` | 1.0 | bluff body |
 | `THROW_VELOCITY` | 3.0 m/s | CloudBASE, body-right |
 | `UNSTOW_TENSION_THRESHOLD` | ~5 N | tunable |
-| `CONTAINER_OPEN_TENSION` | ~50 N | tunable |
+| `PIN_RELEASE_TENSION` | ~50 N | tunable |
+| `SEGMENT_MASS` | ~0.01 kg | ~10g per segment for acceleration calc |
 
 ## Open Questions
 
-1. **Segment mass** — bridle segments are very light (~10g each). Treat as massless constraints, or give them mass for stability?
-2. **Canopy bag spawn timing** — at BRIDLE_STRETCHED or CONTAINER_OPEN? Real sequence: bridle stretches → container opens (separate event) → bag extracts. Two thresholds.
-3. **Weight shift coupling during deployment** — how much does lateral shift affect riser tension asymmetry? Linear mapping from pilotRoll to riser tension bias?
-4. **Snatch force** — at line stretch, relative velocity between body and canopy creates a sudden deceleration. Model as impulse or let the constraint handle it?
-5. **PC drag after line stretch** — PC collapses when canopy inflates (steals the air). Model drag reduction or just hand off?
+1. **Spring stiffness vs constraint clamp** — pure constraint (position clamp + velocity projection) or spring-damper for smoother tension? CloudBASE used constraint clamp.
+2. **Tension measurement** — compute from constraint force (position correction × mass / dt²) or track spring stretch explicitly?
+3. **Weight shift → riser asymmetry** — linear mapping from pilotRoll to riser tension bias? Or geometric (hip offset changes moment arms)?
+4. **PC area variation with tension** — start CD-only, or include area scaling from fabric stretch?
+5. **Segment-to-segment damping** — any relative velocity damping between neighboring segments, or just the radial velocity projection?
