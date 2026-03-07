@@ -196,8 +196,8 @@ export class WingsuitDeploySim {
 
     const pcSpeed = v3len(this.pcVel)
     if (pcSpeed > 0.01) {
-      const dragAccel = 0.5 * rho * pcCD * PC_AREA * pcSpeed / PC_MASS
-      const dragDv = dragAccel * dt
+      const dragAccel = 0.5 * rho * pcCD * PC_AREA * pcSpeed * pcSpeed / PC_MASS
+      const dragDv = Math.min(dragAccel * dt, pcSpeed * 0.5)  // cap for stability
       this.pcVel = v3sub(this.pcVel, v3scale(this.pcVel, dragDv / pcSpeed))
     }
 
@@ -211,8 +211,8 @@ export class WingsuitDeploySim {
     if (this.canopyBag) {
       const bagSpeed = v3len(this.canopyBag.velocity)
       if (bagSpeed > 0.01) {
-        const bagDragAccel = 0.5 * rho * CANOPY_BAG_CD * CANOPY_BAG_AREA * bagSpeed / CANOPY_BAG_MASS
-        const bagDragDv = bagDragAccel * dt
+        const bagDragAccel = 0.5 * rho * CANOPY_BAG_CD * CANOPY_BAG_AREA * bagSpeed * bagSpeed / CANOPY_BAG_MASS
+        const bagDragDv = Math.min(bagDragAccel * dt, bagSpeed * 0.5)
         this.canopyBag.velocity = v3sub(
           this.canopyBag.velocity,
           v3scale(this.canopyBag.velocity, bagDragDv / bagSpeed),
@@ -236,8 +236,10 @@ export class WingsuitDeploySim {
       // Drag on segment (small, but helps stability)
       const segSpeed = v3len(seg.velocity)
       if (segSpeed > 0.1) {
-        const segDrag = 0.5 * rho * 0.5 * 0.001 * segSpeed / SEGMENT_MASS  // tiny CD×A
-        seg.velocity = v3sub(seg.velocity, v3scale(seg.velocity, Math.min(segDrag * dt / segSpeed, 0.5)))
+        const SEG_CDA = 0.01  // CD×A for bridle segment with fabric [m²]
+        const segDragAccel = 0.5 * rho * SEG_CDA * segSpeed * segSpeed / SEGMENT_MASS
+        const segDv = Math.min(segDragAccel * dt, segSpeed * 0.5)  // cap at 50% of speed for stability
+        seg.velocity = v3sub(seg.velocity, v3scale(seg.velocity, segDv / segSpeed))
       }
       // Integrate
       seg.position = v3add(seg.position, v3scale(seg.velocity, dt))
