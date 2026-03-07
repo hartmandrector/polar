@@ -44,6 +44,30 @@ let loadingModel = false
 let massOverlay: MassOverlay
 let cellWireframes: CellWireframes | null = null
 let deployRenderer: DeployRenderer | null = null
+let preloadedCanopyModel: LoadedModel | null = null
+let preloadedCanopyPolarKey: string | null = null
+/** Preload canopy model for instant transition at deployment */
+async function preloadCanopyForScenario(canopyPolarKey: string): Promise<void> {
+  if (preloadedCanopyPolarKey === canopyPolarKey) return  // already loaded/loading
+  preloadedCanopyPolarKey = canopyPolarKey
+  try {
+    const vehicle = getVehicleDefinition(canopyPolarKey)
+    const polar = getVehicleAeroPolar(vehicle) ?? continuousPolars[canopyPolarKey]
+    preloadedCanopyModel = await loadVehicleModel(vehicle)
+    // Apply CG offset
+    if (polar?.massSegments && polar.massSegments.length > 0) {
+      const massRef = getVehicleMassReference(vehicle, polar)
+      const cgNED = computeCenterOfMass(polar.massSegments, massRef, polar.m)
+      applyCgFromMassSegments(preloadedCanopyModel, cgNED)
+    }
+    // Don't add to scene yet — keep hidden until transition
+    console.log(`[Preload] Canopy model '${canopyPolarKey}' ready`)
+  } catch (err) {
+    console.error(`[Preload] Failed to load canopy '${canopyPolarKey}':`, err)
+    preloadedCanopyModel = null
+    preloadedCanopyPolarKey = null
+  }
+}
 let currentInertia: InertiaComponents = ZERO_INERTIA
 let prevPolarKeyForInertia = ''
 
@@ -331,6 +355,11 @@ function updateSystemViewData(
 function updateVisualization(state: FlightState): void {
   flightState = state
 
+  // Preload canopy model when scenario has a canopy polar (for instant transition)
+  if ((state as any).scenarioCanopyPolar && state.modelType !== 'canopy') {
+    preloadCanopyForScenario((state as any).scenarioCanopyPolar)
+  }
+
   // Get the continuous polar (with debug overrides if panel is open)
   const vehicle = getVehicleDefinition(state.polarKey)
   const basePolar: ContinuousPolar = getVehicleAeroPolar(vehicle)
@@ -343,8 +372,24 @@ function updateVisualization(state: FlightState): void {
   // Auto-switch GLB model when polar changes (e.g. deployment transition)
   const modelType = vehicle.modelType ?? 'wingsuit'
   if (currentModel && currentModel.type !== modelType) {
-    const pilotType = modelType === 'canopy' ? state.canopyPilotType : undefined
-    switchModel(vehicle, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar, massReference)
+    if (preloadedCanopyModel && modelType === 'canopy') {
+      // Instant swap from preloaded model
+      sceneCtx.scene.remove(currentModel.group)
+      if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
+      currentModel = preloadedCanopyModel
+      sceneCtx.scene.add(currentModel.group)
+      setCanopyComponentScale(currentModel.canopyComponentScale)
+      if (currentModel.canopyModel) {
+        if (cellWireframes) cellWireframes.dispose()
+        cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
+        currentModel.canopyModel.add(cellWireframes.group)
+      }
+      preloadedCanopyModel = null
+      console.log(`[Model] Instant switch to preloaded canopy`)
+    } else {
+      const pilotType = modelType === 'canopy' ? state.canopyPilotType : undefined
+      switchModel(vehicle, basePolar.cgOffsetFraction ?? 0, pilotType, basePolar, massReference)
+    }
   }
 
   // Rebuild segments when canopy pilot type changes (ibex only)
