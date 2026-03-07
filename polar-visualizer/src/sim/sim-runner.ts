@@ -126,6 +126,9 @@ export class SimRunner {
   /** Canopy deploy manager — active after line stretch */
   private canopyDeploy: CanopyDeployManager | null = null
 
+  /** Canopy polar key to switch to at line stretch (set from scenario) */
+  private canopyPolarKey: string | null = null
+
   constructor(
     initialFlightState: FlightState,
     callbacks: SimRunnerCallbacks,
@@ -133,6 +136,8 @@ export class SimRunner {
     this.simState = flightStateToSimState(initialFlightState)
     this.callbacks = callbacks
     this.modelType = initialFlightState.modelType
+    // Store canopy polar key from scenario for transition
+    this.canopyPolarKey = (initialFlightState as any).scenarioCanopyPolar ?? null
   }
 
   start(): void {
@@ -329,10 +334,11 @@ export class SimRunner {
         deployLineStretched: deployRender.phase === 'line_stretch',
         deployRenderState: deployRender,
       } : {}),
-      // Canopy deploy state (overrides deploy slider)
+      // Canopy deploy state (overrides deploy slider, model, and polar)
       ...(this.canopyDeploy ? {
         deploy: this.canopyDeploy.state.deploy,
         modelType: 'canopy' as const,
+        ...(this.canopyPolarKey ? { polarKey: this.canopyPolarKey } : {}),
       } : {}),
     }
     this.callbacks.onUpdate(updatedFlight)

@@ -56,11 +56,11 @@ const PC_CD_MIN = 0.3
 /** Tension [N] at which PC is fully inflated */
 const TENSION_FULL_INFLATION = 20
 
-/** Tension threshold to unstow next segment [N] — higher = more pause between segments */
-const UNSTOW_THRESHOLD = 15
+/** Tension threshold to unstow next segment [N] */
+const UNSTOW_THRESHOLD = 8
 
 /** Tension threshold to release closing pin [N] */
-const PIN_RELEASE_THRESHOLD = 50
+const PIN_RELEASE_THRESHOLD = 20
 
 /** Canopy bag mass [kg] */
 const CANOPY_BAG_MASS = 3.7
@@ -464,6 +464,7 @@ export class WingsuitDeploySim {
         yawRate: this.canopyBag!.yawRate,
       },
       tensionAxis: inertialToBody(tensionAxis, bodyState.phi, bodyState.theta, bodyState.psi),
+      tensionAxisInertial: tensionAxis,
       chainDistance: v3dist(this.pcPos, bodyPos),
       time: 0,  // set by SimRunner
     }

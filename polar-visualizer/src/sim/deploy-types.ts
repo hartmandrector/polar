@@ -73,6 +73,8 @@ export interface LineStretchSnapshot {
   canopyBag: CanopyBagState
   /** Tension axis: unit vector from pilot hips to canopy bag (body frame) */
   tensionAxis: Vec3
+  /** Tension axis in inertial NED frame */
+  tensionAxisInertial: Vec3
   /** Total chain distance [m] */
   chainDistance: number
   /** Simulation time [s] */
