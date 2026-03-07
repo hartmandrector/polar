@@ -11,7 +11,7 @@
  */
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
-import { loadVehicleModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
+import { loadVehicleModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, updateSimDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -647,9 +647,14 @@ function updateVisualization(state: FlightState): void {
         )
       }
     }
-    // Wingsuit deployment visualization — PC, bridle, snivel, lines
+    // Wingsuit deployment visualization — sim-driven or slider-driven
     if (currentModel.deployGroup) {
-      updateWingsuitDeploy(currentModel, state.wsDeploy, state.alpha_deg, state.beta_deg)
+      if (state.deployPCPosition) {
+        // Sim is running with active deployment sub-sim
+        updateSimDeploy(currentModel, state.deployPCPosition, state.deployBridleStretched ?? false)
+      } else {
+        updateWingsuitDeploy(currentModel, state.wsDeploy, state.alpha_deg, state.beta_deg)
+      }
     }
   }
 

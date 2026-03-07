@@ -923,3 +923,53 @@ export function updateWingsuitDeploy(
     dg.lineRight.visible = false
   }
 }
+
+/**
+ * Update wingsuit deployment visuals from sim sub-sim state.
+ *
+ * Positions PC at the physics-computed relative position (NED meters → Three.js model coords).
+ * Draws bridle line from container attachment to PC.
+ */
+export function updateSimDeploy(
+  model: LoadedModel,
+  pcPositionNED: { x: number; y: number; z: number },
+  _bridleStretched: boolean,
+): void {
+  const dg = model.deployGroup
+  if (!dg) return
+
+  dg.group.visible = true
+
+  // Convert NED meters → Three.js model units
+  // bodyLength is in Three.js units = pilot height (1.875m real)
+  const metersToModel = model.bodyLength / 1.875
+
+  // NED → Three.js: three.x = -ned.y, three.y = -ned.z, three.z = ned.x
+  const pcX = -pcPositionNED.y * metersToModel
+  const pcY = -pcPositionNED.z * metersToModel
+  const pcZ =  pcPositionNED.x * metersToModel
+
+  // Position PC
+  dg.pc.position.set(pcX, pcY, pcZ)
+  dg.pc.visible = true
+
+  // Orient PC to face away from body (along the tether direction)
+  if (pcX * pcX + pcY * pcY + pcZ * pcZ > 0.001) {
+    dg.pc.lookAt(pcX * 2, pcY * 2, pcZ * 2)
+  }
+
+  // Bridle line: body origin → PC
+  const containerY = 0.05 * model.bodyLength  // mid-back attachment
+  const containerZ = -0.15 * model.bodyLength  // slightly aft of CG
+  const bridleGeo = dg.bridleLine.geometry as THREE.BufferGeometry
+  const bridlePositions = bridleGeo.getAttribute('position') as THREE.BufferAttribute
+  bridlePositions.setXYZ(0, 0, containerY, containerZ)
+  bridlePositions.setXYZ(1, pcX, pcY, pcZ)
+  bridlePositions.needsUpdate = true
+  dg.bridleLine.visible = true
+
+  // Snivel + lines: not yet (canopy bag rigid body comes next)
+  dg.snivel.visible = false
+  dg.lineLeft.visible = false
+  dg.lineRight.visible = false
+}
