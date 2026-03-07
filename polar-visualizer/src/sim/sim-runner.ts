@@ -18,11 +18,176 @@ import { rk4Step } from '../polar/sim.ts'
 const DEG = Math.PI / 180
 const RAD = 180 / Math.PI
 
+// ─── Deployment Sub-Sim Constants (from CloudBASE) ──────────────────────────
+
+/** PC mass [kg] */
+const PC_MASS = 0.057
+
+/** Unopened PC radius [m] — small drag while bridle extends */
+const PC_RADIUS_UNOPENED = 0.035
+
+/** Opened PC radius [m] — full drag after bridle stretch */
+const PC_RADIUS_OPENED = 0.483
+
+/** PC drag coefficient */
+const PC_CD = 0.9
+
+/** Bridle length [m] — max distance before bridle goes taut */
+const BRIDLE_LENGTH = 3.3
+
+/** Total line length — pilot attachment to PC [m] */
+const TOTAL_LINE_LENGTH = 5.23
+
+/** Throw velocity [m/s] — lateral component added to body velocity at toss */
+const THROW_VELOCITY = 3.0
+
 /** Physics timestep [s] — 200 Hz for stability */
 const DT = 1 / 200
 
 /** Max physics steps per frame to prevent spiral of death */
 const MAX_STEPS_PER_FRAME = 10
+
+// ─── Deployment Sub-Sim ─────────────────────────────────────────────────────
+
+/** NED position + velocity for a rigid body */
+interface RigidBodyState {
+  px: number; py: number; pz: number  // position [m] NED inertial
+  vx: number; vy: number; vz: number  // velocity [m/s] NED inertial
+}
+
+/** Deploy sub-sim phase (runs alongside freefall) */
+type DeploySubPhase = 'pc_toss' | 'bridle_extending' | 'line_stretch'
+
+/**
+ * Deployment sub-simulation.
+ *
+ * Runs alongside the main 6DOF freefall sim after A button press.
+ * Manages PC and canopy bag rigid bodies with drag + distance constraints.
+ * Does NOT change the FSM phase — just tracks deployment geometry.
+ */
+export class DeploySubSim {
+  /** PC rigid body (spawns at A button) */
+  pc: RigidBodyState
+  /** Current sub-phase */
+  phase: DeploySubPhase = 'pc_toss'
+  /** Has bridle reached full extension? */
+  bridleStretched = false
+  /** Has total chain reached line stretch? */
+  lineStretched = false
+
+  constructor(bodyState: SimState) {
+    // Compute body inertial position and velocity
+    const { x, y, z, u, v, w, phi, theta, psi } = bodyState
+
+    // DCM body → inertial (3-2-1 Euler)
+    const cp = Math.cos(phi),   sp = Math.sin(phi)
+    const ct = Math.cos(theta), st = Math.sin(theta)
+    const cy = Math.cos(psi),   sy = Math.sin(psi)
+
+    // Body velocity → inertial
+    const vn = (ct*cy)*u + (sp*st*cy - cp*sy)*v + (cp*st*cy + sp*sy)*w
+    const ve = (ct*sy)*u + (sp*st*sy + cp*cy)*v + (cp*st*sy - sp*cy)*w
+    const vd = (-st)*u   + (sp*ct)*v             + (cp*ct)*w
+
+    // Throw vector: body-right direction in inertial frame (column 2 of DCM)
+    // body y-axis = (sp*st*cy - cp*sy, sp*st*sy + cp*cy, sp*ct) — already computed above
+    const throwRightN = sp*st*cy - cp*sy
+    const throwRightE = sp*st*sy + cp*cy
+    const throwRightD = sp*ct
+
+    // PC starts at body position with body velocity + lateral throw
+    this.pc = {
+      px: x, py: y, pz: z,
+      vx: vn + throwRightN * THROW_VELOCITY,
+      vy: ve + throwRightE * THROW_VELOCITY,
+      vz: vd + throwRightD * THROW_VELOCITY,
+    }
+  }
+
+  /**
+   * Step the deployment sub-sim forward.
+   * @param dt Timestep [s]
+   * @param bodyPos Body inertial position [m] NED
+   * @param rho Air density [kg/m³]
+   * @returns true if line stretch just occurred
+   */
+  step(dt: number, bodyPos: { x: number; y: number; z: number }, rho: number): boolean {
+    if (this.lineStretched) return false
+
+    // ─── PC drag ─────────────────────────────────────────────────────
+    const pcRadius = this.bridleStretched ? PC_RADIUS_OPENED : PC_RADIUS_UNOPENED
+    const pcArea = Math.PI * pcRadius * pcRadius
+    // dragAccel = 0.5 * rho * CD * A * |V| / mass  [m/s²]
+    // dv = -dragAccel * V_unit * dt
+    const speed = Math.sqrt(
+      this.pc.vx ** 2 + this.pc.vy ** 2 + this.pc.vz ** 2,
+    )
+    if (speed > 0.01) {
+      const dragAccel = 0.5 * rho * PC_CD * pcArea * speed / PC_MASS
+      this.pc.vx -= (this.pc.vx / speed) * dragAccel * dt
+      this.pc.vy -= (this.pc.vy / speed) * dragAccel * dt
+      this.pc.vz -= (this.pc.vz / speed) * dragAccel * dt
+    }
+
+    // ─── Gravity (NED: +z = down) ────────────────────────────────────
+    this.pc.vz += 9.81 * dt
+
+    // ─── Integrate position ──────────────────────────────────────────
+    this.pc.px += this.pc.vx * dt
+    this.pc.py += this.pc.vy * dt
+    this.pc.pz += this.pc.vz * dt
+
+    // ─── Distance constraint ─────────────────────────────────────────
+    const dx = this.pc.px - bodyPos.x
+    const dy = this.pc.py - bodyPos.y
+    const dz = this.pc.pz - bodyPos.z
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    const maxDist = this.bridleStretched ? TOTAL_LINE_LENGTH : BRIDLE_LENGTH
+
+    if (dist > maxDist) {
+      // Clamp position to max distance (CloudBASE constraint pattern)
+      const correction = (dist - maxDist) / dist
+      this.pc.px -= dx * correction
+      this.pc.py -= dy * correction
+      this.pc.pz -= dz * correction
+
+      // Check phase transitions
+      if (!this.bridleStretched) {
+        this.bridleStretched = true
+        this.phase = 'bridle_extending'
+        console.log(`[Deploy] Bridle stretch at dist=${dist.toFixed(2)}m`)
+      }
+    }
+
+    // Check line stretch (after constraint — use pre-constraint distance)
+    if (this.bridleStretched && dist >= TOTAL_LINE_LENGTH) {
+      this.lineStretched = true
+      this.phase = 'line_stretch'
+      console.log(`[Deploy] LINE STRETCH at dist=${dist.toFixed(2)}m`)
+      return true
+    }
+
+    return false
+  }
+
+  /** Distance from body to PC [m] */
+  distanceTo(bodyPos: { x: number; y: number; z: number }): number {
+    const dx = this.pc.px - bodyPos.x
+    const dy = this.pc.py - bodyPos.y
+    const dz = this.pc.pz - bodyPos.z
+    return Math.sqrt(dx * dx + dy * dy + dz * dz)
+  }
+
+  /** PC position relative to body [m] NED — for rendering */
+  relativePosition(bodyPos: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
+    return {
+      x: this.pc.px - bodyPos.x,
+      y: this.pc.py - bodyPos.y,
+      z: this.pc.pz - bodyPos.z,
+    }
+  }
+}
 
 // ─── Pilot Coupling Input Scaling ───────────────────────────────────────────
 
@@ -227,6 +392,9 @@ export class SimRunner {
   private accH = 0     // horizontal acceleration [m/s²]
   private accV = 0     // vertical acceleration [m/s²]
 
+  /** Deployment sub-sim — active after PC toss, null otherwise */
+  private deploySub: DeploySubSim | null = null
+
   constructor(
     initialFlightState: FlightState,
     callbacks: SimRunnerCallbacks,
@@ -248,6 +416,7 @@ export class SimRunner {
   /** Stop the simulation loop */
   stop(): void {
     this.running = false
+    this.deploySub = null
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId)
       this.animFrameId = 0
@@ -304,6 +473,22 @@ export class SimRunner {
 
   /** Current SimState (read-only access for telemetry) */
   get state(): Readonly<SimState> { return this.simState }
+
+  /** Deployment sub-sim (read-only access for rendering/telemetry) */
+  get deployState(): Readonly<DeploySubSim> | null { return this.deploySub }
+
+  /** Spawn the PC rigid body — called on A button during freefall */
+  tossPilotChute(): void {
+    if (this.deploySub) return  // already tossed
+    this.deploySub = new DeploySubSim(this.simState)
+    console.log(`[SimRunner] PC tossed at t=${this.simTime.toFixed(2)}s`)
+  }
+
+  /** Is deployment sub-sim active? */
+  get isDeploying(): boolean { return this.deploySub !== null && !this.deploySub.lineStretched }
+
+  /** Has line stretch occurred? */
+  get hasLineStretched(): boolean { return this.deploySub?.lineStretched ?? false }
 
   private tick = (): void => {
     if (!this.running) return
@@ -380,6 +565,17 @@ export class SimRunner {
     let accumulator = elapsed
     while (accumulator >= DT) {
       this.simState = rk4Step(this.simState, config, DT)
+
+      // Step deployment sub-sim alongside main physics
+      if (this.deploySub && !this.deploySub.lineStretched) {
+        const bodyPos = { x: this.simState.x, y: this.simState.y, z: this.simState.z }
+        const hitLineStretch = this.deploySub.step(DT, bodyPos, config.rho)
+        if (hitLineStretch) {
+          console.log(`[SimRunner] Line stretch at t=${this.simTime.toFixed(2)}s`)
+          // TODO: snapshot state, transition FSM, inject canopy ICs
+        }
+      }
+
       accumulator -= DT
       this.simTime += DT
     }
@@ -400,6 +596,22 @@ export class SimRunner {
     const updatedFlight = {
       ...simStateToFlightState(this.simState, base),
       ...gamepadFlightOverrides,
+      // Deployment sub-sim state for rendering
+      ...(this.deploySub ? {
+        deployPCPosition: this.deploySub.relativePosition({
+          x: this.simState.x,
+          y: this.simState.y,
+          z: this.simState.z,
+        }),
+        deployPCDistance: this.deploySub.distanceTo({
+          x: this.simState.x,
+          y: this.simState.y,
+          z: this.simState.z,
+        }),
+        deployPhase: this.deploySub.phase,
+        deployBridleStretched: this.deploySub.bridleStretched,
+        deployLineStretched: this.deploySub.lineStretched,
+      } : {}),
     }
     this.callbacks.onUpdate(updatedFlight)
 

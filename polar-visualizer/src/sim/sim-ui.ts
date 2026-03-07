@@ -380,7 +380,13 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
       if (currentPhase === 'canopy') {
         html += `<div>Next: A = n/a · GR: ${(spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0).toFixed(1)}</div>`
       } else if (currentPhase === 'freefall') {
-        html += `<div>Next: A = PC toss</div>`
+        const ds = r.deployState
+        if (ds) {
+          const dist = ds.distanceTo({ x: s.x, y: s.y, z: s.z })
+          html += `<div>🪂 PC dist: ${dist.toFixed(1)}m · ${ds.bridleStretched ? 'Bridle ✓' : 'Extending...'} · Phase: ${ds.phase}</div>`
+        } else {
+          html += `<div>Next: A = PC toss</div>`
+        }
       }
       phaseTelemetry.innerHTML = html
     }
@@ -479,28 +485,16 @@ export function setupSimUI(ctx: SimUIContext): void {
   }, 100)
 }
 
-/** Handle pilot chute toss — transition from wingsuit to canopy in scenario mode */
+/** Handle pilot chute toss — spawn PC sub-sim (stays in freefall) */
 function handlePilotChuteToss(ctx: SimUIContext): void {
   const state = ctx.getFlightState()
   // Only works in scenario mode during freefall phase
   if (state.scenario === 'debug' || !runner?.isRunning) return
   if (currentPhase !== 'freefall') return
 
-  const canopyPolar = state.scenarioCanopyPolar
-  if (!canopyPolar) return
-
-  // Transition to canopy phase (hard cut for now)
-  currentPhase = 'canopy'
-  phaseStartTime = runner.time
-
-  // Switch the polar dropdown to canopy (triggers model/segment swap)
-  const polarSelect = document.getElementById('polar-select') as HTMLSelectElement | null
-  if (polarSelect && canopyPolar) {
-    polarSelect.value = canopyPolar
-    polarSelect.dispatchEvent(new Event('change'))
-  }
-
-  console.log(`[FSM] Pilot chute toss → canopy phase: ${canopyPolar}`)
+  // Spawn PC rigid body — does NOT change phase
+  runner.tossPilotChute()
+  console.log(`[FSM] Pilot chute tossed — still in freefall, PC sub-sim active`)
 }
 
 function toggleSim(ctx: SimUIContext): void {

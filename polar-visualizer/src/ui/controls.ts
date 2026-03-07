@@ -46,6 +46,12 @@ export interface FlightState {
   rollThrottle: number      // [-1, +1] differential shoulder height
   wsDihedral: number        // [0, 1] wing dihedral angle
   wsDeploy: number          // [0, 1] wingsuit deployment phase
+  // ── Deployment sub-sim (set by SimRunner when PC is active) ──
+  deployPCPosition?: { x: number; y: number; z: number }  // PC position relative to body [m] NED
+  deployPCDistance?: number                                 // body-to-PC distance [m]
+  deployPhase?: 'pc_toss' | 'bridle_extending' | 'line_stretch'
+  deployBridleStretched?: boolean
+  deployLineStretched?: boolean
 }
 
 export type StateChangeCallback = (state: FlightState) => void
