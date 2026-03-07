@@ -5,46 +5,68 @@ The deployment phase is two sub-phases bridging freefall and canopy flight. Each
 ## State Chain
 
 ```
-FREEFALL → [A button] → WS_DEPLOYMENT → [line stretch] → CP_DEPLOYMENT → [slider down] → CANOPY_FLIGHT
+FREEFALL ──[A button]──→ FREEFALL (+ PC sub-sim running) ──[line stretch]──→ CP_DEPLOYMENT → CANOPY_FLIGHT
 ```
 
-Each arrow is a handoff: the exiting state computes everything the entering state needs.
+**A button does NOT change the FSM phase.** We stay in freefall — same controls, same UI, same aero model. A button spawns the PC rigid body and starts a deployment sub-simulation running alongside freefall. The pilot is still flying the wingsuit with full control.
 
-## Sub-Phase 1: Wingsuit Deployment (PC Toss → Line Stretch)
+**Line stretch is the real state transition.** Everything changes at once: polar swap, coupling activation, constraint modes, gamepad mapping, camera.
 
-### Entry: From Freefall
+## Tension Chain Geometry
 
-Freefall state captures at the moment of A button press:
-- **Body state**: position (NED), velocity (u,v,w), Euler angles (φ,θ,ψ), angular rates (p,q,r)
-- **Airspeed vector**: for PC throw direction
-- **Altitude AGL**: for scenario telemetry
+The deployment system is one continuous tension chain routed through the pilot's body:
 
-These become the initial conditions for the PC rigid body.
+```
+Pilot hips (harness attach)
+  → 4 Riser groups (front-L, front-R, rear-L, rear-R)
+    → through Slider grommets (4 corners)
+      → Suspension lines (A/B/C/D per group)
+        → Canopy attachment points (loaded ribs)
+          → Bridle attachment
+            → Bridle line (3.3m)
+              → Pilot chute
+```
 
-### Physics During This Sub-Phase
+During freefall+PC the chain is slack. At line stretch the chain goes taut and every angle in this geometry becomes aerodynamically relevant.
 
-PC toss creates a new rigid body:
+**Weight shift steers the deployment** — the pilot's hip position (from lateral weight shift) determines which riser group goes taut first, biasing the canopy's initial turn. This is why skydivers spread risers and stay symmetric during opening.
+
+## PC Sub-Simulation (runs during freefall)
+
+### Spawned by A Button
+
+A button press captures the body state and creates a PC rigid body:
 - **Initial position**: container_back attachment point (from model-registry)
-- **Initial velocity**: body velocity + throw vector (body-right component, ~3 m/s from CloudBASE)
-- **Drag model**: starts with small unopened area (upcr=0.035m), transitions to full PC area (0.73 m²) as bridle pays out
-- **Constraint**: PC-to-body distance ≤ bridle length (3.3m). Euler integrate + clamp each timestep.
+- **Initial velocity**: body velocity + throw vector (~3 m/s body-right, CloudBASE reference)
+- **Drag model**: small unopened area initially, full PC area (0.73 m²) after bridle pays out
+- **Constraint**: PC-to-body distance ≤ segment chain length. Euler integrate + clamp each timestep.
 
-Wingsuit continues flying under pilot control during this sub-phase. The PC is a parasitic drag body trailing behind.
+Wingsuit continues under full pilot control. The PC is a parasitic drag body trailing behind.
 
-Bridle segments deploy sequentially — each segment becomes visible as the PC-to-body distance passes its threshold (segment N visible when distance > N × 0.33m).
+### What the Sub-Sim Tracks
 
-### Exit: Line Stretch Event
+Not just PC distance — the full chain routing in body frame:
+1. **PC position and velocity** (NED + body-relative)
+2. **4 line group angles** — from pilot hip position through slider to canopy attach points
+3. **Pilot hip position in body frame** — from weight shift state (lateral shift moves the harness attach)
+4. **Bridle segment visibility** — sequential reveal as distance increases (segment N at N × 0.33m)
+5. **Chain geometry snapshot** — continuously updated, frozen at line stretch
 
-When PC-to-body distance reaches `pilottoattachmentpoint` (5.23m):
+### Line Stretch Event
 
-**Compute and pass forward:**
-1. **Wingsuit body state at line stretch** — position, velocity, orientation, rates
-2. **PC position and velocity** — now constrained at full extension
-3. **Snatch force direction** — vector from body to PC (this is the bridle tension axis)
-4. **Relative velocity** — difference between body velocity and PC velocity (energy absorbed by snatch)
-5. **Deployment α estimate** — angle between body velocity vector and bridle tension axis ≈ initial canopy AoA
+When total chain distance reaches `pilottoattachmentpoint` (5.23m), the chain goes taut.
 
-Camera zoom-out triggers here.
+**Snapshot everything in body frame:**
+1. **Wingsuit body state** — position, velocity, orientation, rates (all 18 state variables)
+2. **PC position and velocity** — constrained at full extension
+3. **Tension axis** — vector from pilot hips to PC (through the chain)
+4. **4-riser tension distribution** — from hip position + weight shift, which risers are loaded
+5. **Line twist** — body yaw relative to tension axis (δ_ψ)
+6. **Relative velocity** — body vs PC (snatch force energy)
+7. **Deployment α** — angle between airflow and tension axis
+8. **Weight shift state** — lateral offset at line stretch determines initial riser asymmetry
+
+Camera zoom-out triggers here. FSM transitions to CP_DEPLOYMENT.
 
 ## Sub-Phase 2: Canopy Deployment (Line Stretch → Flying)
 
