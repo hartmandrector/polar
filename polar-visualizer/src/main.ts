@@ -53,7 +53,7 @@ async function preloadCanopyForScenario(canopyPolarKey: string): Promise<void> {
   try {
     const vehicle = getVehicleDefinition(canopyPolarKey)
     const polar = getVehicleAeroPolar(vehicle) ?? continuousPolars[canopyPolarKey]
-    preloadedCanopyModel = await loadVehicleModel(vehicle)
+    preloadedCanopyModel = await loadVehicleModel(vehicle, 'wingsuit')
     // Apply CG offset
     if (polar?.massSegments && polar.massSegments.length > 0) {
       const massRef = getVehicleMassReference(vehicle, polar)
