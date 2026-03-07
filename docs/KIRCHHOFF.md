@@ -517,7 +517,7 @@ Wingsuit throttle controls — pitch, roll, and yaw response with force and mome
 
 ## 11  Parasitic Segments
 
-`makeParasiticSegment()` builds simple constant-coefficient drag bodies (lines, pilot body under canopy, bridle, pilot chute).
+`makeParasiticSegment()` builds simple constant-coefficient drag bodies (lines, bridle, pilot chute).
 
 $$C_L = \text{const}, \quad C_D = \text{const}, \quad C_Y = \text{const}, \quad C_M = 0, \quad \text{CP} = 0.25$$
 

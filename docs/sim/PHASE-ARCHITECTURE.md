@@ -181,7 +181,8 @@ During canopy flight with a malfunction:
 ```
 ┌─ Phase: Canopy ──────────────────────────────┐
 │  ⚠ LINE TWIST: 270° right                    │
-│  Recovery: spread risers + kick left          │
+│  Recovery: spread risers + kick left 
+|  (right stick -> left)                      │
 │                                               │
 │  ┌─ Gamepad ───────────┐  GR: 2.8  V: 14   │
 │  │  [SVG stick/trigger │  Brakes: L42% R0%  │

@@ -50,7 +50,7 @@ Deadzone: 0.08 (values below this magnitude → 0)
 | Yaw throttle | Triggers (LT−RT) | -1 to +1 | LT = yaw left, RT = yaw right |
 | Orbit camera | Left stick | Spherical | Azimuthal + polar orbit around model |
 
-![Wingsuit roll — requires active piloting](../../polar-visualizer/docs/gifs/sim-wingsuit-roll.gif)
+![Wingsuit roll ](../../polar-visualizer/docs/gifs/sim-wingsuit-roll.gif)
 
 ---
 
