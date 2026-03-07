@@ -53,8 +53,8 @@ const PC_CD_MIN = 0.3
 /** Tension [N] at which PC is fully inflated */
 const TENSION_FULL_INFLATION = 20
 
-/** Tension threshold to unstow next segment [N] */
-const UNSTOW_THRESHOLD = 5
+/** Tension threshold to unstow next segment [N] — higher = more pause between segments */
+const UNSTOW_THRESHOLD = 15
 
 /** Tension threshold to release closing pin [N] */
 const PIN_RELEASE_THRESHOLD = 50
@@ -69,10 +69,13 @@ const CANOPY_BAG_CD = 1.0
 const CANOPY_BAG_AREA = 0.5
 
 /** Throw velocity [m/s] — body-right lateral component at toss */
-const THROW_VELOCITY = 3.0
+const THROW_VELOCITY = 5.0
 
 /** Gravity [m/s²] */
 const G = 9.81
+
+/** PC release offset from CG in body frame [m] — out at right wingtip */
+const PC_RELEASE_OFFSET: Vec3 = { x: 0, y: 0.9, z: 0 }  // body Y+ = right
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -165,8 +168,9 @@ export class WingsuitDeploySim {
     // Throw direction: body-right (NED body Y+) → inertial
     const throwDir = bodyToInertial({ x: 0, y: 1, z: 0 }, phi, theta, psi)
 
-    // PC starts at body position + throw velocity
-    this.pcPos = { x, y, z }
+    // PC release position: out at right wingtip, not at container
+    const releaseOffset = bodyToInertial(PC_RELEASE_OFFSET, phi, theta, psi)
+    this.pcPos = v3add({ x, y, z }, releaseOffset)
     this.pcVel = v3add(inertialVel, v3scale(throwDir, THROW_VELOCITY))
 
     // Initialize all segments at body position (stowed in container)
