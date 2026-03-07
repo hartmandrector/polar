@@ -53,6 +53,7 @@ export interface FlightState {
   deployBridleStretched?: boolean
   deployLineStretched?: boolean
   deployRenderState?: import('../sim/deploy-types.ts').WingsuitDeployRenderState
+  canopyDeployState?: import('../sim/deploy-canopy.ts').CanopyDeployState
 }
 
 export type StateChangeCallback = (state: FlightState) => void

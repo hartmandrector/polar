@@ -338,6 +338,7 @@ export class SimRunner {
       ...(this.canopyDeploy ? {
         deploy: this.canopyDeploy.state.deploy,
         modelType: 'canopy' as const,
+        canopyDeployState: this.canopyDeploy.state,
         ...(this.canopyPolarKey ? { polarKey: this.canopyPolarKey } : {}),
       } : {}),
     }

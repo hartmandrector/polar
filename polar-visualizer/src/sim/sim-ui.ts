@@ -377,8 +377,17 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
         <div>V: ${spd.toFixed(1)} m/s (${(spd * 2.237).toFixed(0)} mph) · α: ${alpha.toFixed(1)}° · β: ${beta.toFixed(1)}°</div>
         <div>Phase t: ${phaseT.toFixed(1)}s · Controls: ${modelType === 'Canopy' ? 'risers/brakes' : 'pitch/roll/yaw'}</div>
       `
+      // Phase transition: freefall → canopy at line stretch
+      if (currentPhase === 'freefall' && r.deployRenderState?.phase === 'line_stretch') {
+        currentPhase = 'canopy'
+        phaseStartTime = t
+        console.log(`[FSM] Phase: freefall → canopy (line stretch at t=${t.toFixed(1)}s)`)
+      }
+
       if (currentPhase === 'canopy') {
-        html += `<div>Next: A = n/a · GR: ${(spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0).toFixed(1)}</div>`
+        const cds = r.canopyDeployState
+        const gr = spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0
+        html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${cds ? (cds.brakeLeft * 100).toFixed(0) + '%' : '—'}</div>`
       } else if (currentPhase === 'freefall') {
         const ds = r.deployRenderState
         if (ds) {
