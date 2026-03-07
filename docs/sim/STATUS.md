@@ -1,4 +1,4 @@
-# Simulation Status — 2026-03-06
+# Simulation Status — 2026-03-07
 
 ![Wingsuit sim flight with speed polar](../../polar-visualizer/docs/gifs/sim-hero-wingsuit.gif.gif)
 
@@ -20,29 +20,60 @@
 - **Flight trail**: Fading blue line (400-point ring buffer) showing flight path in inertial frame. Hidden in body frame. Fixed-origin approach with line translation for performance.
 - **Debug panel**: Per-segment polar overrides work during sim — enables live tuning while flying.
 
+### Phase FSM & Scenarios
+
+- **Phase state machine**: idle → freefall → deployment → canopy → landed. Color-coded phase box in HUD (cyan/yellow/green/gray). Phase timer, per-phase telemetry, auto-transitions.
+- **Scenario system**: Two-dropdown selection (scenario + polar). Wingsuit BASE pre-selects wingsuit + canopy polars. Polar dropdown locked during running scenario.
+- **Nested status display**: Scenario box → phase box with per-phase telemetry and gamepad visualization.
+
+### Wingsuit Deployment (full chain working)
+
+- **Pilot chute**: A button spawns PC rigid body at wingtip (0.9m body-right, 5 m/s throw). Tension-dependent drag CD 0.3→0.9 (continuous positive feedback). Stays in freefall phase.
+- **10-segment bridle**: Sequential unstow at 8N tension threshold. 0.33m segments with per-segment drag. Pin release at 20N triggers remaining segments + canopy bag.
+- **Canopy bag**: Bluff body drag (CD=1.0), 3-axis tumbling with pitch/roll ±90° clamp, free yaw (line twist seed). Spawns at pin release.
+- **Suspension line**: 1.93m line from body to bag. Line stretch at 98% triggers state snapshot.
+- **DeployRenderer**: 10 orange segment spheres, orange chain line, white suspension line, blue bag mesh, red PC tension ring. Inertial NED frame (not body-attached).
+- **HUD telemetry**: PC distance, tension, CD, chain distance, bag orientation angles.
+
+### Wingsuit → Canopy Transition
+
+- **Line stretch snapshot**: Full body state (12 vars), PC position/velocity, canopy bag state, tension axis (body + inertial).
+- **Canopy IC computation**: Heading from inertial tension axis (faces into wind), pitch from line angle, velocity rotated via full 3-2-1 DCM body→inertial→canopy body. Bag yaw → initial line twist.
+- **Snatch damping**: Angular rates reduced 70% at line stretch.
+- **GLB preloading**: Canopy model loads in background at scenario start. Instant swap at line stretch (no loading delay).
+- **Deploy inflation**: Ramps 0.05 → 1.0 over 3s (ease-out curve). Initial brakes 30%.
+- **FSM auto-transition**: Freefall → canopy phase at line stretch. Deploy visuals cleaned up. Controls switch to canopy mapping.
+
 ## Wired but Incomplete
 
 - **Constraint modes**: Architecture designed ([CONSTRAINT-MODES.md](CONSTRAINT-MODES.md)) with per-phase presets planned but not implemented per-DOF. Currently all DOFs simulated with gamepad overlay.
 - **Pilot aero torque**: `pilotSwingDampingTorque()` exists in eom.ts but effect is minimal. At speed, drag/lift on pilot body should pitch it slightly forward.
 - **Brake flap double-scaling**: Both getCoeffs and renderer apply deploy chordScale/spanScale — double-scaled during deployment transitions.
 - **Brake-to-cell coupling direction**: May be inverted at high brake (Kirchhoff post-stall at 58° effective α).
+- **PC persistence into canopy flight**: PC should continue bouncing behind canopy with tension-drag interplay. Not yet wired post-transition.
 
-## Planned — Phase Architecture
+## Planned
 
-See [PHASE-ARCHITECTURE.md](PHASE-ARCHITECTURE.md) and [DEPLOYMENT-MECHANICS.md](DEPLOYMENT-MECHANICS.md).
-
-- **Phase FSM**: State machine above SimRunner — prelaunch → freefall → deployment → canopy → landed. UI-driven phase/scenario selection, gamepad for in-phase events (A = PC toss, Start = scenario launch).
-- **Nested status panel**: Scenario box → phase box → sub-state box with per-phase telemetry.
-- **Deployment visualization**: 4-line-group + slider rigid body (8 lines, slider GLB). Manual slider first, physics-driven later.
-- **Pilot chute rigid body**: Position/velocity/drag, throw from hand.
-- **Bridle tension chain**: Multi-segment extraction driven by pilot chute drag.
-- **Scenario system**: Data-driven initial conditions and phase sequences (BASE, skydive, paraglider, debug).
-
-## Not Started
-
+- **Deploy as simulated DOF**: Integrate deploy value from aero forces during canopy deployment (currently time-based ramp).
+- **Slider rendering**: Position slider.glb along lines based on deploy value.
+- **Camera transitions**: Per-phase zoom/tracking (zoom-out on deployment trigger).
+- **Constraint mode presets**: Auto-switch per phase from CONSTRAINT-MODES.md.
 - **Canopy CP/CM tuning**: Needs pitch stability work (cm_0, cm_alpha, cp_0, cp_alpha per cell).
-- **Pilot coupling → canopy feedback**: Lateral weight shift → asymmetric riser loading → turn. Twist → reduced control authority. Not coupled back into aero.
+- **Pilot coupling → canopy feedback**: Lateral weight shift → asymmetric riser loading → turn. Twist → reduced control authority.
 - **Pivot junction slider**: Assembly trim angle control.
 - **Pilot height slider**: Coupled GLB + aero scaling.
 - **Output/export system**: Phases 1–5 from OUTPUT.md.
 - **Line tension model**: Research phase (Slegers & Costello framework).
+
+## Source Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/sim/sim-runner.ts` | ~320 | RK4 loop, gamepad reading, deploy orchestration, canopy handoff |
+| `src/sim/sim-ui.ts` | ~720 | Control panel, HUD, phase FSM, scenario system, gamepad SVG |
+| `src/sim/sim-gamepad.ts` | ~100 | Vehicle-aware gamepad axis/button reading |
+| `src/sim/deploy-wingsuit.ts` | ~450 | WingsuitDeploySim: 10-segment tension chain, PC drag, bag physics |
+| `src/sim/deploy-canopy.ts` | ~200 | Canopy IC computation + CanopyDeployManager inflation ramp |
+| `src/sim/deploy-types.ts` | ~75 | Vec3, deploy phases, render state, line stretch snapshot |
+| `src/viewer/deploy-render.ts` | ~250 | DeployRenderer: segment spheres, chain, bag, PC ring |
+| `src/viewer/trail.ts` | ~100 | TrailRenderer: flight path ring buffer |

@@ -2,23 +2,26 @@
 
 Continuous 6DOF simulation across flight phases — from launch through landing.
 
+**Status**: Phase FSM, scenario system, deployment sub-sim, and wingsuit→canopy transition all implemented and working. See [STATUS.md](STATUS.md) for current state.
+
 ## Phases
 
 ```
-prelaunch → freefall → deployment → canopy → landed
+idle → freefall → [PC toss → bridle → pin release → canopy bag → line stretch] → canopy → landed
 ```
 
 Each phase owns: active aero segments, control mapping, transition conditions, visible GLB models.
 
 ## Phase Definitions
 
-| Phase | Vehicle | Controls | Entry Condition | Exit Condition |
-|-------|---------|----------|-----------------|----------------|
-| **prelaunch** | Standing/seated model | None (countdown) | Scenario start | Jump trigger (gamepad/timer) |
-| **freefall** | Wingsuit 6-segment | Pitch/roll/yaw sticks | Exit from prelaunch | Pilot chute throw (gamepad button) |
-| **deployment** | Wingsuit + bridle + pilot chute + inflating canopy | Limited (body position only) | Pilot chute throw | Canopy fully inflated (`deploy ≈ 1.0`) |
-| **canopy** | 7-cell canopy + pilot body + bridle + pilot chute | Risers/brakes/weight shift | Inflation complete | Altitude ≈ 0 or user stop |
-| **landed** | Static model | None | Ground contact | Scenario reset |
+| Phase | Vehicle | Controls | Entry Condition | Exit Condition | Status |
+|-------|---------|----------|-----------------|----------------|--------|
+| **idle** | Selected model | Sliders | Scenario start | Start button | ✅ |
+| **freefall** | Wingsuit 6-segment | Pitch/roll/yaw sticks | Start button | Line stretch (auto) | ✅ |
+| **canopy** | 7-cell canopy + pilot | Risers/brakes/weight shift | Line stretch | Altitude ≈ 0 or stop | ✅ |
+| **landed** | Static model | None | Ground contact | Scenario reset | ⬜ |
+
+Note: prelaunch and deployment were originally separate phases but are now handled as sub-states within freefall (PC sub-sim runs alongside wingsuit physics, transition is automatic at line stretch).
 
 ## Deployment Sequence (aero-driven)
 
@@ -34,33 +37,22 @@ The deployment phase is NOT a timer — each step is driven by aerodynamics:
 
 Each step maps to a sub-state within the deployment phase. The existing deployment sliders (`pilotChuteDeploy`, `deploy`) provide debug override for any sub-state.
 
-## New Components Needed
+## Implementation Status
 
-### Pilot Chute
-- Separate rigid body with position, velocity, drag coefficient
-- Initial conditions from throw (velocity vector relative to body + offset from hand position)
-- Drag area: ~0.7 m² (typical BASE pilot chute)
-- Once inflated, acts as constant-drag anchor for bridle system
+### Pilot Chute ✅
+Implemented in `deploy-wingsuit.ts`. Tension-dependent drag (CD 0.3→0.9 continuous), wingtip release (0.9m body-right, 5 m/s throw), distance constraint with position clamp + velocity projection.
 
-### Bridle
-- Multi-segment chain: pilot chute → bridle tape → closing pin → canopy bag
-- Each segment: position, length, drag coefficient, tension
-- Tension propagation: upstream drag accumulates downstream
-- Existing `LineSetGLB` data provides segment geometry
+### Bridle ✅
+10-segment chain (0.33m each) with per-segment drag, sequential unstow at 8N tension threshold. Pin release at 20N frees remaining segments and spawns canopy bag.
 
-### Phase Controller (FSM)
-```typescript
-interface SimPhase {
-  name: string
-  activeSegments: AeroSegment[]
-  controlMapping: ControlMapping
-  canTransitionTo: (state: SimState) => string | null
-  onEnter: (state: SimState) => SimState
-  onExit: (state: SimState) => SimState
-}
-```
+### Canopy Bag ✅
+Bluff body drag (CD=1.0), 3-axis tumbling with pitch/roll ±90° clamp and free yaw (line twist seed). Suspension line (1.93m) with line stretch detection at 98%.
 
-The FSM lives above SimRunner. SimRunner stays phase-agnostic — it integrates whatever segments and controls the FSM gives it.
+### Canopy Handoff ✅
+`deploy-canopy.ts`: IC computation from line stretch snapshot — heading from inertial tension axis, velocity via DCM transform, bag yaw → pilot coupling twist. Deploy ramps 0.05→1.0 over 3s. GLB preloaded for instant transition.
+
+### Phase Controller (FSM) ✅
+Module-level state machine in `sim-ui.ts`: `currentPhase`, `phaseStartTime`, auto-transitions. Color-coded phase box (cyan=freefall, green=canopy). Scenario system with two-dropdown selection.
 
 ## Operating Modes
 
@@ -113,17 +105,15 @@ Example scenarios:
 
 ## Build Order
 
-1. **Phase FSM shell** — state machine above SimRunner, UI-driven phase control (not gamepad)
-2. **FSM status panel** — nested scenario/phase/sub-state display with telemetry
-3. **Remove LB/RB vehicle cycling** — replace with scenario/phase selection in UI
-4. **Pilot chute rigid body** — position/velocity/drag, throw from hand, trajectory rendering
-5. **Bridle tension chain** — multi-segment extraction driven by pilot chute drag
-6. **Deployment timing from aero** — connect pilot chute drag → extraction speed → inflation rate
-7. **Vehicle assembly swap** — wingsuit model → canopy+pilot model transition during deployment
-8. **Continuous mode toggle** — switch between debug (manual sliders) and continuous (aero-driven)
-9. **Scenario system** — data-driven initial conditions and phase sequences
-
-Steps 1-3 are next. Everything else builds on them.
+1. ✅ **Phase FSM shell** — state machine in sim-ui.ts, scenario-driven phase control
+2. ✅ **FSM status panel** — nested scenario/phase display with per-phase telemetry
+3. ✅ **Remove LB/RB vehicle cycling** — replaced with scenario/phase selection in UI
+4. ✅ **Pilot chute rigid body** — position/velocity/drag, throw from hand, trajectory rendering
+5. ✅ **Bridle tension chain** — 10-segment extraction driven by pilot chute drag
+6. ✅ **Vehicle assembly swap** — wingsuit GLB → canopy GLB transition with preloading
+7. ⬜ **Deployment timing from aero** — connect aero forces → inflation rate (currently time-based)
+8. ⬜ **Continuous mode toggle** — switch between debug (manual sliders) and continuous (aero-driven)
+9. ⬜ **Scenario system expansion** — additional scenarios (skydive, paraglider, debug canopy)
 
 ## UI: Phase Control & Status Panel
 

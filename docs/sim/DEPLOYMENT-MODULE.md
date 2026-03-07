@@ -186,13 +186,13 @@ The deploy slider value feeds into `SimConfig` and drives both the aero model (c
 
 ## Build Sequence
 
-1. **PC rigid body in SimRunner** — position, velocity, drag, distance constraint. Render with pc.glb.
-2. **Canopy bag rigid body** — bluff body drag, rotation with ±90° pitch/roll clamps, free yaw. Spawns at bridle extension. Render with snivel.glb.
-3. **Bridle rendering** — deferred: monolithic vs segmented vs line-only. Physics doesn't care.
-4. **Line stretch detection** — total chain distance threshold → full state snapshot → FSM transition.
-5. **IC computation at line stretch** — α, β from canopy bag orientation; θ_pilot from body pitch vs tension axis; δ_ψ from canopy bag accumulated yaw.
-6. **State injection for canopy** — set simState from snapshot, activate pilot coupling, switch polar.
-7. **Deploy as simulated DOF** — integrate deploy value from aero forces during CP_DEPLOYMENT.
-8. **Slider rendering** — position slider.glb along lines based on deploy value.
-9. **Camera transitions** — per-phase zoom/tracking.
-10. **Constraint mode presets** — auto-switch per phase (from CONSTRAINT-MODES.md).
+1. ✅ **PC rigid body in SimRunner** — `deploy-wingsuit.ts`. Tension-dependent drag (CD 0.3→0.9), wingtip release, distance constraint. `DeployRenderer` renders PC ring + chain.
+2. ✅ **Canopy bag rigid body** — bluff body drag (CD=1.0), 3-axis rotation with ±90° pitch/roll clamp, free yaw (line twist seed). Spawns at pin release. Rendered as blue box.
+3. ✅ **Bridle rendering** — 10-segment chain with orange spheres + line. Sequential unstow at 8N threshold. Pin release at 20N.
+4. ✅ **Line stretch detection** — suspension line distance threshold (1.93m × 0.98) → full state snapshot frozen with body state, bag state, tension axis (body + inertial).
+5. ✅ **IC computation at line stretch** — `deploy-canopy.ts`. Heading from inertial tension axis. Velocity via full 3-2-1 DCM transform. Bag yaw → pilotYaw. Snatch damping 70%.
+6. ✅ **State injection for canopy** — SimRunner injects canopy SimState, switches modelType + polarKey, activates CanopyDeployManager. GLB preloaded at scenario start for instant swap.
+7. ⬜ **Deploy as simulated DOF** — integrate deploy value from aero forces during CP_DEPLOYMENT. Currently time-based ramp (3s ease-out).
+8. ⬜ **Slider rendering** — position slider.glb along lines based on deploy value.
+9. ⬜ **Camera transitions** — per-phase zoom/tracking.
+10. ⬜ **Constraint mode presets** — auto-switch per phase (from CONSTRAINT-MODES.md).
