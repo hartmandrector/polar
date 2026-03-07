@@ -380,10 +380,12 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
       if (currentPhase === 'canopy') {
         html += `<div>Next: A = n/a · GR: ${(spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0).toFixed(1)}</div>`
       } else if (currentPhase === 'freefall') {
-        const ds = r.deployState
+        const ds = r.deployRenderState
         if (ds) {
-          const dist = ds.distanceTo({ x: s.x, y: s.y, z: s.z })
-          html += `<div>🪂 PC dist: ${dist.toFixed(1)}m · ${ds.bridleStretched ? 'Bridle ✓' : 'Extending...'} · Phase: ${ds.phase}</div>`
+          html += `<div>🪂 PC dist: ${ds.chainDistance.toFixed(1)}m · T: ${ds.bridleTension.toFixed(0)}N · CD: ${ds.pcCD.toFixed(2)} · Phase: ${ds.phase}</div>`
+          if (ds.canopyBag) {
+            html += `<div>Canopy bag: yaw ${(ds.canopyBag.yaw * 180 / Math.PI).toFixed(0)}°</div>`
+          }
         } else {
           html += `<div>Next: A = PC toss</div>`
         }

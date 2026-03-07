@@ -49,9 +49,10 @@ export interface FlightState {
   // ── Deployment sub-sim (set by SimRunner when PC is active) ──
   deployPCPosition?: { x: number; y: number; z: number }  // PC position relative to body [m] NED
   deployPCDistance?: number                                 // body-to-PC distance [m]
-  deployPhase?: 'pc_toss' | 'bridle_extending' | 'line_stretch'
+  deployPhase?: string                                      // WingsuitDeployPhase
   deployBridleStretched?: boolean
   deployLineStretched?: boolean
+  deployRenderState?: import('../sim/deploy-types.ts').WingsuitDeployRenderState
 }
 
 export type StateChangeCallback = (state: FlightState) => void

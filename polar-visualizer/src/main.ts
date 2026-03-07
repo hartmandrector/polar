@@ -649,8 +649,12 @@ function updateVisualization(state: FlightState): void {
     }
     // Wingsuit deployment visualization — sim-driven or slider-driven
     if (currentModel.deployGroup) {
-      if (state.deployPCPosition) {
-        // Sim is running with active deployment sub-sim
+      const drs = state.deployRenderState
+      if (drs) {
+        // Sim is running with active deployment sub-sim — use full render state
+        updateSimDeploy(currentModel, drs.pcPosition, drs.bridleTension > 5)
+      } else if (state.deployPCPosition) {
+        // Legacy: simple PC position
         updateSimDeploy(currentModel, state.deployPCPosition, state.deployBridleStretched ?? false)
       } else {
         updateWingsuitDeploy(currentModel, state.wsDeploy, state.alpha_deg, state.beta_deg)
