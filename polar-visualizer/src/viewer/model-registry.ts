@@ -1179,6 +1179,37 @@ export const SLIDER_GEOMETRY: ModelGeometry = {
   attachments: [],
 }
 
+/** snivel-slider.glb — uninflated canopy bag + slider combined (deployment extraction phase) */
+export const SNIVEL_SLIDER_GEOMETRY: ModelGeometry = {
+  id: 'snivel-slider',
+  path: '/models/snivel-slider.glb',
+  description: 'Canopy bag + slider combined — single rigid body during deployment extraction. Slider fixed at Z=0.448 (90° X rot, 1.48× scale). Separates at CP_DEPLOYMENT when slider descends.',
+
+  bbox: {
+    min: { x: -0.800, y: -0.600, z: -0.600 },
+    max: { x:  0.800, y:  0.600, z:  0.600 },
+    size: { x: 1.600, y: 1.200, z: 1.200 },
+  },
+  maxDim: 1.600,
+  maxDimAxis: 'x',
+
+  axes: {
+    ned_x: { glbAxis: 'z', sign: 1 },
+    ned_y: { glbAxis: 'x', sign: 1 },
+    ned_z: { glbAxis: 'y', sign: -1 },
+  },
+
+  physicalReference: { name: 'bagWidth', meters: 0.40, glbExtent: 1.600 },
+  glbToMeters: 0.40 / 1.600,
+  glbToNED: (0.40 / 1.600) / REF_HEIGHT,
+  referenceHeight: REF_HEIGHT,
+
+  landmarks: [
+    { name: 'sliderPosition', glb: { x: 0, y: 0, z: 0.448 }, description: 'Slider center within combined model' },
+  ],
+  attachments: [],
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Assembly offset derivation
 // ─────────────────────────────────────────────────────────────────────
@@ -1370,6 +1401,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelGeometry>> = {
   bridal: BRIDLE_GEOMETRY,
   bridalsegment: BRIDLE_SEGMENT_GEOMETRY,
   slider: SLIDER_GEOMETRY,
+  'snivel-slider': SNIVEL_SLIDER_GEOMETRY,
 }
 
 /** All vehicle assemblies indexed by id. */
