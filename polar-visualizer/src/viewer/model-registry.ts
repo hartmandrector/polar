@@ -1087,6 +1087,98 @@ export const SNIVEL_GEOMETRY: ModelGeometry = {
   attachments: [],
 }
 
+/** bridal.glb — full bridle line (3.3m, real-world scale) */
+export const BRIDLE_GEOMETRY: ModelGeometry = {
+  id: 'bridal',
+  path: '/models/bridal.glb',
+  description: 'Full bridle line — thin box along Z axis, 3.3m physical length',
+
+  bbox: {
+    min: { x: -0.010, y: -0.001, z: -1.650 },
+    max: { x:  0.010, y:  0.001, z:  1.650 },
+    size: { x: 0.020, y: 0.002, z: 3.300 },
+  },
+  maxDim: 3.300,
+  maxDimAxis: 'z',
+
+  axes: {
+    ned_x: { glbAxis: 'z', sign: 1 },
+    ned_y: { glbAxis: 'x', sign: 1 },
+    ned_z: { glbAxis: 'y', sign: -1 },
+  },
+
+  physicalReference: { name: 'bridleLength', meters: 3.30, glbExtent: 3.300 },
+  glbToMeters: 1.0,
+  glbToNED: 1.0 / REF_HEIGHT,
+  referenceHeight: REF_HEIGHT,
+
+  landmarks: [],
+  attachments: [],
+}
+
+/** bridalsegment.glb — single bridle segment (1/10th of full bridle, 0.33m) */
+export const BRIDLE_SEGMENT_GEOMETRY: ModelGeometry = {
+  id: 'bridalsegment',
+  path: '/models/bridalsegment.glb',
+  description: 'Single bridle segment — 0.33m length, 10 segments = full bridle',
+
+  bbox: {
+    min: { x: -0.010, y: -0.001, z: -0.165 },
+    max: { x:  0.010, y:  0.001, z:  0.165 },
+    size: { x: 0.020, y: 0.002, z: 0.330 },
+  },
+  maxDim: 0.330,
+  maxDimAxis: 'z',
+
+  axes: {
+    ned_x: { glbAxis: 'z', sign: 1 },
+    ned_y: { glbAxis: 'x', sign: 1 },
+    ned_z: { glbAxis: 'y', sign: -1 },
+  },
+
+  physicalReference: { name: 'segmentLength', meters: 0.33, glbExtent: 0.330 },
+  glbToMeters: 1.0,
+  glbToNED: 1.0 / REF_HEIGHT,
+  referenceHeight: REF_HEIGHT,
+
+  landmarks: [],
+  attachments: [],
+}
+
+/** slider.glb — deployment slider rigid body */
+export const SLIDER_GEOMETRY: ModelGeometry = {
+  id: 'slider',
+  path: '/models/slider.glb',
+  description: 'Deployment slider — flat plate, 4 corner grommets, descends lines during inflation',
+
+  bbox: {
+    min: { x: -0.518, y: -0.216, z: 1.113 },
+    max: { x:  0.518, y:  0.376, z: 1.127 },
+    size: { x: 1.036, y: 0.592, z: 0.015 },
+  },
+  maxDim: 1.036,
+  maxDimAxis: 'x',
+
+  axes: {
+    ned_x: { glbAxis: 'z', sign: 1 },
+    ned_y: { glbAxis: 'x', sign: 1 },
+    ned_z: { glbAxis: 'y', sign: -1 },
+  },
+
+  // Slider is ~1m across in real world
+  physicalReference: { name: 'sliderWidth', meters: 1.036, glbExtent: 1.036 },
+  glbToMeters: 1.0,
+  glbToNED: 1.0 / REF_HEIGHT,
+  referenceHeight: REF_HEIGHT,
+
+  // Note: GLB has origin offset — center at (0, 0.08, 1.12) in GLB coords.
+  // Also contains embedded DirectionalLight (strip on load).
+  landmarks: [
+    { name: 'center', glb: { x: 0, y: 0.080, z: 1.120 }, description: 'Geometric center of slider plate' },
+  ],
+  attachments: [],
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Assembly offset derivation
 // ─────────────────────────────────────────────────────────────────────
@@ -1275,6 +1367,9 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelGeometry>> = {
   bridalandpc: BRIDLE_PC_GEOMETRY,
   pc: PC_GEOMETRY,
   snivel: SNIVEL_GEOMETRY,
+  bridal: BRIDLE_GEOMETRY,
+  bridalsegment: BRIDLE_SEGMENT_GEOMETRY,
+  slider: SLIDER_GEOMETRY,
 }
 
 /** All vehicle assemblies indexed by id. */
