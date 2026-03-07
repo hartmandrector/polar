@@ -5,7 +5,7 @@ The deployment phase is two sub-phases bridging freefall and canopy flight. Each
 ## State Chain
 
 ```
-FREEFALL ──[A button]──→ FREEFALL (+ PC sub-sim running) ──[line stretch]──→ CP_DEPLOYMENT → CANOPY_FLIGHT
+FREEFALL ──[A button]──→ FREEFALL (+ PC sub-sim running) ──[line stretch]──  →CANOPY_FLIGHT (+ CP_DEPLOYMENT sub-sim running)
 ```
 
 **A button does NOT change the FSM phase.** We stay in freefall — same controls, same UI, same aero model. A button spawns the PC rigid body and starts a deployment sub-simulation running alongside freefall. The pilot is still flying the wingsuit with full control.
@@ -115,21 +115,22 @@ At line stretch, both bodies' states (position, velocity, orientation) are froze
 
 ## CP_DEPLOYMENT Entry: From Line Stretch
 
-Receives the full state from sub-phase 1. Now we set up the canopy system:
+Receives the full state snapshot from the deployment sub-sim. Now we set up the canopy two-body system:
 
-**Canopy initial conditions (from line stretch geometry):**
-- **Position**: at the snivel/bag location (PC position minus bridle offset back toward body)
-- **Orientation**: aligned with bridle tension axis (fabric is pulled taut along this vector)
-- **AoA**: derived from angle between airflow and canopy chord — starts high (~90° + body pitch, near vertical)
-- **Pitching moment**: exists immediately — even a ball of fabric has a center of pressure offset from CG
+**Canopy initial conditions (computed from line stretch geometry):**
+- **Position**: canopy bag position at line stretch
+- **Orientation**: from canopy bag rigid body orientation (actual tumbling result, not assumed)
+- **α**: from canopy bag orientation vs airflow — computed, not assumed from trim
+- **β**: from canopy bag sideslip — computed, captures lateral asymmetry
+- **Pitching moment**: exists immediately — even a ball of fabric has CP offset from CG
 - **Deploy value**: small nonzero (0.05–0.15) — canopy is starting to catch air at line stretch
 
 **Pilot coupling initial conditions (Slegers & Costello):**
-- **Pitch pendulum angle (θ_pilot)**: derived from wingsuit body pitch at line stretch relative to the bridle tension axis. The pilot is swinging under the newly-taut lines.
-- **Pitch rate (θ̇_pilot)**: derived from wingsuit pitch rate (q) at line stretch — momentum carries through
-- **Lateral shift**: from wingsuit roll/sideslip at line stretch
-- **Line twist (δ_ψ)**: from wingsuit yaw relative to bridle axis — if the body was yawed at line stretch, that's twist in the lines
-- **Pivot junction**: riser convergence point — physically determined by line geometry at line stretch
+- **Pitch pendulum angle (θ_pilot)**: wingsuit body pitch at line stretch relative to the tension axis
+- **Pitch rate (θ̇_pilot)**: from wingsuit pitch rate (q) — momentum carries through
+- **Lateral shift**: from wingsuit roll/sideslip + weight shift at line stretch
+- **Line twist (δ_ψ)**: canopy bag accumulated yaw during deployment (unconstrained axis)
+- **Pivot junction**: riser convergence point — from line geometry at line stretch
 
 **Constraint mode transitions:**
 - Wingsuit throttles → **locked** (arms/legs no longer control surfaces)
@@ -185,12 +186,13 @@ The deploy slider value feeds into `SimConfig` and drives both the aero model (c
 
 ## Build Sequence
 
-1. **PC rigid body in SimRunner** — position, velocity, drag, constraint. Render with existing pc.glb.
-2. **Bridle segment visibility** — sequential reveal as distance increases.
-3. **Line stretch detection** — distance threshold → state snapshot → transition event.
-4. **State injection for canopy** — set simState from freefall snapshot, activate coupling.
-5. **Initial condition computation** — α, θ_pilot, δ_ψ from geometry at line stretch.
-6. **Deploy as simulated DOF** — integrate deploy value from aero forces.
-7. **Slider rendering** — position slider.glb along lines based on deploy value.
-8. **Camera transitions** — per-phase zoom/tracking.
-9. **Constraint mode presets** — auto-switch per phase (from CONSTRAINT-MODES.md).
+1. **PC rigid body in SimRunner** — position, velocity, drag, distance constraint. Render with pc.glb.
+2. **Canopy bag rigid body** — bluff body drag, rotation with ±90° pitch/roll clamps, free yaw. Spawns at bridle extension. Render with snivel.glb.
+3. **Bridle rendering** — deferred: monolithic vs segmented vs line-only. Physics doesn't care.
+4. **Line stretch detection** — total chain distance threshold → full state snapshot → FSM transition.
+5. **IC computation at line stretch** — α, β from canopy bag orientation; θ_pilot from body pitch vs tension axis; δ_ψ from canopy bag accumulated yaw.
+6. **State injection for canopy** — set simState from snapshot, activate pilot coupling, switch polar.
+7. **Deploy as simulated DOF** — integrate deploy value from aero forces during CP_DEPLOYMENT.
+8. **Slider rendering** — position slider.glb along lines based on deploy value.
+9. **Camera transitions** — per-phase zoom/tracking.
+10. **Constraint mode presets** — auto-switch per phase (from CONSTRAINT-MODES.md).
