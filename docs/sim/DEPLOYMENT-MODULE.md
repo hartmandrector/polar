@@ -63,14 +63,57 @@ When total chain distance reaches `pilottoattachmentpoint` (5.23m), the chain go
 4. **4-riser tension distribution** — from hip position + weight shift, which risers are loaded
 5. **Line twist** — body yaw relative to tension axis (δ_ψ)
 6. **Relative velocity** — body vs PC (snatch force energy)
-7. **Deployment α** — angle between airflow and tension axis
+7. **Deployment α and beta** — angle between airflow and tension axis
 8. **Weight shift state** — lateral offset at line stretch determines initial riser asymmetry
 
 Camera zoom-out triggers here. FSM transitions to CP_DEPLOYMENT.
 
-## Sub-Phase 2: Canopy Deployment (Line Stretch → Flying)
+## Uninflated Canopy Rigid Body
 
-### Entry: From Line Stretch
+When bridle pays out fully (PC distance > bridle length), the canopy bag is pulled from the container. This spawns a second rigid body alongside the PC.
+
+### Physics Model
+
+Bluff body drag on a tumbling object:
+- **CD ≈ 1.0–1.2**, area from snivel.glb bounding box
+- **One tension constraint**: bridle attachment point (same pattern as PC constraint)
+- **Euler integration**: position + orientation (quaternion)
+- **Weathervaning**: drag naturally damps the bag toward trailing behind the bridle
+
+The 4 line attachment points exist on the canopy but are **not under tension** during this phase. The canopy is just being dragged by the bridle. The line routing geometry is tracked but passive — no forces through the lines until line stretch.
+
+### Axis-Specific Rotation Constraints
+
+The canopy can tumble, but the line geometry imposes hard stops on two axes:
+
+| Axis | Constraint | Reason |
+|------|-----------|--------|
+| **Pitch** (nose up/down relative to bridle) | ±90° hard stop | Lines can't wrap over the top of the canopy — they go taut and physically stop the rotation |
+| **Roll** (lateral tilt) | ±90° hard stop | Riser spread at pilot's hips prevents the canopy from rolling past 90° — same mechanism, lines on one side go taut |
+| **Yaw** (heading / line twist axis) | **Unconstrained** | Lines CAN wrap around this axis. Any yaw accumulated during deployment = initial line twist (δ_ψ) at line stretch |
+
+So the canopy is a pendulum that can swing ±90° in pitch and roll but spin freely in yaw. The yaw freedom is what creates line twists in real deployments — asymmetric packing, body position, airflow turbulence all seed yaw rotation.
+
+### What This Captures
+
+- **α at line stretch**: computed from actual canopy orientation vs airflow, not assumed from trim geometry
+- **β at line stretch**: falls out naturally from sideslip / lateral throw component / body yaw
+- **Initial line twist (δ_ψ)**: accumulated yaw rotation during deployment. Maps directly into the pilot coupling sinusoidal restoring torque model at line stretch.
+- **Realistic deployment variability**: small differences in body attitude, airspeed, throw mechanics → different opening characteristics. Same as real life.
+
+### Two-Body Deployment Sub-Sim Summary
+
+During freefall after A button, SimRunner integrates two extra rigid bodies:
+1. **PC**: drag + distance constraint to body. Spawns at A button.
+2. **Canopy bag**: drag + distance constraint to PC/bridle endpoint + rotation limits. Spawns when bridle extends fully.
+
+Both are parasitic — they add drag to the system but don't change the wingsuit's control model. The pilot keeps flying.
+
+At line stretch, both bodies' states (position, velocity, orientation) are frozen into the snapshot that initializes CP_DEPLOYMENT.
+
+---
+
+## CP_DEPLOYMENT Entry: From Line Stretch
 
 Receives the full state from sub-phase 1. Now we set up the canopy system:
 
