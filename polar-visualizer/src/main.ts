@@ -12,6 +12,7 @@
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
 import { loadVehicleModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, updateSimDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
+import { DeployRenderer } from './viewer/deploy-render.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -42,6 +43,7 @@ let flightState: FlightState
 let loadingModel = false
 let massOverlay: MassOverlay
 let cellWireframes: CellWireframes | null = null
+let deployRenderer: DeployRenderer | null = null
 let currentInertia: InertiaComponents = ZERO_INERTIA
 let prevPolarKeyForInertia = ''
 
@@ -57,6 +59,10 @@ async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number 
   // Remove old model
   if (currentModel) {
     sceneCtx.scene.remove(currentModel.group)
+  }
+  if (deployRenderer) {
+    deployRenderer.dispose()
+    deployRenderer = null
   }
 
   try {
@@ -651,12 +657,19 @@ function updateVisualization(state: FlightState): void {
     if (currentModel.deployGroup) {
       const drs = state.deployRenderState
       if (drs) {
-        // Sim is running with active deployment sub-sim — use full render state
-        updateSimDeploy(currentModel, drs.pcPosition, drs.bridleTension > 5)
+        // Full tension chain renderer
+        if (!deployRenderer) {
+          deployRenderer = new DeployRenderer(sceneCtx.scene, currentModel.bodyLength)
+        }
+        deployRenderer.update(drs)
+        // Hide the old deploy group — new renderer handles everything
+        currentModel.deployGroup.group.visible = false
       } else if (state.deployPCPosition) {
-        // Legacy: simple PC position
+        // Legacy: simple PC position (no active tension chain)
+        if (deployRenderer) { deployRenderer.hide() }
         updateSimDeploy(currentModel, state.deployPCPosition, state.deployBridleStretched ?? false)
       } else {
+        if (deployRenderer) { deployRenderer.hide() }
         updateWingsuitDeploy(currentModel, state.wsDeploy, state.alpha_deg, state.beta_deg)
       }
     }
