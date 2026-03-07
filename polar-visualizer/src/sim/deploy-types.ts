@@ -32,6 +32,12 @@ export interface BridleSegmentState {
 export interface CanopyBagState {
   position: Vec3
   velocity: Vec3
+  /** Pitch angle [rad] — constrained ±90° by line geometry */
+  pitch: number
+  pitchRate: number
+  /** Roll angle [rad] — constrained ±90° by riser spread */
+  roll: number
+  rollRate: number
   /** Accumulated yaw [rad] — free axis, becomes initial line twist */
   yaw: number
   yawRate: number

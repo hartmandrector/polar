@@ -154,7 +154,12 @@ export class DeployRenderer {
     if (state.canopyBag) {
       const bagPos = nedToThree(state.canopyBag.position, s)
       this.bagMesh.position.copy(bagPos)
-      this.bagMesh.rotation.y = state.canopyBag.yaw
+      // Apply all three rotation axes
+      this.bagMesh.rotation.set(
+        state.canopyBag.pitch,   // X = pitch
+        state.canopyBag.yaw,     // Y = yaw (line twist axis)
+        state.canopyBag.roll,    // Z = roll
+      )
       this.bagMesh.visible = true
       chainPoints.push(bagPos)
     } else {

@@ -384,7 +384,7 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
         if (ds) {
           html += `<div>🪂 PC dist: ${ds.chainDistance.toFixed(1)}m · T: ${ds.bridleTension.toFixed(0)}N · CD: ${ds.pcCD.toFixed(2)} · Phase: ${ds.phase}</div>`
           if (ds.canopyBag) {
-            html += `<div>Canopy bag: yaw ${(ds.canopyBag.yaw * 180 / Math.PI).toFixed(0)}°</div>`
+            html += `<div>Canopy bag: yaw ${(ds.canopyBag.yaw * 180 / Math.PI).toFixed(0)}° · pitch ${(ds.canopyBag.pitch * 180 / Math.PI).toFixed(0)}° · roll ${(ds.canopyBag.roll * 180 / Math.PI).toFixed(0)}°</div>`
           }
         } else {
           html += `<div>Next: A = PC toss</div>`

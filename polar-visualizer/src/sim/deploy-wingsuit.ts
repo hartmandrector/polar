@@ -211,23 +211,47 @@ export class WingsuitDeploySim {
     // Integrate PC position
     this.pcPos = v3add(this.pcPos, v3scale(this.pcVel, dt))
 
-    // ── Canopy bag drag + gravity (if spawned) ──────────────────────
+    // ── Canopy bag drag + gravity + rotation (if spawned) ──────────
     if (this.canopyBag) {
-      const bagSpeed = v3len(this.canopyBag.velocity)
+      const bag = this.canopyBag
+      const bagSpeed = v3len(bag.velocity)
       if (bagSpeed > 0.01) {
         const bagDragAccel = 0.5 * rho * CANOPY_BAG_CD * CANOPY_BAG_AREA * bagSpeed * bagSpeed / CANOPY_BAG_MASS
         const bagDragDv = Math.min(bagDragAccel * dt, bagSpeed * 0.5)
-        this.canopyBag.velocity = v3sub(
-          this.canopyBag.velocity,
-          v3scale(this.canopyBag.velocity, bagDragDv / bagSpeed),
+        bag.velocity = v3sub(
+          bag.velocity,
+          v3scale(bag.velocity, bagDragDv / bagSpeed),
         )
       }
-      this.canopyBag.velocity.z += G * dt
-      this.canopyBag.position = v3add(this.canopyBag.position, v3scale(this.canopyBag.velocity, dt))
+      bag.velocity.z += G * dt
+      bag.position = v3add(bag.position, v3scale(bag.velocity, dt))
 
-      // Simple yaw accumulation (small random torque from asymmetric drag)
-      // In reality this comes from packing asymmetry + body attitude
-      this.canopyBag.yaw += this.canopyBag.yawRate * dt
+      // ── Rotation dynamics ──────────────────────────────────────
+      // Aerodynamic damping torque (proportional to angular rate × airspeed)
+      const AERO_DAMP = 0.5  // [N·m·s/rad] — tunable
+      const dampScale = bagSpeed > 1 ? bagSpeed / 20 : 0.05  // scales with airspeed
+      bag.pitchRate -= AERO_DAMP * dampScale * bag.pitchRate * dt
+      bag.rollRate  -= AERO_DAMP * dampScale * bag.rollRate * dt
+      bag.yawRate   -= AERO_DAMP * dampScale * bag.yawRate * dt * 0.1  // yaw barely damped
+
+      // Random tumble torques from asymmetric drag (small, persistent)
+      // This gives the bag realistic wobble as it trails
+      bag.pitchRate += (Math.random() - 0.5) * 2.0 * dt
+      bag.rollRate  += (Math.random() - 0.5) * 2.0 * dt
+      bag.yawRate   += (Math.random() - 0.5) * 0.5 * dt
+
+      // Integrate rotation
+      bag.pitch += bag.pitchRate * dt
+      bag.roll  += bag.rollRate * dt
+      bag.yaw   += bag.yawRate * dt
+
+      // Clamp pitch and roll to ±90° with bounce
+      const CLAMP = Math.PI / 2
+      if (bag.pitch > CLAMP) { bag.pitch = CLAMP; bag.pitchRate = -Math.abs(bag.pitchRate) * 0.3 }
+      if (bag.pitch < -CLAMP) { bag.pitch = -CLAMP; bag.pitchRate = Math.abs(bag.pitchRate) * 0.3 }
+      if (bag.roll > CLAMP) { bag.roll = CLAMP; bag.rollRate = -Math.abs(bag.rollRate) * 0.3 }
+      if (bag.roll < -CLAMP) { bag.roll = -CLAMP; bag.rollRate = Math.abs(bag.rollRate) * 0.3 }
+      // Yaw: free, no clamp — accumulates line twist
     }
 
     // ── Freed segment dynamics ──────────────────────────────────────
@@ -397,8 +421,12 @@ export class WingsuitDeploySim {
     this.canopyBag = {
       position: { x: bodyState.x, y: bodyState.y, z: bodyState.z },
       velocity: { ...inertialVel },
+      pitch: 0,
+      pitchRate: (Math.random() - 0.5) * 1.0,  // small random initial tumble
+      roll: 0,
+      rollRate: (Math.random() - 0.5) * 1.0,
       yaw: 0,
-      yawRate: (Math.random() - 0.5) * 0.5,  // small random initial yaw rate
+      yawRate: (Math.random() - 0.5) * 0.5,  // small random yaw — line twist seed
     }
   }
 
@@ -416,6 +444,10 @@ export class WingsuitDeploySim {
       canopyBag: {
         position: { ...this.canopyBag!.position },
         velocity: { ...this.canopyBag!.velocity },
+        pitch: this.canopyBag!.pitch,
+        pitchRate: this.canopyBag!.pitchRate,
+        roll: this.canopyBag!.roll,
+        rollRate: this.canopyBag!.rollRate,
         yaw: this.canopyBag!.yaw,
         yawRate: this.canopyBag!.yawRate,
       },
