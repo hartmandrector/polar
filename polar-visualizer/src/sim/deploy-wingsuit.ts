@@ -305,7 +305,6 @@ export class WingsuitDeploySim {
       // Constrain to inboard (bidirectional — can't stretch either way)
       this.applyConstraint(seg.position, seg.velocity, inboard, SEGMENT_LENGTH, SEGMENT_MASS, dt)
 
-      if (i === PIN_SEGMENT) this.pinTension = t
       prevTension = t
     }
 
@@ -319,14 +318,19 @@ export class WingsuitDeploySim {
     }
 
     // ── Unstow next segment ─────────────────────────────────────────
+    // Pin tension = tension at the innermost freed segment (pulling against container/pin)
+    // This is the last prevTension value from the constraint loop above
+    const innermostFreedTension = prevTension
+    this.pinTension = innermostFreedTension
+
     if (this.freedCount < SEGMENT_COUNT && !this.pinReleased) {
       // Next segment to free: counting from PC end inward
       const nextIdx = SEGMENT_COUNT - 1 - this.freedCount
       if (nextIdx >= 0 && prevTension > UNSTOW_THRESHOLD) {
         // Check if this segment is inboard of the pin
         if (nextIdx <= PIN_SEGMENT) {
-          // Need pin release first
-          if (this.pinTension > PIN_RELEASE_THRESHOLD) {
+          // Need pin release first — use innermost freed segment tension
+          if (innermostFreedTension > PIN_RELEASE_THRESHOLD) {
             this.releasePin(bodyState)
           }
         } else {
