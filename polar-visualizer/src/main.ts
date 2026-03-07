@@ -379,11 +379,19 @@ function updateVisualization(state: FlightState): void {
       currentModel = preloadedCanopyModel
       sceneCtx.scene.add(currentModel.group)
       setCanopyComponentScale(currentModel.canopyComponentScale)
+      // Apply initial deploy scaling so canopy isn't at default size
       if (currentModel.canopyModel) {
+        const deploy = state.deploy ?? 1.0
+        const spanScale  = 0.1 + 0.9 * deploy
+        const chordScale = 0.3 + 0.7 * deploy
+        const cbs = currentModel.canopyBaseScale ?? CANOPY_SCALE
+        currentModel.canopyModel.scale.set(-cbs * spanScale, cbs, cbs * chordScale)
         if (cellWireframes) cellWireframes.dispose()
         cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
         currentModel.canopyModel.add(cellWireframes.group)
       }
+      // Re-parent mass overlay
+      currentModel.group.add(massOverlay.group)
       preloadedCanopyModel = null
       console.log(`[Model] Instant switch to preloaded canopy`)
     } else {
