@@ -14,6 +14,7 @@ import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
 import { readWingsuitGamepad, readCanopyGamepad } from './sim-gamepad.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
+import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState } from './deploy-types.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -122,6 +123,8 @@ export class SimRunner {
   private wsDeploy: WingsuitDeploySim | null = null
   /** Cached render state from deploy sub-sim (updated each frame) */
   private wsDeployRender: WingsuitDeployRenderState | null = null
+  /** Canopy deploy manager — active after line stretch */
+  private canopyDeploy: CanopyDeployManager | null = null
 
   constructor(
     initialFlightState: FlightState,
@@ -195,6 +198,7 @@ export class SimRunner {
 
   get isDeploying(): boolean { return this.wsDeploy !== null && this.wsDeploy.phase !== 'line_stretch' }
   get hasLineStretched(): boolean { return this.wsDeploy?.phase === 'line_stretch' }
+  get canopyDeployState() { return this.canopyDeploy?.state ?? null }
 
   private tick = (): void => {
     if (!this.running) return
@@ -269,9 +273,26 @@ export class SimRunner {
           console.log(`[SimRunner] Line stretch at t=${this.simTime.toFixed(2)}s`)
           if (this.wsDeploy.snapshot) {
             this.wsDeploy.snapshot.time = this.simTime
+
+            // ── Canopy handoff ──────────────────────────────────────
+            const canopyIC = computeCanopyIC(this.wsDeploy.snapshot)
+            console.log(`[SimRunner] Canopy IC: θ=${(canopyIC.theta * RAD).toFixed(1)}° ψ=${(canopyIC.psi * RAD).toFixed(1)}° twist=${(canopyIC.pilotYaw * RAD).toFixed(0)}°`)
+
+            // Inject canopy state
+            this.simState = { ...canopyIC }
+
+            // Switch to canopy model
+            this.modelType = 'canopy'
+            this.canopyDeploy = new CanopyDeployManager()
+
+            console.log(`[SimRunner] Switched to canopy — deploy=${this.canopyDeploy.state.deploy.toFixed(2)}, brakes=${(this.canopyDeploy.state.brakeLeft * 100).toFixed(0)}%`)
           }
-          // TODO: transition FSM, inject canopy ICs
         }
+      }
+
+      // Step canopy deployment inflation
+      if (this.canopyDeploy && !this.canopyDeploy.state.fullyInflated) {
+        this.canopyDeploy.step(DT)
       }
 
       accumulator -= DT
@@ -307,6 +328,11 @@ export class SimRunner {
         deployBridleStretched: deployRender.bridleTension > 5,
         deployLineStretched: deployRender.phase === 'line_stretch',
         deployRenderState: deployRender,
+      } : {}),
+      // Canopy deploy state (overrides deploy slider)
+      ...(this.canopyDeploy ? {
+        deploy: this.canopyDeploy.state.deploy,
+        modelType: 'canopy' as const,
       } : {}),
     }
     this.callbacks.onUpdate(updatedFlight)
