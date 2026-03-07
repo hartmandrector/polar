@@ -32,6 +32,9 @@ const BRIDLE_LENGTH = SEGMENT_COUNT * SEGMENT_LENGTH  // 3.3m
 /** Total chain: pilot attachment to PC [m] */
 const TOTAL_LINE_LENGTH = 5.23
 
+/** Suspension line length: risers to canopy [m] */
+const SUSPENSION_LINE_LENGTH = TOTAL_LINE_LENGTH - BRIDLE_LENGTH  // ~1.93m
+
 /** Pin position: segment index (0 = closest to container, 9 = closest to PC) */
 const PIN_SEGMENT = 1  // ~0.5m from container end (segments 0–1)
 
@@ -154,6 +157,8 @@ export class WingsuitDeploySim {
   bridleTension = 0
   /** Current tension at pin segment [N] */
   pinTension = 0
+  /** Current tension on suspension lines (bag to body) [N] */
+  bagTension = 0
 
   /** Snapshot frozen at line stretch */
   snapshot: LineStretchSnapshot | null = null
@@ -308,13 +313,13 @@ export class WingsuitDeploySim {
       prevTension = t
     }
 
-    // Constrain canopy bag to bridle endpoint (body position or last freed segment inboard of pin)
+    // Constrain canopy bag to body via suspension lines
     if (this.canopyBag) {
-      // Canopy bag is attached at the container end of the bridle
-      // After pin release, it trails behind connected by the remaining line length
       const bagAnchor = bodyPos
-      const bagMaxDist = TOTAL_LINE_LENGTH - BRIDLE_LENGTH  // ~1.93m of line between container and canopy
-      this.applyConstraint(this.canopyBag.position, this.canopyBag.velocity, bagAnchor, bagMaxDist, CANOPY_BAG_MASS, dt)
+      this.bagTension = this.applyConstraint(
+        this.canopyBag.position, this.canopyBag.velocity,
+        bagAnchor, SUSPENSION_LINE_LENGTH, CANOPY_BAG_MASS, dt,
+      )
     }
 
     // ── Unstow next segment ─────────────────────────────────────────
@@ -355,12 +360,15 @@ export class WingsuitDeploySim {
     }
 
     // ── Line stretch check ──────────────────────────────────────────
-    const chainDist = v3dist(this.pcPos, bodyPos)
-    if (this.canopyBag && chainDist >= TOTAL_LINE_LENGTH * 0.98) {
-      this.phase = 'line_stretch'
-      this.freezeSnapshot(bodyState)
-      console.log(`[WSDeploy] LINE STRETCH at dist=${chainDist.toFixed(2)}m`)
-      return true
+    // Line stretch = suspension lines fully taut (bag at max distance from body)
+    if (this.canopyBag) {
+      const bagDist = v3dist(this.canopyBag.position, bodyPos)
+      if (bagDist >= SUSPENSION_LINE_LENGTH * 0.98) {
+        this.phase = 'line_stretch'
+        this.freezeSnapshot(bodyState)
+        console.log(`[WSDeploy] LINE STRETCH — bag dist=${bagDist.toFixed(2)}m (line=${SUSPENSION_LINE_LENGTH.toFixed(2)}m)`)
+        return true
+      }
     }
 
     return false
@@ -487,7 +495,9 @@ export class WingsuitDeploySim {
       } : null,
       bridleTension: this.bridleTension,
       pinTension: this.pinTension,
+      bagTension: this.bagTension,
       chainDistance: v3dist(this.pcPos, bodyPos),
+      bagDistance: this.canopyBag ? v3dist(this.canopyBag.position, bodyPos) : 0,
     }
   }
 }

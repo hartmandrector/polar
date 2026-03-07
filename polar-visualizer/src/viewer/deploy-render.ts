@@ -55,6 +55,8 @@ export class DeployRenderer {
   private segmentMeshes: THREE.Mesh[] = []
   /** Chain line connecting all visible points */
   private chainLine: THREE.Line
+  /** Suspension line: body → canopy bag */
+  private suspLine: THREE.Line
   /** Canopy bag mesh */
   private bagMesh: THREE.Mesh
   /** PC highlight ring (tension indicator) */
@@ -94,6 +96,15 @@ export class DeployRenderer {
     const chainMat = new THREE.LineBasicMaterial({ color: BRIDLE_COLOR, linewidth: 1 })
     this.chainLine = new THREE.Line(chainGeo, chainMat)
     this.group.add(this.chainLine)
+
+    // Suspension line: body (riser attach) → canopy bag
+    const suspGeo = new THREE.BufferGeometry()
+    const suspPositions = new Float32Array(2 * 3)
+    suspGeo.setAttribute('position', new THREE.BufferAttribute(suspPositions, 3))
+    const suspMat = new THREE.LineBasicMaterial({ color: 0xcccccc, linewidth: 1 })
+    this.suspLine = new THREE.Line(suspGeo, suspMat)
+    this.suspLine.visible = false
+    this.group.add(this.suspLine)
 
     // Canopy bag
     const bagGeo = new THREE.BoxGeometry(BAG_SIZE, BAG_SIZE * 1.5, BAG_SIZE * 0.8)
@@ -188,6 +199,23 @@ export class DeployRenderer {
     posAttr.needsUpdate = true
     chainGeo.setDrawRange(0, chainPoints.length)
     this.chainLine.visible = true
+
+    // Suspension line: body → canopy bag (white line = actual parachute lines)
+    if (state.canopyBag) {
+      const bagPos = nedToThree(state.canopyBag.position, s)
+      // Riser attachment point on body (same as container, rotated by attitude)
+      const riserAttach = this.containerOffset.clone()
+      if (bodyQuat) riserAttach.applyQuaternion(bodyQuat)
+
+      const suspGeo = this.suspLine.geometry as THREE.BufferGeometry
+      const suspAttr = suspGeo.getAttribute('position') as THREE.BufferAttribute
+      suspAttr.setXYZ(0, riserAttach.x, riserAttach.y, riserAttach.z)
+      suspAttr.setXYZ(1, bagPos.x, bagPos.y, bagPos.z)
+      suspAttr.needsUpdate = true
+      this.suspLine.visible = true
+    } else {
+      this.suspLine.visible = false
+    }
   }
 
   /** Hide all deployment visuals */
@@ -201,6 +229,8 @@ export class DeployRenderer {
     this.segmentMeshes.forEach(m => { m.geometry.dispose(); (m.material as THREE.Material).dispose() })
     this.chainLine.geometry.dispose();
     (this.chainLine.material as THREE.Material).dispose()
+    this.suspLine.geometry.dispose();
+    (this.suspLine.material as THREE.Material).dispose()
     this.bagMesh.geometry.dispose();
     (this.bagMesh.material as THREE.Material).dispose()
     this.pcRing.geometry.dispose();

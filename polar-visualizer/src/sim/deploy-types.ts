@@ -52,7 +52,9 @@ export interface WingsuitDeployRenderState {
   canopyBag: CanopyBagState | null
   bridleTension: number           // [N] scalar at PC end
   pinTension: number              // [N] at pin segment
+  bagTension: number              // [N] suspension line tension (bag to body)
   chainDistance: number            // PC-to-body [m]
+  bagDistance: number              // bag-to-body [m] (suspension line stretch)
 }
 
 /** Snapshot frozen at line stretch for canopy IC computation */
