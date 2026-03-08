@@ -107,9 +107,11 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const pdz = (cPhi * sTheta * cPsi + sPhi * sPsi) * pilotDir_N +
     (cPhi * sTheta * sPsi - sPhi * cPsi) * pilotDir_E + (cPhi * cTheta) * pilotDir_D
 
-  // Pendulum angle: atan2(z_body, x_body) in the canopy body xz-plane.
-  // At deployment this is ~120–150° — pilot hangs well past the canopy z-axis.
-  const thetaPilot = Math.atan2(pdz, pdx)
+  // Pendulum angle: measured from body +z (hanging equilibrium).
+  // Convention: positive = pilot swung backward (aft), negative = forward.
+  // At line stretch the pilot is stretched forward along the tension line,
+  // so thetaPilot is negative. Gravity pendulum restores toward 0 (hanging).
+  const thetaPilot = -Math.atan2(pdx, pdz)
 
   // Pilot pitch rate: relative angular motion between wingsuit and canopy,
   // heavily damped by snatch. Use bag pitch rate as a proxy (it captures
