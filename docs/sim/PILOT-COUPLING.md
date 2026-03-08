@@ -1,5 +1,7 @@
 # Pilot–Canopy 3-DOF Coupling
 
+**Status**: Implemented and rendering. All three axes working with gamepad control. Initial conditions from deployment (bag yaw → line twist) wired at canopy handoff.
+
 Extends the 1-DOF pitch pendulum (FRAMES.md §12) to full 3-DOF relative rotation between pilot and canopy at the riser confluence point.
 
 **Reference:** Slegers, N. & Costello, M. (2003). "Aspects of Control for a Parafoil and Payload System." *Journal of Guidance, Control, and Dynamics*, 26(6). DOI: 10.2514/2.6933

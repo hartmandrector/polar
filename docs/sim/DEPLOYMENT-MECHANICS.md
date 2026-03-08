@@ -1,104 +1,54 @@
 # Deployment Mechanics
 
-Detailed deployment sequence model — linked from [PHASE-ARCHITECTURE.md](PHASE-ARCHITECTURE.md) §Deployment.
+Detailed deployment sequence — bridging freefall and canopy flight.
+
+**Status**: Core deployment implemented and working. See [DEPLOY-WINGSUIT.md](DEPLOY-WINGSUIT.md) for tension chain architecture, [DEPLOYMENT-MODULE.md](DEPLOYMENT-MODULE.md) for state handoff design.
 
 ## Overview
 
-The deployment phase bridges freefall and canopy flight. It's only a few seconds but involves complex multi-body dynamics. Our approach: **physics-driven where it matters, abstracted where it doesn't**.
+The deployment phase is a few seconds but involves multi-body dynamics. Our approach: **tension-chain physics with sequential unstow, continuous PC drag feedback, and tumbling canopy bag**.
 
-Key abstraction: individual line tensions are NOT modeled. Instead we use a **4-line-group + slider rigid body** that captures the essential geometry and drag without simulating hundreds of individual suspension lines.
+The original plan called for a 4-line-group + slider abstraction. The actual implementation uses a simpler 10-segment bridle tension chain with a separate canopy bag rigid body. Individual line tensions are deferred to a future line tension model (Slegers & Costello framework).
 
-## Components
+## Implemented Sequence
 
-### Bridle + Pilot Chute
-- Segmented bridle: multiple segments, each with position, drag coefficient, and tension
-- Pilot chute: rigid body with drag area (~0.7 m²), initial throw velocity
-- During extraction: bridle segments deploy sequentially, pilot chute drag pulls the system
-- Bridle anchors to the undeployed canopy pack (has mass + drag, but not aerodynamically loaded)
+| Event | Trigger | What Happens |
+|-------|---------|-------------|
+| **PC toss** | A button (freefall) | PC rigid body spawns at wingtip (0.9m right, 5 m/s throw) |
+| **Bridle paying out** | Tension > 8N per segment | Segments unstow sequentially (10 × 0.33m) |
+| **Pin release** | Tension > 20N | Remaining segments freed, canopy bag spawns |
+| **Canopy extracting** | Automatic | Bag trails with bluff drag, tumbles ±90° pitch/roll, free yaw |
+| **Line stretch** | Bag distance ≥ 1.89m | Full state snapshot, handoff to canopy deploy |
+| **Canopy inflation** | Automatic | Deploy ramps 0.05→1.0 over 3s, GLB swaps instantly |
 
-### Slider
-- Square rigid body with 4 corner grommets (will have GLB model)
-- The 4 line groups route through the 4 grommets
-- Controls deployment speed by restricting canopy surface area
-- Starts at bottom of canopy (against fabric), slides down lines during inflation
-- Position along lines maps to the `deploy` slider value
+## Physics Highlights
 
-### Line Geometry (4-group abstraction)
+- **Tension-dependent PC drag**: CD 0.3→0.9 continuous. Positive feedback: tension → drag → more tension.
+- **Constraint model**: Position clamp + velocity projection (CloudBASE pattern). Stable at 200Hz.
+- **Canopy bag yaw = line twist seed**: Free rotation on yaw axis accumulates twist that carries into pilot coupling.
+- **Snatch damping**: Angular rates reduced 70% at line stretch — line tension absorbs rotational energy.
+- **Velocity transform**: Full 3-2-1 DCM rotation at handoff — wingsuit body → inertial → canopy body.
 
-Instead of modeling individual suspension lines, we use 4 line groups:
+## Components (mass & drag)
 
-```
-         Canopy (4 corners)
-            │  │  │  │          ← 4 upper lines (canopy corners → slider grommets)
-         ┌──┴──┴──┴──┴──┐
-         │    SLIDER     │      ← square rigid body, 4 grommets
-         └──┬──┬──┬──┬──┘
-            │  │  │  │          ← 4 lower lines (slider grommets → riser attachment)
-         Riser attachments
-         (L-front, L-rear, R-front, R-rear)
-```
+| Component | Mass | Drag | Source |
+|-----------|------|------|--------|
+| PC | 0.057 kg | 0.732 m² × CD(0.3–0.9) | CloudBASE |
+| Bridle segment (×10) | 0.01 kg | CDA = 0.01 | Tuned |
+| Canopy bag | 3.7 kg | CDA = 0.5 | CloudBASE |
+| Suspension lines | — | — | Distance constraint only |
 
-8 total line segments: 4 above slider + 4 below slider. Each rendered as a `THREE.Line`. The kink at the slider grommets is the key visual feature.
+## Not Yet Implemented
 
-### Visualization (initial)
-- 8 lines drawn with `THREE.Line` (line helper style)
-- Slider GLB model positioned along lines based on deployment progress
-- Lines update geometry each frame as slider moves down
-- Upper lines fan out as canopy inflates; lower lines converge to risers
-
-## Deployment Sequence
-
-The `deploy` slider drives the sequence. Values map to physical sub-states:
-
-| deploy | Sub-state | Description |
-|--------|-----------|-------------|
-| 0.0 | **Packed** | Canopy in container, no aero load |
-| 0.0–0.1 | **Extraction** | Pilot chute drag pulls bridle → canopy bag exits container |
-| 0.1–0.2 | **Line stretch** | Lines deploy to full length, snatch force spike |
-| 0.2–0.5 | **Slider down** | Canopy inflates progressively, slider descends lines |
-| 0.5–0.9 | **Full inflation** | Slider reaches risers, canopy pressurizes |
-| 1.0 | **Flying** | Fully inflated, slider stowed, normal canopy flight |
-
-### What Drives the Slider
-
-Previous approach: timed sequence scaled by airspeed. Better approach: **aero-driven with state machine guardrails**.
-
-- Pilot chute drag → bridle tension → extraction rate (physics)
-- Canopy surface area (from `deploy`) → drag increase → deceleration (physics)
-- Slider position → canopy spread restriction → inflation rate (physics-ish — slider descent modeled as drag-limited)
-- State machine ensures correct ordering and handles edge cases
-
-The `deploy` value can be:
-- **Manually controlled** (debug mode — existing slider)
-- **Physics-driven** (continuous mode — computed from aero forces each timestep)
-
-Both use the same rendering and segment configuration.
-
-## Mass and Drag During Deployment
-
-| Component | Mass | Drag | Notes |
-|-----------|------|------|-------|
-| Canopy pack | Full canopy mass | Small (packed fabric) | Not aerodynamically loaded until line stretch |
-| Bridle segments | Negligible | Per-segment CD | Sequential deployment |
-| Pilot chute | ~0.3 kg | ~0.7 m² drag area | Primary extraction force |
-| Slider | ~0.1 kg | Proportional to area | Creates deployment drag |
-| Canopy (inflating) | Already counted | Scales with `deploy` | Existing geometry morphing handles this |
-
-## Connection to Existing Systems
-
-| Existing | Role in Deployment |
-|----------|-------------------|
-| `deploy` slider + geometry morphing | Drives canopy shape, area, aero coefficients |
-| `pilotChuteDeploy` slider | Controls pilot chute state |
-| Parasitic segments (bridle, PC) | Drag models already in registry |
-| Torsional stiffness (pilot coupling) | Line twist physics during/after deployment |
-| Pivot junction transforms | Canopy-pilot relative rotation |
-| 4-riser routing | Maps to 4-line-group abstraction |
+- **Physics-driven inflation**: Deploy currently time-based (3s ramp). Future: aero forces drive deploy rate.
+- **Slider rendering**: slider.glb position along lines based on deploy value.
+- **PC persistence**: PC should continue bouncing behind canopy post-transition.
+- **Line tension model**: Full 4-riser + 52-line Slegers & Costello framework (research phase).
+- **Weight shift → riser asymmetry**: Pilot lateral offset biasing initial opening direction.
+- **Malfunction injection**: Line twists, off-heading openings, partial inflation.
 
 ## Depth Strategy
 
-This is a few seconds of simulation. Balance effort with importance:
-
-1. **Now**: Draw everything right — 8 lines, slider GLB, correct geometry updates. Manual `deploy` slider control.
-2. **Next**: Physics-driven slider descent from aero forces. Snatch force computation.
-3. **Later**: Full bridle tension propagation, line twist during deployment, malfunction injection.
+1. ✅ **Now**: Full tension chain physics + canopy bag + line stretch + handoff. Working end-to-end.
+2. ⬜ **Next**: Physics-driven inflation, slider rendering, PC persistence.
+3. ⬜ **Later**: Full line tension model, malfunctions, weight shift coupling during deployment.

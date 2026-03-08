@@ -1,6 +1,6 @@
 # Gamepad Mapping — Xbox Controller
 
-Standard Xbox controller via browser Gamepad API.
+Standard Xbox controller via browser Gamepad API. Vehicle-aware: auto-selects mapping from polar type.
 
 ## Axis / Button Reference
 
@@ -23,10 +23,8 @@ Deadzone: 0.08 (values below this magnitude → 0)
 |---------|-------|-------|-----------|
 | Left brake | Left trigger (btn 6) | 0–1 | Pull = brake |
 | Right brake | Right trigger (btn 7) | 0–1 | Pull = brake |
-| Left front riser | Left stick forward | 0–1 | Push forward = pull fronts |
-| Left rear riser | Left stick back | 0–1 | Pull back = pull rears |
-| Right front riser | Right stick forward | 0–1 | Push forward = pull fronts |
-| Right rear riser | Right stick back | 0–1 | Pull back = pull rears |
+| Front riser | Left stick forward | 0–1 | Push forward = pull fronts |
+| Rear riser | Left stick back | 0–1 | Pull back = pull rears |
 | Lateral weight shift | Left stick X | −1 to +1 | Right = shift right |
 | Twist recovery | Right stick X | −1 to +1 | Counter-torque for line twists |
 
@@ -37,6 +35,8 @@ Deadzone: 0.08 (values below this magnitude → 0)
 
 **Key behavior:** Brakes, risers, and pilot coupling inputs are all simultaneous. Stick Y splits into front/rear riser; stick X drives weight shift independently.
 
+**Riser mapping note:** Forward=fronts, back=rears was initially coded backwards (left stick Y sign). Fixed — `Math.max(0, -leftY)` = fronts, `Math.max(0, leftY)` = rears.
+
 ---
 
 ## Wingsuit Mapping
@@ -45,45 +45,45 @@ Deadzone: 0.08 (values below this magnitude → 0)
 
 | Control | Input | Range | Direction |
 |---------|-------|-------|-----------|
-| Pitch throttle | Right stick Y (axis 3) | -1 to +1 | Forward = nose down |
+| Pitch throttle | Right stick Y (axis 3) | -1 to +1 | Forward (push) = steeper/nose-down |
 | Roll throttle | Right stick X (axis 2) | -1 to +1 | Right = right roll |
-| Yaw throttle | Triggers (LT−RT) | -1 to +1 | LT = yaw left, RT = yaw right |
+| Yaw throttle | Triggers (RT−LT) | -1 to +1 | RT = yaw right, LT = yaw left |
 | Orbit camera | Left stick | Spherical | Azimuthal + polar orbit around model |
 
-![Wingsuit roll ](../../polar-visualizer/docs/gifs/sim-wingsuit-roll.gif)
+![Wingsuit roll](../../polar-visualizer/docs/gifs/sim-wingsuit-roll.gif)
+
+**Pitch inversion:** Raw gamepad Y is inverted — forward (negative raw) maps to nose-down (positive pitch input). This matches flight intuition: push stick forward to dive.
 
 ---
 
 ## Button Mapping
 
-| Button | Input | Action |
-|--------|-------|--------|
-| 9 | Menu (≡) | Start/Stop sim (edge-triggered) |
-| 8 | View (☰☰) | Cycle view frame Body↔Inertial |
-| 4 | LB | Previous polar |
-| 5 | RB | Next polar |
+| Button | Input | Action | Context |
+|--------|-------|--------|---------|
+| 9 | Start (≡) | Start/Stop sim | Edge-triggered, all phases |
+| 8 | Back (☰☰) | Cycle view frame Body↔Inertial | Edge-triggered |
+| 0 | A | Pilot chute toss | Freefall phase only — spawns PC sub-sim |
 
 All buttons are edge-triggered via `wasPressed` pattern — no repeat on hold.
 
+**Reserved (not yet implemented):** X = cutaway, Y/B = admin/mode selection.
+
 ---
 
-## Scaling & Inversion
+## SVG Gamepad Visualization
 
-No magnitude scaling applied — raw axis values (post-deadzone) map 1:1 to control range.
+The sim panel includes an SVG gamepad overlay that shows:
+- **Stick circles**: deflection-colored dots (green center → red edge)
+- **Trigger bars**: fill level with color gradient
+- **Vehicle-aware labels**: auto-switch between wingsuit and canopy control names
+- **Numeric axis values**: raw values below each stick
 
-| Control | Inverted? | Notes |
-|---------|-----------|-------|
-| Pitch throttle | TBD | May need sign flip after flight testing |
-| Roll throttle | TBD | May need sign flip after flight testing |
-| Yaw throttle | TBD | May need sign flip after flight testing |
-| Brakes | No | Trigger 0→1 maps directly to brake 0→1 |
-| Risers | No | Stick magnitude maps directly to riser 0→1 |
-
-Update this table after testing confirms correct/inverted sense.
+The visualization lives inside the phase box and auto-switches layout when vehicle type changes (e.g., at deployment transition). ModelType is read dynamically each HUD tick to prevent stale labels.
 
 ---
 
 ## Source
 
-Implementation: `polar-visualizer/src/sim/sim-runner.ts`  
+Implementation: `polar-visualizer/src/sim/sim-gamepad.ts`
 Functions: `readCanopyGamepad()`, `readWingsuitGamepad()`
+SVG visualization: `polar-visualizer/src/sim/sim-ui.ts`

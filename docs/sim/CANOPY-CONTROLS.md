@@ -81,16 +81,16 @@ Applied in both `sumAllSegments()` and `evaluateAeroForcesDetailed()` in `aero-s
 
 ## Gamepad Mapping
 
-| Stick | Direction | Control |
-|-------|-----------|---------|
-| Left Y | Push forward | Front risers (left side) |
-| Left Y | Pull back | Rear risers (left side) |
-| Right Y | Push forward | Front risers (right side) |
-| Right Y | Pull back | Rear risers (right side) |
-| LT | Analog | Left brake |
-| RT | Analog | Right brake |
-| Left X | Left/Right | Lateral weight shift |
-| Right X | Left/Right | Twist recovery torque |
+See [GAMEPAD.md](GAMEPAD.md) for full mapping details.
+
+| Input | Control |
+|-------|---------|
+| Left stick Y forward | Front risers (both sides) |
+| Left stick Y back | Rear risers (both sides) |
+| Left stick X | Lateral weight shift |
+| LT | Left brake |
+| RT | Right brake |
+| Right stick X | Twist recovery torque |
 
 ## Tuning History
 

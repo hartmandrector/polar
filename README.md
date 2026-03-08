@@ -61,7 +61,7 @@ The entire system is built on two foundational pillars and a real-time simulatio
 
 - **[Reference Frames](docs/frames-overview.md)** — Five coordinate frames (inertial, body, wind, Three.js, GLB) connected by explicit transforms. The rotating-frame derivative produces Coriolis and gyroscopic terms; per-segment ω×r correction generates automatic rate damping. [Full spec →](docs/FRAMES.md)
 
-- **[Real-Time Simulation](docs/sim/sim-overview.md)** — 6DOF rigid-body physics at 200Hz with Xbox gamepad control. Vehicle-aware mappings auto-select canopy (brakes/risers) or wingsuit (pitch/roll/yaw) inputs. Live force vectors and per-segment debug tuning during flight. [Status →](docs/sim/STATUS.md)
+- **[Real-Time Simulation](docs/sim/sim-overview.md)** — 6DOF rigid-body physics at 200Hz with Xbox gamepad control. Vehicle-aware mappings auto-select canopy (brakes/risers) or wingsuit (pitch/roll/yaw) inputs. Full wingsuit-to-canopy deployment sequence: pilot chute toss → bridle tension chain → canopy bag tumbling → line stretch → instant canopy handoff with GLB preloading. Live force vectors and per-segment debug tuning during flight. [Status →](docs/sim/STATUS.md)
 
 ![Orbit camera during wingsuit sim flight](polar-visualizer/docs/gifs/sim-orbit-camera.gif)
 

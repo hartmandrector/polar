@@ -1,6 +1,6 @@
 # Bridle & Pilot Chute — Physics Reference & GLB Assets
 
-CloudBASE reference data and registered GLB assets for the deployment system. See **DEPLOYMENT-MODULE.md** for the simulation architecture.
+CloudBASE reference data and registered GLB assets for the deployment system. Constants from this doc are used in `deploy-wingsuit.ts`. See **DEPLOY-WINGSUIT.md** for the tension chain architecture, **DEPLOYMENT-MODULE.md** for state handoff design.
 
 ## Physics Constants (from CloudBASE)
 

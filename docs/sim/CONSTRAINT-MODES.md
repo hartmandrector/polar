@@ -1,5 +1,7 @@
 # Constraint Modes — Per-DOF Simulation Control
 
+**Status**: Architecture designed, per-DOF mode switching not yet implemented. Currently all DOFs are simulated with gamepad overlay. Phase presets are planned but phases auto-transition without per-DOF mode changes.
+
 Each degree of freedom in the simulation can operate in one of three modes:
 
 | Mode | Driver | Example |
@@ -10,21 +12,22 @@ Each degree of freedom in the simulation can operate in one of three modes:
 
 ## DOF Table
 
-| DOF | Current Mode | Target Modes | Notes |
-|-----|-------------|--------------|-------|
-| Translational (u,v,w) | Simulated | Simulated | Always integrated |
-| Rotational (p,q,r) | Simulated | Simulated | Always integrated |
-| Euler angles (φ,θ,ψ) | Simulated | Simulated | Always integrated |
-| Pilot pitch | **Locked** | Locked / Simulated | Pendulum via `SimStateExtended.thetaPilot` |
-| Deploy fraction | **Locked** | Locked / Simulated | Future: deployment sequence |
-| Brake L/R | **Gamepad** | Gamepad / Locked | Canopy: triggers |
-| Front riser L/R | **Gamepad** | Gamepad / Locked | Canopy: stick forward |
-| Rear riser L/R | **Gamepad** | Gamepad / Locked | Canopy: stick back |
-| Pitch throttle | **Gamepad** | Gamepad / Locked | Wingsuit: right stick Y |
-| Roll throttle | **Gamepad** | Gamepad / Locked | Wingsuit: right stick X |
-| Yaw throttle | **Gamepad** | Gamepad / Locked | Wingsuit: left stick X |
-| Weight shift | **Locked** | Locked / Gamepad | Not wired yet |
-| Dihedral | **Locked** | Locked / Gamepad | Wingsuit wing sweep |
+| DOF | Current Mode | Notes |
+|-----|-------------|-------|
+| Translational (u,v,w) | Simulated | Always integrated |
+| Rotational (p,q,r) | Simulated | Always integrated |
+| Euler angles (φ,θ,ψ) | Simulated | Always integrated |
+| Pilot pitch | **Simulated** | Pendulum via `SimStateExtended.thetaPilot` (canopy only) |
+| Pilot lateral | **Gamepad** | Left stick X, stiff spring (canopy only) |
+| Pilot twist | **Gamepad** + Simulated | Right stick X counter-torque + sinusoidal restoring (canopy only) |
+| Deploy fraction | **Time-based ramp** | 0.05→1.0 over 3s at canopy transition. Future: simulated from aero |
+| Brake L/R | **Gamepad** | Canopy: triggers |
+| Front/rear riser | **Gamepad** | Canopy: left stick Y split |
+| Pitch throttle | **Gamepad** | Wingsuit: right stick Y |
+| Roll throttle | **Gamepad** | Wingsuit: right stick X |
+| Yaw throttle | **Gamepad** | Wingsuit: triggers (RT−LT) |
+| Weight shift | **Gamepad** | Left stick X (canopy) |
+| Dihedral | **Locked** | Wingsuit wing sweep — not wired |
 
 ## Priority
 
