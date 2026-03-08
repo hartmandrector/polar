@@ -232,8 +232,14 @@ export function eulerRates(
 ): EulerRates {
   const sinPhi = Math.sin(phi)
   const cosPhi = Math.cos(phi)
-  const tanTheta = Math.tan(theta)
-  const secTheta = 1 / Math.cos(theta)
+
+  // Guard against gimbal lock at θ = ±90° — clamp tan/sec to finite values.
+  // This prevents Inf/NaN when theta transiently passes through ±90°
+  // (e.g. during deployment surge from steep initial pitch).
+  const cosTheta = Math.cos(theta)
+  const safeCos = Math.abs(cosTheta) > 1e-6 ? cosTheta : Math.sign(cosTheta || 1) * 1e-6
+  const tanTheta = Math.sin(theta) / safeCos
+  const secTheta = 1 / safeCos
 
   return {
     phiDot:   p + sinPhi * tanTheta * q + cosPhi * tanTheta * r,

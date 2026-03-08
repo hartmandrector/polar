@@ -82,15 +82,146 @@ interface LineStretchSnapshot {
 }
 ```
 
-## Canopy Handoff (deploy-canopy.ts)
+## Canopy Handoff — Frame Transform (deploy-canopy.ts)
 
-`computeCanopyIC(snapshot)` → `SimStateExtended`:
-- **Heading (ψ)**: from inertial tension axis horizontal projection (canopy faces into wind, opposite line direction)
-- **Pitch (θ)**: from tension axis line angle, ~−6° default trim
-- **Roll (φ)**: from bag roll, attenuated 30%
-- **Velocity**: full DCM transform — wingsuit body → inertial → canopy body
-- **Angular rates**: snatch-damped 70% (SNATCH_DAMP = 0.3)
-- **Pilot coupling ICs**: bag pitch → thetaPilot, bag roll → pilotRoll, bag yaw → pilotYaw (line twist)
+`computeCanopyIC(snapshot)` converts the `LineStretchSnapshot` into a full
+`SimStateExtended` for the canopy 6DOF integrator. This is the critical frame
+mapping between the inertial-NED deployment sub-sim and the canopy body-frame
+flight sim.
+
+### Physical Geometry at Line Stretch
+
+```
+              ╭──── uninflated canopy (bag)
+              │       pitch/roll/yaw from tumble
+              │
+         suspension lines (~1.93m)
+              │
+              │     ← tension axis: pilot hips → canopy (inertial NED)
+              │
+         wingsuit pilot (CG)
+              │
+              v  flight direction (~120 mph, ~45° below horizontal)
+```
+
+The pilot is flying forward-and-down at steep glide angle. The uninflated
+canopy trails above-and-behind, connected by taut suspension lines. The
+tension axis points from pilot hips toward the canopy bag in inertial NED.
+
+### Step 1 — Canopy Attitude (ψ, θ, φ) from Tension Axis
+
+The canopy body frame x-axis points along the riser line (toward the canopy).
+At line stretch this is above-and-behind the pilot, giving a steep nose-up θ.
+
+```
+tensionAxisInertial = normalize(canopyBag.position − bodyPos)   // pilot → canopy, inertial NED
+
+ψ = atan2(−ty, −tx)                    // heading: OPPOSITE to tension horizontal projection
+                                        // (canopy forward = into the wind = flight direction)
+
+θ = atan2(−tz, √(tx² + ty²))          // elevation angle above horizontal
+                                        // (−tz because NED z+ = down; canopy above = negative z)
+                                        // Typical: ~60–70° (canopy well above pilot)
+
+φ = canopyBag.roll × 0.3               // from bag tumble, attenuated by snatch force
+```
+
+**Why ψ uses negated components**: The tension axis points backward
+(pilot→canopy). The canopy faces forward into the wind — the opposite
+horizontal direction. Negating tx and ty flips the horizontal projection 180°.
+
+**Why θ uses the full elevation angle**: At line stretch, the uninflated canopy
+at 5–7% deploy is approximately aligned with the suspension lines. The line
+elevation directly gives the canopy body pitch. This produces θ ≈ 60–70°.
+
+### Step 2 — Velocity Transform (Wingsuit Body → Inertial → Canopy Body)
+
+Two-step DCM (Direction Cosine Matrix) chain, standard 3-2-1 Euler sequence:
+
+```
+Step 1: Wingsuit body → inertial NED
+    [vN, vE, vD] = R_BI(φ_ws, θ_ws, ψ_ws) × [u_ws, v_ws, w_ws]
+
+Step 2: Inertial NED → canopy body
+    [u_c, v_c, w_c] = R_IB(φ_c, θ_c, ψ_c)ᵀ × [vN, vE, vD]
+```
+
+With θ_c ≈ 66° (steep nose-up body frame) and the velocity mainly
+forward-and-down in inertial, the transform produces:
+- `w_c >> u_c` → **α ≈ 70–85°** (broadside to airflow — physically correct!)
+- The canopy is NOT trimmed — it's a flat plate at high angle of attack
+- Over the 3s inflation, pitching moment drives α toward trim (~8–10°)
+
+### Step 3 — Pilot Pendulum Angle (thetaPilot) from Geometry
+
+`thetaPilot` is the pendulum angle of the pilot CG in the canopy body xz-plane,
+measured from x-body toward z-body. It controls the `pilotPitch` slider and the
+`makeLiftingBodySegment` pitch offset (which rotates the pilot's local α).
+
+```
+pilotDir_inertial = −tensionAxisInertial     // canopy → pilot direction (negated)
+
+pilotDir_body = R_IBᵀ(φ_c, θ_c, ψ_c) × pilotDir_inertial    // rotate into canopy body frame
+
+thetaPilot = atan2(pdz, pdx)                 // angle in canopy body xz-plane
+                                              // Typical: ~120–150° (pilot past canopy z-axis)
+```
+
+At deployment, the pilot hangs well below and behind the canopy. In the canopy
+body frame (x = along riser line, z = perpendicular down from canopy), the
+pilot CG direction has a large +z component → thetaPilot ≈ 130–150°.
+
+This matches the manually-set slider value (~144°) that produces correct
+deployment behavior in the static visualizer.
+
+### Step 4 — Angular Rates (p, q, r) — Near Zero
+
+```
+p = canopyBag.rollRate  × 0.1
+q = canopyBag.pitchRate × 0.1
+r = canopyBag.yawRate   × 0.1
+```
+
+The canopy is a new body just beginning to fly. The snatch force at line
+stretch absorbs most angular energy. Rather than inheriting wingsuit body
+rates (which are in a completely different frame), small perturbations from
+the bag's residual tumble are used.
+
+### Step 5 — Remaining Pilot Coupling ICs
+
+| IC | Source | Factor | Notes |
+|----|--------|--------|-------|
+| `thetaPilotDot` | `canopyBag.pitchRate` | ×0.15 | Heavily damped by snatch |
+| `pilotRoll` | `canopyBag.roll` | ×0.3 | Lateral offset from tumble |
+| `pilotRollDot` | `canopyBag.rollRate` | ×0.15 | Heavily damped |
+| `pilotYaw` | `canopyBag.yaw` | **×1.0** | Line twist — the deployment payoff |
+| `pilotYawDot` | `canopyBag.yawRate` | **×1.0** | Twist rate carries through |
+
+**Yaw is unattenuated**: the bag's accumulated yaw during deployment becomes
+exactly the initial line twist angle. Lines wrapped around the yaw axis during
+deployment don't unwind at line stretch. This is the physical mechanism that
+creates line twists from body position during deployment.
+
+### Typical Values at Handoff
+
+From a standard wingsuit BASE deployment at ~25 m/s after flare:
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| θ (pitch) | ~66° | Steep nose-up — canopy well above pilot |
+| ψ (heading) | matches flight dir | From negated tension axis horizontal |
+| α (AOA) | ~80° | Broadside to airflow — NOT trimmed |
+| thetaPilot | ~144° | Pilot hanging well past canopy z-axis |
+| Deploy | 5% | Just beginning inflation |
+| Airspeed | ~25 m/s | Post-flare deceleration |
+
+### Euler Singularity Guard
+
+The canopy starts at θ ≈ 66° and pitches forward during inflation. To prevent
+`Inf`/`NaN` if θ transiently passes through ±90° in `eulerRates()`, the EOM
+clamps `cos(θ)` to a minimum magnitude of 1e-6 before computing `tan(θ)` and
+`sec(θ)`. This is a safety net — in practice the canopy's pitching moment
+drives θ forward (decreasing) toward trim well before reaching 90°.
 
 `CanopyDeployManager`: ramps deploy 0.05 → 1.0 over 3s (ease-out curve). Initial brakes 30%.
 
