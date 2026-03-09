@@ -666,6 +666,21 @@ function _bridleTop(): { x: number; y: number; z: number } {
   return { x: glb.z * _g, y: glb.x * _g, z: -glb.y * _g }
 }
 
+/**
+ * Canopy bridle attachment point in NED body-frame meters (relative to CG).
+ *
+ * Used by sim-runner to provide the correct anchor position for the bridle
+ * chain during canopy flight. The bridle attaches at the top of the canopy
+ * (76% chord from LE) — about 4.4m above the pilot.
+ *
+ * Converts the GLB `bridleTop` landmark → NED normalized → physical meters.
+ */
+export function getCanopyBridleAttachNED(): { x: number; y: number; z: number } {
+  const norm = _bridleTop()
+  const h = CANOPY_GEOMETRY.referenceHeight  // 1.875m
+  return { x: norm.x * h, y: norm.y * h, z: norm.z * h }
+}
+
 // 7 canopy cells across span, forming an arc over the pilot's head.
 // Each cell has structure mass and trapped air mass.
 // Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643

@@ -14,6 +14,7 @@
 
 import type { SimState, SimStateExtended } from '../polar/sim-state.ts'
 import type { LineStretchSnapshot, CanopyBagState } from './deploy-types.ts'
+import { bodyToInertial, inertialToBody } from './vec3-util.ts'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -93,19 +94,11 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   // thetaPilot = pendulum angle of pilot CG in the canopy body xz-plane.
   // Compute by projecting the canopy→pilot direction into the canopy body frame.
   // The tension axis points pilot→canopy in inertial NED, so canopy→pilot = negated.
-  const pilotDir_N = -tx  // inertial NED: canopy → pilot
-  const pilotDir_E = -ty
-  const pilotDir_D = -tz
+  const pilotDirInertial = { x: -tx, y: -ty, z: -tz }
 
-  // Rotate inertial canopy→pilot vector into canopy body frame (DCM transpose)
-  const cPhi = Math.cos(phi), sPhi = Math.sin(phi)
-  const cTheta = Math.cos(theta), sTheta = Math.sin(theta)
-  const cPsi = Math.cos(psi), sPsi = Math.sin(psi)
-  const pdx = (cTheta * cPsi) * pilotDir_N + (cTheta * sPsi) * pilotDir_E + (-sTheta) * pilotDir_D
-  const pdy = (sPhi * sTheta * cPsi - cPhi * sPsi) * pilotDir_N +
-    (sPhi * sTheta * sPsi + cPhi * cPsi) * pilotDir_E + (sPhi * cTheta) * pilotDir_D
-  const pdz = (cPhi * sTheta * cPsi + sPhi * sPsi) * pilotDir_N +
-    (cPhi * sTheta * sPsi - sPhi * cPsi) * pilotDir_E + (cPhi * cTheta) * pilotDir_D
+  // Rotate inertial canopy→pilot vector into canopy body frame
+  const pd = inertialToBody(pilotDirInertial, phi, theta, psi)
+  const pdx = pd.x, pdy = pd.y, pdz = pd.z
 
   // Pendulum angle: measured from body +z (hanging equilibrium).
   // Convention: positive = pilot swung backward (aft), negative = forward.
@@ -127,26 +120,12 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const pilotYawDot = canopyBag.yawRate
 
   // ── Velocity: transform from wingsuit body → inertial → canopy body ──
-  const cosPhi0 = Math.cos(bodyState.phi), sinPhi0 = Math.sin(bodyState.phi)
-  const cosTheta0 = Math.cos(bodyState.theta), sinTheta0 = Math.sin(bodyState.theta)
-  const cosPsi0 = Math.cos(bodyState.psi), sinPsi0 = Math.sin(bodyState.psi)
-  // DCM body→inertial (3-2-1)
-  const vN = (cosTheta0 * cosPsi0) * bodyState.u +
-    (sinPhi0 * sinTheta0 * cosPsi0 - cosPhi0 * sinPsi0) * bodyState.v +
-    (cosPhi0 * sinTheta0 * cosPsi0 + sinPhi0 * sinPsi0) * bodyState.w
-  const vE = (cosTheta0 * sinPsi0) * bodyState.u +
-    (sinPhi0 * sinTheta0 * sinPsi0 + cosPhi0 * cosPsi0) * bodyState.v +
-    (cosPhi0 * sinTheta0 * sinPsi0 - sinPhi0 * cosPsi0) * bodyState.w
-  const vD = (-sinTheta0) * bodyState.u +
-    (sinPhi0 * cosTheta0) * bodyState.v +
-    (cosPhi0 * cosTheta0) * bodyState.w
-
-  // Inertial → canopy body (transpose DCM with canopy Euler angles)
-  const u = (cTheta * cPsi) * vN + (cTheta * sPsi) * vE + (-sTheta) * vD
-  const v = (sPhi * sTheta * cPsi - cPhi * sPsi) * vN +
-    (sPhi * sTheta * sPsi + cPhi * cPsi) * vE + (sPhi * cTheta) * vD
-  const w = (cPhi * sTheta * cPsi + sPhi * sPsi) * vN +
-    (cPhi * sTheta * sPsi - sPhi * cPsi) * vE + (cPhi * cTheta) * vD
+  const wsBodyVel = { x: bodyState.u, y: bodyState.v, z: bodyState.w }
+  const inertialVel = bodyToInertial(wsBodyVel, bodyState.phi, bodyState.theta, bodyState.psi)
+  const canopyBodyVel = inertialToBody(inertialVel, phi, theta, psi)
+  const u = canopyBodyVel.x
+  const v = canopyBodyVel.y
+  const w = canopyBodyVel.z
 
   // ── Diagnostic: verify computed alpha matches expected ~70–85° ─────
   const V = Math.sqrt(u * u + v * v + w * w)

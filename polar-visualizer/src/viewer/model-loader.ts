@@ -261,7 +261,7 @@ const loader = new GLTFLoader()
 const rawCache = new Map<string, THREE.Group>()
 
 /** Load a raw GLTF/GLB and cache by path. Returns a clone. */
-async function loadRawGltf(path: string): Promise<THREE.Group> {
+export async function loadRawGltf(path: string): Promise<THREE.Group> {
   if (rawCache.has(path)) {
     return rawCache.get(path)!.clone()
   }

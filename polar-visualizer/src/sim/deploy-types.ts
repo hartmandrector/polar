@@ -12,15 +12,21 @@ export interface Vec3 {
   x: number; y: number; z: number
 }
 
-// ─── Wingsuit Deploy ─────────────────────────────────────────────────────────
+// ─── Bridle Chain Phases ──────────────────────────────────────────────────────
 
-export type WingsuitDeployPhase =
-  | 'idle'
+/** Phases owned by BridleChainSim (no 'idle' — that's the caller's concern) */
+export type BridlePhase =
   | 'pc_toss'
   | 'bridle_paying_out'
   | 'pin_release'
   | 'canopy_extracting'
   | 'line_stretch'
+
+// ─── Wingsuit Deploy ─────────────────────────────────────────────────────────
+
+export type WingsuitDeployPhase =
+  | 'idle'
+  | BridlePhase
 
 export interface BridleSegmentState {
   position: Vec3       // body-relative, meters
@@ -79,4 +85,20 @@ export interface LineStretchSnapshot {
   chainDistance: number
   /** Simulation time [s] */
   time: number
+}
+
+// ─── Bridle Render State ─────────────────────────────────────────────────────
+
+/** Render state produced by BridleChainSim, body-relative positions */
+export interface BridleRenderState {
+  phase: BridlePhase
+  pcPosition: Vec3
+  pcCD: number
+  segments: BridleSegmentState[]
+  canopyBag: CanopyBagState | null
+  bridleTension: number
+  pinTension: number
+  bagTension: number
+  chainDistance: number
+  bagDistance: number
 }

@@ -15,7 +15,10 @@ import { rk4Step } from '../polar/sim.ts'
 import { readWingsuitGamepad, readCanopyGamepad } from './sim-gamepad.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
-import type { WingsuitDeployRenderState } from './deploy-types.ts'
+import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
+import type { BridleChainSim } from './bridle-sim.ts'
+import { bodyToInertial, v3add } from './vec3-util.ts'
+import { getCanopyBridleAttachNED } from '../polar/polar-data.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -126,6 +129,9 @@ export class SimRunner {
   /** Canopy deploy manager — active after line stretch */
   private canopyDeploy: CanopyDeployManager | null = null
 
+  /** Standalone bridle chain — persists from deploy through canopy flight */
+  private bridleChain: BridleChainSim | null = null
+
   /** Canopy polar key to switch to at line stretch (set from scenario) */
   private canopyPolarKey: string | null = null
 
@@ -151,6 +157,7 @@ export class SimRunner {
   stop(): void {
     this.running = false
     this.wsDeploy = null
+    this.bridleChain = null
     this.wsDeployRender = null
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId)
@@ -279,6 +286,9 @@ export class SimRunner {
           if (this.wsDeploy.snapshot) {
             this.wsDeploy.snapshot.time = this.simTime
 
+            // ── Take ownership of bridle chain for PC persistence ──
+            this.bridleChain = this.wsDeploy.bridle
+
             // ── Canopy handoff ──────────────────────────────────────
             const canopyIC = computeCanopyIC(this.wsDeploy.snapshot)
             console.log(`[SimRunner] Canopy IC: θ=${(canopyIC.theta * RAD).toFixed(1)}° ψ=${(canopyIC.psi * RAD).toFixed(1)}° twist=${(canopyIC.pilotYaw * RAD).toFixed(0)}°`)
@@ -295,6 +305,20 @@ export class SimRunner {
         }
       }
 
+      // Step bridle chain during canopy flight (PC persistence)
+      if (this.bridleChain && this.modelType === 'canopy') {
+        const { x, y, z, u, v, w, phi, theta, psi } = this.simState
+        const bodyVel: Vec3 = { x: u, y: v, z: w }
+        const inertialVel = bodyToInertial(bodyVel, phi, theta, psi)
+        // Bridle attaches at canopy top (bridleTop landmark) — body frame offset
+        const attachBody = getCanopyBridleAttachNED()
+        const attachInertial = v3add(
+          { x, y, z },
+          bodyToInertial(attachBody, phi, theta, psi),
+        )
+        this.bridleChain.step(attachInertial, inertialVel, config.rho, DT)
+      }
+
       // Step canopy deployment inflation
       if (this.canopyDeploy && !this.canopyDeploy.state.fullyInflated) {
         this.canopyDeploy.step(DT)
@@ -304,9 +328,24 @@ export class SimRunner {
       this.simTime += DT
     }
 
-    // Update deploy render state
-    if (this.wsDeploy) {
+    // Update deploy render state (from wrapper during wingsuit, from chain during canopy)
+    if (this.wsDeploy && this.modelType !== 'canopy') {
       this.wsDeployRender = this.wsDeploy.getRenderState(this.simState)
+    } else if (this.bridleChain && this.modelType === 'canopy') {
+      const bodyPos: Vec3 = { x: this.simState.x, y: this.simState.y, z: this.simState.z }
+      const br = this.bridleChain.getRenderState(bodyPos)
+      this.wsDeployRender = {
+        phase: br.phase,
+        pcPosition: br.pcPosition,
+        pcCD: br.pcCD,
+        segments: br.segments,
+        canopyBag: br.canopyBag,
+        bridleTension: br.bridleTension,
+        pinTension: br.pinTension,
+        bagTension: br.bagTension,
+        chainDistance: br.chainDistance,
+        bagDistance: br.bagDistance,
+      }
     }
 
     // Acceleration tracking

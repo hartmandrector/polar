@@ -714,9 +714,33 @@ function updateVisualization(state: FlightState): void {
       }
     }
     // Wingsuit deployment visualization — sim-driven or slider-driven
-    // Hide all deploy visuals when we've transitioned to canopy
+    // During canopy flight: keep deploy renderer alive for PC persistence
     if (state.modelType === 'canopy') {
-      if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
+      const drs = state.deployRenderState
+      if (drs) {
+        // Create renderer if it was disposed during model switch
+        if (!deployRenderer) {
+          deployRenderer = new DeployRenderer(sceneCtx.scene, currentModel.bodyLength)
+        }
+        // Compute live anchor position — same formula as old bridleGroup positioning.
+        // baseBridlePos updates when canopy area slider changes (via setCanopyScale),
+        // so the deploy chain anchor automatically tracks the canopy mesh.
+        const spanScale  = 0.1 + 0.9 * state.deploy
+        const chordScale = 0.3 + 0.7 * state.deploy
+        const cgOffset = currentModel.cgOffsetThree ?? new THREE.Vector3()
+        let anchor: THREE.Vector3 | undefined
+        if (currentModel.baseBridlePos) {
+          anchor = new THREE.Vector3(
+            currentModel.baseBridlePos.x * spanScale  - cgOffset.x,
+            currentModel.baseBridlePos.y              - cgOffset.y,
+            currentModel.baseBridlePos.z * chordScale - cgOffset.z,
+          )
+        }
+        deployRenderer.update(drs, bodyQuat, anchor)
+      } else if (!drs) {
+        // No deploy render state (e.g. fresh canopy, no deployment) — clean up
+        if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
+      }
       if (currentModel.deployGroup) currentModel.deployGroup.group.visible = false
     } else if (currentModel.deployGroup) {
       const drs = state.deployRenderState
@@ -790,6 +814,8 @@ function updateVisualization(state: FlightState): void {
     if (cellWireframes) {
       cellWireframes.setVisible(state.showCellWireframes)
     }
+
+    // Deploy renderer: always visible when active (models show as they spawn)
 
     // Hide canopy GLB meshes (keep wireframes/overlays visible)
     if (currentModel.canopyModel) {
