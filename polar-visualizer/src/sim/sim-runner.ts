@@ -16,7 +16,7 @@ import { readWingsuitGamepad, readCanopyGamepad } from './sim-gamepad.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
-import type { BridleChainSim } from './bridle-sim.ts'
+import { BridleChainSim } from './bridle-sim.ts'
 import { bodyToInertial, v3add } from './vec3-util.ts'
 import { getCanopyBridleAttachNED } from '../polar/polar-data.ts'
 
@@ -286,8 +286,9 @@ export class SimRunner {
           if (this.wsDeploy.snapshot) {
             this.wsDeploy.snapshot.time = this.simTime
 
-            // ── Take ownership of bridle chain for PC persistence ──
-            this.bridleChain = this.wsDeploy.bridle
+            // ── Create standalone bridle for PC persistence ──
+            const chain = this.wsDeploy.getChainState()
+            this.bridleChain = new BridleChainSim(chain.pcPos, chain.pcVel, chain.segments)
 
             // ── Canopy handoff ──────────────────────────────────────
             const canopyIC = computeCanopyIC(this.wsDeploy.snapshot)

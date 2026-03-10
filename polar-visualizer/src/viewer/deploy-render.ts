@@ -33,6 +33,19 @@ const BAG_SIZE = 0.08
 /** Number of bridle segments */
 const SEGMENT_COUNT = 10
 
+/**
+ * Visual scale factor for suspension line length during deployment.
+ *
+ * The physics suspension line distance (~1.93m) is correct, but the canopy
+ * assembly uses parentScale/childScale that make the visual pilot-to-canopy
+ * distance larger than raw meters → scene conversion gives.
+ * This factor stretches ONLY the bag and suspension line positions so they
+ * match the assembled canopy geometry. Bridle segments and PC are unaffected.
+ *
+ * Set to 1.0 = raw physics meters. Tune visually to match the canopy assembly.
+ */
+export const DEPLOY_LINE_SCALE = 1.9
+
 // ─── NED → Three.js Conversion ─────────────────────────────────────────────
 
 /**
@@ -295,9 +308,14 @@ export class DeployRenderer {
       }
     }
 
-    // Canopy bag (if spawned)
+    // Canopy bag (if spawned) — scaled by DEPLOY_LINE_SCALE to match assembly geometry
     if (state.canopyBag) {
-      const bagPos = nedToThree(state.canopyBag.position, s)
+      const bagPosScaled = {
+        x: state.canopyBag.position.x * DEPLOY_LINE_SCALE,
+        y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
+        z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
+      }
+      const bagPos = nedToThree(bagPosScaled, s)
       chainPoints.push(bagPos)
 
       // Primitive fallback
@@ -359,7 +377,12 @@ export class DeployRenderer {
 
     // Suspension line: body → canopy bag (white line = actual parachute lines)
     if (state.canopyBag) {
-      const bagPos = nedToThree(state.canopyBag.position, s)
+      const bagPosScaled = {
+        x: state.canopyBag.position.x * DEPLOY_LINE_SCALE,
+        y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
+        z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
+      }
+      const bagPos = nedToThree(bagPosScaled, s)
       // Riser attachment point = anchor (already in final scene coords)
       const riserAttach = anchorScene.clone()
 
