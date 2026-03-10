@@ -33,10 +33,22 @@ import { v3add, v3sub, v3scale, v3len, v3dist, bodyToInertial } from './vec3-uti
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SEGMENT_COUNT = 10
-const SEGMENT_LENGTH = 0.33       // [m] per segment
+const SEGMENT_LENGTH = 0.33       // [m] per bridle segment
 const BRIDLE_LENGTH = SEGMENT_COUNT * SEGMENT_LENGTH  // 3.3m
-const TOTAL_LINE_LENGTH = 5.23    // pilot attachment to PC [m]
-const SUSPENSION_LINE_LENGTH = TOTAL_LINE_LENGTH - BRIDLE_LENGTH  // ~1.93m
+
+// ── Chain geometry: pilot CG to PC ──────────────────────────────────────
+// Physical chain: CG → shoulder → risers → suspension lines → bag → bridle → PC
+// Each component measured from GLB data or physical reference.
+const CG_TO_SHOULDER = 0.30       // [m] pilot CG to harness/shoulder attachment
+const RISER_LENGTH   = 0.47       // [m] riser convergence to riser ends (from cp2 GLB)
+const LINE_LENGTH    = 3.00       // [m] suspension lines proper (riser end to canopy attach)
+const BAG_HEIGHT     = 0.33       // [m] uninflated canopy: line attach (bottom) to bridle attach (top)
+
+/** Total distance from pilot CG to bag attachment — constraint for bag-to-body */
+const PILOT_TO_BAG = CG_TO_SHOULDER + RISER_LENGTH + LINE_LENGTH + BAG_HEIGHT  // ~4.10m
+
+/** Total chain length from pilot CG to PC */
+const TOTAL_CHAIN = PILOT_TO_BAG + BRIDLE_LENGTH  // ~7.40m
 
 const PIN_SEGMENT = 1             // 0 = closest to container, 9 = closest to PC
 const SEGMENT_MASS = 0.01         // [kg]
@@ -49,7 +61,7 @@ const PC_CD_MIN = 0.3
 const TENSION_FULL_INFLATION = 20 // [N]
 
 const UNSTOW_THRESHOLD = 8        // [N]
-const PIN_RELEASE_THRESHOLD = 20  // [N]
+const PIN_RELEASE_THRESHOLD = 10  // [N]
 
 const CANOPY_BAG_MASS = 3.7       // [kg]
 const CANOPY_BAG_CD = 1.0
@@ -183,7 +195,7 @@ export class WingsuitDeploySim {
     if (this.canopyBag) {
       this.bagTension = this.applyConstraint(
         this.canopyBag.position, this.canopyBag.velocity,
-        bodyPos, SUSPENSION_LINE_LENGTH, CANOPY_BAG_MASS, dt,
+        bodyPos, PILOT_TO_BAG, CANOPY_BAG_MASS, dt,
       )
     }
 
@@ -224,10 +236,10 @@ export class WingsuitDeploySim {
     // ── Line stretch detection ──────────────────────────────────────
     if (this.canopyBag) {
       const bagDist = v3dist(this.canopyBag.position, bodyPos)
-      if (bagDist >= SUSPENSION_LINE_LENGTH * 0.98) {
+      if (bagDist >= PILOT_TO_BAG * 0.98) {
         this.bagTension = this.applyConstraint(
           this.canopyBag.position, this.canopyBag.velocity,
-          bodyPos, SUSPENSION_LINE_LENGTH, CANOPY_BAG_MASS, dt,
+          bodyPos, PILOT_TO_BAG, CANOPY_BAG_MASS, dt,
         )
         this.phase = 'line_stretch'
         this.freezeSnapshot(bodyState, bodyPos)

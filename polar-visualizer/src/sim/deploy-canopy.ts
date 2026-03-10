@@ -66,16 +66,16 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const ty = tensionAxisInertial.y  // East component
   const tz = tensionAxisInertial.z  // Down component
 
-  // Heading (ψ): canopy x-axis horizontal projection → flight direction.
-  // Tension axis points from pilot toward canopy (trailing behind and above),
-  // so the canopy faces OPPOSITE to the tension axis horizontal projection
-  // (canopy forward = into the wind = direction of flight).
+  // Heading (ψ): canopy faces opposite to tension axis horizontal projection.
   const psi = Math.atan2(-ty, -tx)
 
-  // Pitch (θ): elevation angle of tension axis above horizontal.
-  // Positive = nose up. At typical deployment: ~60–70° (canopy well above pilot).
+  // Pitch (θ): tension axis elevation + geometric tension-to-chord angle.
+  // The uninflated canopy chord is nearly perpendicular to the tension line.
+  // 90° - trim_angle gives the geometric offset from tension axis to chord.
+  const TENSION_TO_CHORD_DEG = 84  // 90° - trim (~6°). Tune to match visual.
   const horizLen = Math.sqrt(tx * tx + ty * ty)
-  const theta = Math.atan2(-tz, horizLen)  // -tz because NED z+ is down; up = negative z
+  const tensionElevation = Math.atan2(-tz, horizLen)  // elevation above horizontal
+  const theta = tensionElevation + TENSION_TO_CHORD_DEG * Math.PI / 180
 
   // Roll (φ): from bag roll, attenuated by snatch force
   const phi = canopyBag.roll * 0.3
@@ -104,7 +104,7 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   // Convention: positive = pilot swung backward (aft), negative = forward.
   // At line stretch the pilot is stretched forward along the tension line,
   // so thetaPilot is negative. Gravity pendulum restores toward 0 (hanging).
-  const thetaPilot = -Math.atan2(pdx, pdz)
+  const thetaPilot = Math.atan2(pdx, pdz)
 
   // Pilot pitch rate: relative angular motion between wingsuit and canopy,
   // heavily damped by snatch. Use bag pitch rate as a proxy (it captures
@@ -131,16 +131,36 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const V = Math.sqrt(u * u + v * v + w * w)
   const alpha_deg = V > 0.1 ? Math.atan2(w, u) * RAD_TO_DEG : 0
   const beta_deg = V > 0.1 ? Math.asin(Math.max(-1, Math.min(1, v / V))) * RAD_TO_DEG : 0
+
+  // Bag position relative to pilot
+  const bagRel = {
+    x: canopyBag.position.x - bodyState.x,
+    y: canopyBag.position.y - bodyState.y,
+    z: canopyBag.position.z - bodyState.z,
+  }
+  const bagDist = Math.sqrt(bagRel.x * bagRel.x + bagRel.y * bagRel.y + bagRel.z * bagRel.z)
+
   console.log(
-    `[CanopyIC] θ=${(theta * RAD_TO_DEG).toFixed(1)}° ψ=${(psi * RAD_TO_DEG).toFixed(1)}°` +
+    `[CanopyIC] θ=${(theta * RAD_TO_DEG).toFixed(1)}° φ=${(phi * RAD_TO_DEG).toFixed(1)}° ψ=${(psi * RAD_TO_DEG).toFixed(1)}°` +
     ` α=${alpha_deg.toFixed(1)}° β=${beta_deg.toFixed(1)}°` +
     ` V=${V.toFixed(1)}m/s` +
     ` thetaPilot=${(thetaPilot * RAD_TO_DEG).toFixed(1)}°` +
     ` twist=${(pilotYaw * RAD_TO_DEG).toFixed(0)}°`,
   )
+  console.log(
+    `[CanopyIC] tensionAxis inertial: N=${tx.toFixed(3)} E=${ty.toFixed(3)} D=${tz.toFixed(3)}` +
+    ` | bagRelNED: N=${bagRel.x.toFixed(1)} E=${bagRel.y.toFixed(1)} D=${bagRel.z.toFixed(1)}` +
+    ` dist=${bagDist.toFixed(1)}m`,
+  )
+  console.log(
+    `[CanopyIC] wsAttitude: φ=${(bodyState.phi * RAD_TO_DEG).toFixed(1)}°` +
+    ` θ=${(bodyState.theta * RAD_TO_DEG).toFixed(1)}°` +
+    ` ψ=${(bodyState.psi * RAD_TO_DEG).toFixed(1)}°` +
+    ` wsVel: u=${bodyState.u.toFixed(1)} v=${bodyState.v.toFixed(1)} w=${bodyState.w.toFixed(1)}`,
+  )
 
   return {
-    // Position — inherit from wingsuit CG
+    // Position — inherit from wingsuit CG (model renders at origin; position is for integrator)
     x: bodyState.x,
     y: bodyState.y,
     z: bodyState.z,

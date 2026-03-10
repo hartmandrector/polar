@@ -12,7 +12,7 @@
 
 import { createScene, resizeRenderer, SceneContext } from './viewer/scene.ts'
 import { loadVehicleModel, applyAttitude, applyCgOffset, applyCgFromMassSegments, LoadedModel, ModelType, PilotType, updateBridleOrientation, updateWingsuitDeploy, updateSimDeploy, CANOPY_SCALE } from './viewer/model-loader.ts'
-import { DeployRenderer } from './viewer/deploy-render.ts'
+import { DeployRenderer, CANOPY_CHAIN_Y_OFFSET } from './viewer/deploy-render.ts'
 import { createForceVectors, updateForceVectors, ForceVectors } from './viewer/vectors.ts'
 import { setupControls, FlightState } from './ui/controls.ts'
 import { updateReadout } from './ui/readout.ts'
@@ -736,7 +736,8 @@ function updateVisualization(state: FlightState): void {
             currentModel.baseBridlePos.z * chordScale - cgOffset.z,
           )
         }
-        deployRenderer.update(drs, bodyQuat, anchor)
+        const chainOffset = new THREE.Vector3(0, CANOPY_CHAIN_Y_OFFSET, 0)
+        deployRenderer.update(drs, bodyQuat, anchor, chainOffset)
       } else if (!drs) {
         // No deploy render state (e.g. fresh canopy, no deployment) — clean up
         if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
