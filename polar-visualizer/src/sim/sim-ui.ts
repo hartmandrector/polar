@@ -41,6 +41,10 @@ export interface SimUIContext {
   updateVisualization: (state: FlightState) => void
   /** Get the Three.js scene for trail rendering */
   getScene: () => THREE.Scene
+  /** Get the orbit controls for camera manipulation */
+  getControls: () => OrbitControls
+  /** Get the camera */
+  getCamera: () => THREE.PerspectiveCamera
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -506,6 +510,44 @@ function handlePilotChuteToss(ctx: SimUIContext): void {
   // Spawn PC rigid body — does NOT change phase
   runner.tossPilotChute()
   console.log(`[FSM] Pilot chute tossed — still in freefall, PC sub-sim active`)
+
+  // Zoom out camera if too close for deployment visibility
+  startDeployZoomOut(ctx)
+}
+
+// ─── Deploy Camera Zoom ──────────────────────────────────────────────────────
+
+const DEPLOY_MIN_DISTANCE = 20  // minimum camera distance for deployment
+const DEPLOY_ZOOM_DURATION = 2.0  // seconds to reach target distance
+let deployZoomActive = false
+let deployZoomStart = 0
+let deployZoomFrom = 0
+
+function startDeployZoomOut(ctx: SimUIContext): void {
+  const camera = ctx.getCamera()
+  const controls = ctx.getControls()
+  const dist = camera.position.distanceTo(controls.target)
+  if (dist >= DEPLOY_MIN_DISTANCE) return  // already far enough
+  deployZoomFrom = dist
+  deployZoomStart = performance.now()
+  deployZoomActive = true
+}
+
+/** Call each frame from the sim tick to animate the zoom. */
+export function tickDeployZoom(ctx: SimUIContext): void {
+  if (!deployZoomActive) return
+  const elapsed = (performance.now() - deployZoomStart) / 1000
+  const t = Math.min(1, elapsed / DEPLOY_ZOOM_DURATION)
+  const eased = 1 - (1 - t) * (1 - t)  // ease-out
+  const dist = deployZoomFrom + (DEPLOY_MIN_DISTANCE - deployZoomFrom) * eased
+
+  const camera = ctx.getCamera()
+  const controls = ctx.getControls()
+  const dir = camera.position.clone().sub(controls.target).normalize()
+  camera.position.copy(controls.target).addScaledVector(dir, dist)
+  controls.update()
+
+  if (t >= 1) deployZoomActive = false
 }
 
 function toggleSim(ctx: SimUIContext): void {

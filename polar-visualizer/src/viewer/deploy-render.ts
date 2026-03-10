@@ -44,7 +44,14 @@ const SEGMENT_COUNT = 10
  *
  * Set to 1.0 = raw physics meters. Tune visually to match the canopy assembly.
  */
-export const DEPLOY_LINE_SCALE = 1.9
+export const DEPLOY_LINE_SCALE = 1.0
+
+/**
+ * Vertical offset (Three.js Y-up) for the entire bridle chain during canopy flight.
+ * Shifts all segment + PC positions up to match the canopy assembly height.
+ * Tune visually. 0 = no shift.
+ */
+export const CANOPY_CHAIN_Y_OFFSET = 2.8
 
 // ─── NED → Three.js Conversion ─────────────────────────────────────────────
 
@@ -55,12 +62,14 @@ export const DEPLOY_LINE_SCALE = 1.9
  * @param ned Position in NED meters (body-relative)
  * @param scale pilotScale — NED meters to scene units
  */
-function nedToThree(ned: Vec3, scale: number): THREE.Vector3 {
-  return new THREE.Vector3(
+function nedToThree(ned: Vec3, scale: number, offset?: THREE.Vector3): THREE.Vector3 {
+  const v = new THREE.Vector3(
     -ned.y * scale,
     -ned.z * scale,
      ned.x * scale,
   )
+  if (offset) v.add(offset)
+  return v
 }
 
 /** Reusable temp vectors for lookAt orientation calculations */
@@ -248,8 +257,10 @@ export class DeployRenderer {
    * @param anchorPos  Bridle anchor in final scene coords (baseBridlePos * deployScale - cgOffset).
    *                   For canopy: computed in main.ts same as old bridleGroup.position.
    *                   Omit for wingsuit — uses default mid-back attachment.
+   * @param chainOffset  Optional Three.js offset added to ALL chain positions (segments, PC, bag).
+   *                     Used during canopy flight to shift the chain up to match the assembly.
    */
-  update(state: WingsuitDeployRenderState, bodyQuat?: THREE.Quaternion, anchorPos?: THREE.Vector3): void {
+  update(state: WingsuitDeployRenderState, bodyQuat?: THREE.Quaternion, anchorPos?: THREE.Vector3, chainOffset?: THREE.Vector3): void {
     this.group.visible = true
     const s = this.metersToScene
     const useGLB = this.glbsLoaded
@@ -274,7 +285,7 @@ export class DeployRenderer {
     for (let i = 0; i < state.segments.length; i++) {
       const seg = state.segments[i]
       if (seg.visible) {
-        const pos = nedToThree(seg.position, s)
+        const pos = nedToThree(seg.position, s, chainOffset)
         segChainIdx[i] = chainPoints.length
         chainPoints.push(pos)
 
@@ -302,7 +313,9 @@ export class DeployRenderer {
         if (segChainIdx[i] < 0 || !this.segmentModels[i]) continue
         const glb = this.segmentModels[i]
         const cpIdx = segChainIdx[i]
-        const prev = cpIdx > 0 ? chainPoints[cpIdx - 1] : anchorScene
+        // For the innermost segment (cpIdx <= 1), orient toward the next segment
+        // rather than toward the body anchor — prevents locking to body rotation
+        const prev = cpIdx > 1 ? chainPoints[cpIdx - 1] : chainPoints[cpIdx]
         const next = cpIdx < chainPoints.length - 1 ? chainPoints[cpIdx + 1] : chainPoints[cpIdx]
         orientAlongChain(glb, prev, next)
       }
@@ -315,7 +328,7 @@ export class DeployRenderer {
         y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
         z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
       }
-      const bagPos = nedToThree(bagPosScaled, s)
+      const bagPos = nedToThree(bagPosScaled, s, chainOffset)
       chainPoints.push(bagPos)
 
       // Primitive fallback
@@ -343,7 +356,7 @@ export class DeployRenderer {
     }
 
     // PC at end of chain
-    const pcPos = nedToThree(state.pcPosition, s)
+    const pcPos = nedToThree(state.pcPosition, s, chainOffset)
     chainPoints.push(pcPos)
 
     // PC tension ring — scales with CD (visual tension feedback)
@@ -373,7 +386,7 @@ export class DeployRenderer {
     }
     posAttr.needsUpdate = true
     chainGeo.setDrawRange(0, chainPoints.length)
-    this.chainLine.visible = true
+    this.chainLine.visible = state.canopyBag !== null  // hide chain line during canopy flight
 
     // Suspension line: body → canopy bag (white line = actual parachute lines)
     if (state.canopyBag) {
@@ -382,7 +395,7 @@ export class DeployRenderer {
         y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
         z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
       }
-      const bagPos = nedToThree(bagPosScaled, s)
+      const bagPos = nedToThree(bagPosScaled, s, chainOffset)
       // Riser attachment point = anchor (already in final scene coords)
       const riserAttach = anchorScene.clone()
 

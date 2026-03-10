@@ -56,55 +56,69 @@ export interface CanopyDeployState {
 export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended {
   const { bodyState, canopyBag, tensionAxisInertial } = snapshot
   const RAD_TO_DEG = 180 / Math.PI
+  const DEG_TO_RAD = Math.PI / 180
 
-  // ── Attitude: derive from inertial tension axis ────────────────────
-  // The tension axis points from pilot to canopy in inertial NED.
-  // The canopy body x-axis aligns along the tension axis (forward = toward canopy).
-  // At line stretch the uninflated canopy is above-and-behind; the body frame
-  // has x pointing along the riser line (up-and-back), giving a steep nose-up θ.
+  // ── Attitude: construct body frame from tension axis + airflow ─────
+  // At line stretch, opening shock aligns the canopy system to the tension axis.
+  // The tension axis (pilot→bag) defines the riser/hanging direction.
+  // The airflow resolves the remaining DOF (chord orientation around tension axis).
+  //
+  // Body frame construction:
+  //   z_body = tension axis direction (toward canopy / away from pilot)
+  //   y_body = z_body × velocity (spanwise, perpendicular to airflow plane)
+  //   x_body = y_body × z_body (chord direction, in airflow plane)
+  //
+  // Line twist (bag yaw) is applied as a rotation about z_body afterward.
+
   const tx = tensionAxisInertial.x  // North component
   const ty = tensionAxisInertial.y  // East component
   const tz = tensionAxisInertial.z  // Down component
 
-  // Heading (ψ): canopy faces opposite to tension axis horizontal projection.
-  const psi = Math.atan2(-ty, -tx)
+  // Normalize tension axis → z_body direction.
+  // Tension axis points pilot→canopy. Body z-axis points DOWN (toward pilot).
+  // z_body direction from tension axis (for pilot coupling projection only)
+  const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz)
+  const zb = { x: tx / tLen, y: ty / tLen, z: tz / tLen }
 
-  // Pitch (θ): tension axis elevation + geometric tension-to-chord angle.
-  // The uninflated canopy chord is nearly perpendicular to the tension line.
-  // 90° - trim_angle gives the geometric offset from tension axis to chord.
-  const TENSION_TO_CHORD_DEG = 84  // 90° - trim (~6°). Tune to match visual.
+  // Inertial velocity from wingsuit body frame
+  const wsBodyVel = { x: bodyState.u, y: bodyState.v, z: bodyState.w }
+  const vInertial = bodyToInertial(wsBodyVel, bodyState.phi, bodyState.theta, bodyState.psi)
+
+  // ── Euler angles: derive directly from geometry ────────────────────
+  // ψ: inherit wingsuit heading — canopy opens in the same direction
+  const psi = bodyState.psi
+
+  // θ: tension axis elevation + 90° (chord ⊥ riser line) - trim angle
+  // Tension points pilot→canopy. Elevation = angle above horizontal.
+  // When tension is horizontal → θ ≈ 84° (steep nose-up, normal deployment)
+  // When tension is vertical up (dive) → θ ≈ 174° (nearly inverted)
+  // When tension is vertical down (climb) → θ ≈ -6° (nearly level, canopy below)
+  const TRIM_ANGLE_DEG = 6
   const horizLen = Math.sqrt(tx * tx + ty * ty)
-  const tensionElevation = Math.atan2(-tz, horizLen)  // elevation above horizontal
-  const theta = tensionElevation + TENSION_TO_CHORD_DEG * Math.PI / 180
+  const tensionElevation = Math.atan2(tz, horizLen)  // NED: +tz = down = canopy below
+  const theta = tensionElevation + (90 - TRIM_ANGLE_DEG) * DEG_TO_RAD
 
-  // Roll (φ): from bag roll, attenuated by snatch force
+  // φ: from bag roll, attenuated by snatch
   const phi = canopyBag.roll * 0.3
-
   // ── Angular rates: near zero at line stretch ───────────────────────
-  // The canopy is a new body just beginning to fly. The snatch force
-  // at line stretch absorbs most angular energy. Rather than inheriting
-  // wingsuit body rates (which are in a completely different frame),
-  // start with small perturbations from the bag's residual tumble.
-  const BAG_RATE_DAMP = 0.1  // bag angular rates heavily damped by snatch
+  // Opening shock absorbs most angular energy. Start with small
+  // perturbations from bag's residual tumble.
+  const BAG_RATE_DAMP = 0.1
   const p = canopyBag.rollRate * BAG_RATE_DAMP
   const q = canopyBag.pitchRate * BAG_RATE_DAMP
   const r = canopyBag.yawRate * BAG_RATE_DAMP
 
   // ── Pilot coupling ICs from canopy→pilot geometry ──────────────────
-  // thetaPilot = pendulum angle of pilot CG in the canopy body xz-plane.
-  // Compute by projecting the canopy→pilot direction into the canopy body frame.
-  // The tension axis points pilot→canopy in inertial NED, so canopy→pilot = negated.
+  // thetaPilot: project canopy→pilot direction into canopy body frame.
+  // Tension axis constructed body z-axis, so pilot is along -z_body → thetaPilot ≈ 0.
+  // Any offset comes from the actual geometry not being perfectly aligned.
   const pilotDirInertial = { x: -tx, y: -ty, z: -tz }
-
-  // Rotate inertial canopy→pilot vector into canopy body frame
   const pd = inertialToBody(pilotDirInertial, phi, theta, psi)
-  const pdx = pd.x, pdy = pd.y, pdz = pd.z
 
   // Pendulum angle: measured from body +z (hanging equilibrium).
-  // Convention: positive = pilot swung backward (aft), negative = forward.
-  // At line stretch the pilot is stretched forward along the tension line,
-  // so thetaPilot is negative. Gravity pendulum restores toward 0 (hanging).
-  const thetaPilot = Math.atan2(pdx, pdz)
+  const PILOT_PITCH_LIMIT = 170 * DEG_TO_RAD
+  const thetaPilotRaw = Math.atan2(pd.x, pd.z)
+  const thetaPilot = Math.max(-PILOT_PITCH_LIMIT, Math.min(PILOT_PITCH_LIMIT, thetaPilotRaw))
 
   // Pilot pitch rate: relative angular motion between wingsuit and canopy,
   // heavily damped by snatch. Use bag pitch rate as a proxy (it captures
@@ -119,10 +133,8 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const pilotYaw = canopyBag.yaw
   const pilotYawDot = canopyBag.yawRate
 
-  // ── Velocity: transform from wingsuit body → inertial → canopy body ──
-  const wsBodyVel = { x: bodyState.u, y: bodyState.v, z: bodyState.w }
-  const inertialVel = bodyToInertial(wsBodyVel, bodyState.phi, bodyState.theta, bodyState.psi)
-  const canopyBodyVel = inertialToBody(inertialVel, phi, theta, psi)
+  // ── Velocity: transform inertial → canopy body (already computed above) ──
+  const canopyBodyVel = inertialToBody(vInertial, phi, theta, psi)
   const u = canopyBodyVel.x
   const v = canopyBodyVel.y
   const w = canopyBodyVel.z
@@ -215,9 +227,11 @@ export class CanopyDeployManager {
     this.state.elapsed += dt
 
     if (!this.state.fullyInflated) {
-      // Smooth ramp: ease-out curve (fast initial inflation, slower finish)
+      // S-curve: slow start (snivel/slider), faster middle, slow finish.
+      // Smoothstep: 3t² - 2t³ gives the right shape.
       const t = Math.min(1, this.state.elapsed / INFLATION_TIME)
-      this.state.deploy = INITIAL_DEPLOY + (1 - INITIAL_DEPLOY) * (1 - (1 - t) * (1 - t))
+      const s = t * t * (3 - 2 * t)  // smoothstep
+      this.state.deploy = INITIAL_DEPLOY + (1 - INITIAL_DEPLOY) * s
 
       if (this.state.deploy >= 0.99) {
         this.state.deploy = 1.0

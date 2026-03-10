@@ -229,6 +229,20 @@ export function forwardEuler(
       (ext.thetaPilot ?? 0) + (deriv.thetaPilotDot ?? 0) * dt
     ;(base as SimStateExtended).thetaPilotDot =
       (ext.thetaPilotDot ?? 0) + deriv.thetaPilotDDot * dt
+
+    // Line tension constraint: pilot cannot rotate through risers.
+    // Physical geometry (harness + lines) blocks rotation beyond ±170°.
+    // Bounce back with energy absorption (lines absorb ~50% of energy).
+    const PILOT_PITCH_LIMIT = 170 * Math.PI / 180
+    const BOUNCE_RESTITUTION = 0.5  // fraction of velocity preserved on bounce
+    const tp = (base as SimStateExtended).thetaPilot
+    if (tp > PILOT_PITCH_LIMIT) {
+      ;(base as SimStateExtended).thetaPilot = 2 * PILOT_PITCH_LIMIT - tp  // reflect
+      ;(base as SimStateExtended).thetaPilotDot = -BOUNCE_RESTITUTION * (base as SimStateExtended).thetaPilotDot
+    } else if (tp < -PILOT_PITCH_LIMIT) {
+      ;(base as SimStateExtended).thetaPilot = -2 * PILOT_PITCH_LIMIT - tp  // reflect
+      ;(base as SimStateExtended).thetaPilotDot = -BOUNCE_RESTITUTION * (base as SimStateExtended).thetaPilotDot
+    }
     ;(base as SimStateExtended).pilotRoll =
       (ext.pilotRoll ?? 0) + (deriv.pilotRollDot ?? 0) * dt
     ;(base as SimStateExtended).pilotRollDot =

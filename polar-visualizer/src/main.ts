@@ -31,7 +31,7 @@ import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
-import { setupSimUI, updateGamepadOrbit } from './sim/sim-ui.ts'
+import { setupSimUI, updateGamepadOrbit, tickDeployZoom } from './sim/sim-ui.ts'
 import * as THREE from 'three'
 
 // ─── App State ───────────────────────────────────────────────────────────────
@@ -939,7 +939,7 @@ async function init(): Promise<void> {
   setTimeout(() => resizeRenderer(sceneCtx, viewport), 100)
 
   // ── Simulation UI ──
-  setupSimUI({
+  const simCtx = {
     getFlightState: () => flightState,
     getPolar: () => {
       const vehicle = getVehicleDefinition(flightState.polarKey)
@@ -959,12 +959,16 @@ async function init(): Promise<void> {
     buildControls: buildSegmentControls,
     updateVisualization,
     getScene: () => sceneCtx.scene,
-  })
+    getControls: () => sceneCtx.controls,
+    getCamera: () => sceneCtx.camera,
+  }
+  setupSimUI(simCtx)
 
   // Render loop
   function animate(): void {
     requestAnimationFrame(animate)
     const polar = continuousPolars[flightState.polarKey] ?? continuousPolars.aurafive
+    tickDeployZoom(simCtx)
     updateGamepadOrbit(sceneCtx.controls, flightState.modelType ?? polar.type ?? '')
     sceneCtx.controls.update()
     sceneCtx.renderer.render(sceneCtx.scene, sceneCtx.camera)
