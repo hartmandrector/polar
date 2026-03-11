@@ -712,6 +712,37 @@ function updateVisualization(state: FlightState): void {
           currentModel.baseBridlePos.z * chordScale - cgOffset.z,
         )
       }
+
+      // ── Deployment slider position ──
+      // Slider descends from canopy attachment (bridleTop) to riser tops (pilotPivot)
+      // as deploy fraction goes from 0 → 1. sliderFraction = 1 - deploy.
+      if (currentModel.sliderModel && currentModel.baseBridlePos && currentModel.pilotPivot) {
+        const d = state.deploy
+        if (d > 0 && d < 1) {
+          currentModel.sliderModel.visible = true
+          const cgOff = currentModel.cgOffsetThree ?? new THREE.Vector3()
+          // Top position: bridle attachment (scaled for deployment)
+          const topX = currentModel.baseBridlePos.x * spanScale - cgOff.x
+          const topY = currentModel.baseBridlePos.y - cgOff.y
+          const topZ = currentModel.baseBridlePos.z * chordScale - cgOff.z
+          // Bottom position: pilot pivot (riser tops)
+          const botX = currentModel.pilotPivot.position.x
+          const botY = currentModel.pilotPivot.position.y
+          const botZ = currentModel.pilotPivot.position.z
+          // Lerp: at deploy=0 slider is at top, at deploy=1 slider is at bottom
+          currentModel.sliderModel.position.set(
+            topX + d * (botX - topX),
+            topY + d * (botY - topY),
+            topZ + d * (botZ - topZ),
+          )
+        } else if (d >= 1) {
+          // Fully deployed — slider rests at riser tops
+          currentModel.sliderModel.visible = true
+          currentModel.sliderModel.position.copy(currentModel.pilotPivot.position)
+        } else {
+          currentModel.sliderModel.visible = false
+        }
+      }
     }
     // Wingsuit deployment visualization — sim-driven or slider-driven
     // During canopy flight: keep deploy renderer alive for PC persistence

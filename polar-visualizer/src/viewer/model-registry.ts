@@ -419,6 +419,7 @@ export interface VehicleAssembly {
     readonly snivel: number        // canopy in bag (standalone)
     readonly 'snivel-slider': number  // canopy bag + slider combined (deployment extraction)
     readonly bridle: number        // bridle line
+    readonly slider?: number       // deployment slider (descends lines during inflation)
   }
 
   // ── physics ──

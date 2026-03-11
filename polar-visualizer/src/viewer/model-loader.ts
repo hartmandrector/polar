@@ -222,6 +222,8 @@ export interface LoadedModel {
   massPivotNED?: { x: number; z: number }
   /** Wingsuit deployment visualization (only for wingsuit) */
   deployGroup?: WingsuitDeployGroup
+  /** Deployment slider model (only for canopy) — descends from canopy to risers during inflation */
+  sliderModel?: THREE.Group
   /**
    * Ratio between the visual canopy scale and the physics scale.
    * When the canopy mesh is enlarged via component scale (e.g. 1.5×), canopy-attached
@@ -531,6 +533,25 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     group.add(bridleGroup)
   }
 
+  // ── Deployment slider (canopy only) ──
+  // Loads slider.glb and adds it to the outer group. Position driven by deploy
+  // fraction in main.ts — lerps from bridleTop (canopy attachment) down to
+  // just above the pilot (riser tops).
+  let sliderModel: THREE.Group | undefined
+  if (type === 'canopy') {
+    const sliderGltf = await loadRawGltf('/models/slider.glb')
+    const s = compositeRoot.scale.x  // normalization scale
+    const assembly: VehicleAssembly = (compositeRoot as any)._assembly
+    const overlayPS = assembly.overlayPositionScale ?? 1.0
+    const sliderScale = (assembly.deployScales?.slider ?? 1.5) * Math.abs(s) * overlayPS
+    sliderGltf.scale.setScalar(sliderScale)
+    sliderModel = new THREE.Group()
+    sliderModel.name = 'deployment-slider'
+    sliderModel.add(sliderGltf)
+    sliderModel.visible = false  // hidden until deployment starts
+    group.add(sliderModel)
+  }
+
   // ── Wingsuit deployment visualization ──
   // Load PC and snivel GLBs, create bridle/line geometry.
   // Everything starts hidden; main.ts drives visibility + positions from wsDeploy slider.
@@ -597,6 +618,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     bridleGroup, pilotPivot: (compositeRoot as any)._pilotPivot,
     canopyModel: type === 'canopy' ? mainModel : undefined,
     canopyBaseScale, canopyScaleRatio, canopyComponentScale, deployGroup,
+    sliderModel,
     pilotSizeCompensation,
   }
 
