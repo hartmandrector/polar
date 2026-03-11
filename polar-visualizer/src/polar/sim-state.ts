@@ -145,6 +145,7 @@ export interface PilotCouplingConfig {
   twistStiffness: number // k_ψ [N·m] — line set torsional stiffness
   twistDamp: number      // c_ψ [N·m·s/rad]
   twistInertia: number   // I_ψ [kg·m²] about confluence
+  twistYawCoupling: number // k_yaw [N·m·s/rad] — canopy yaw rate → twist torque
 
   // Pilot mass segments (for aero damping torque computation)
   pilotSegments?: MassSegment[]

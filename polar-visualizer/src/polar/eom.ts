@@ -584,6 +584,8 @@ export function pilotTwistEOM(
   twistDamp: number,
   twistInertia: number,
   inputTorque: number = 0,
+  canopyYawRate: number = 0,
+  yawCoupling: number = 0,
 ): number {
   if (twistInertia < 1e-10) return 0
 
@@ -594,5 +596,10 @@ export function pilotTwistEOM(
 
   const tau_damp = -twistDamp * deltaYawDot
 
-  return (tau_lines + tau_damp + inputTorque) / twistInertia
+  // Canopy yaw rate coupling: canopy turning drags lines, pilot inertia
+  // resists → creates relative twist. Negative sign: canopy yaw right (r>0)
+  // means pilot lags left relative to canopy (deltaYaw decreases).
+  const tau_yaw = -yawCoupling * canopyYawRate
+
+  return (tau_lines + tau_damp + inputTorque + tau_yaw) / twistInertia
 }

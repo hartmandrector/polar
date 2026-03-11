@@ -657,6 +657,10 @@ function buildPilotCoupling(
   const twistInertia = pilotMass * 0.2 * 0.2  // ~20cm twist radius
   const twistStiffness = 20   // [N·m] — strong in full flight
   const twistDamp = 2 * Math.sqrt(twistStiffness * twistInertia) * 0.5  // underdamped
+  // Canopy yaw rate coupling — turns drag the pilot through line torque
+  // Pilot inertia resists → relative twist. Scale: at r=0.5 rad/s (~30°/s turn),
+  // steady-state twist ≈ coupling * r / stiffness ≈ 5 * 0.5 / 20 ≈ 0.125 rad ≈ 7°
+  const twistYawCoupling = 5  // [N·m·s/rad]
 
   // Filter pilot-body mass segments (exclude canopy cells)
   const CANOPY_NAMES = ['center', 'inner', 'outer', 'tip', 'brake']
@@ -680,6 +684,7 @@ function buildPilotCoupling(
     twistStiffness,
     twistDamp,
     twistInertia,
+    twistYawCoupling,
     pilotSegments,
     pivotNED,
   }

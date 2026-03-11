@@ -192,11 +192,13 @@ function computePilotCouplingDerivatives(
     pc.lateralInputTorque ?? 0,
   )
 
-  // Line twist — sinusoidal restoring torque + gamepad input
+  // Line twist — sinusoidal restoring torque + gamepad input + canopy yaw coupling
   const twistDDot = pilotTwistEOM(
     pilotYaw, pilotYawDot,
     pc.twistStiffness, pc.twistDamp, pc.twistInertia,
     pc.twistInputTorque ?? 0,
+    state.r,
+    pc.twistYawCoupling ?? 0,
   )
 
   // Body-frame gravity vector derivatives: ġ = -ω × g
