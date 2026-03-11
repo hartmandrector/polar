@@ -543,7 +543,7 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     const s = compositeRoot.scale.x  // normalization scale
     const assembly: VehicleAssembly = (compositeRoot as any)._assembly
     const overlayPS = assembly.overlayPositionScale ?? 1.0
-    const sliderScale = (assembly.deployScales?.slider ?? 1.5) * Math.abs(s) * overlayPS
+    const sliderScale = (assembly.deployScales?.slider ?? 3.0) * Math.abs(s) * overlayPS
     sliderGltf.scale.setScalar(sliderScale)
     // Rotate 90° about X so slider plate sits horizontal (was vertical in GLB)
     sliderGltf.rotation.x = -Math.PI / 2
