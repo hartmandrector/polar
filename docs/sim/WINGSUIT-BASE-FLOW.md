@@ -12,8 +12,8 @@ exit → freefall → deploy → unzip → canopy → landing
 |-------|--------------|--------------|-------|------|--------|
 | **exit** | Wingsuit | Wingsuit controls | Scenario start | Clear of object | ⬜ planned |
 | **freefall** | Wingsuit 6-seg | Wingsuit stick+triggers | Exit complete | A button (PC toss) | ✅ |
-| **deploy** | Wingsuit → canopy | Deploy gamepad (limited) | A button | Inflation complete | 🔶 partial |
-| **unzip** | Canopy + zipped pilot | Deploy gamepad (limited) | Inflation complete | B button + 1.5s | ⬜ planned |
+| **deploy** | Wingsuit → canopy | Deploy gamepad (limited) | A button | Inflation complete | ✅ |
+| **unzip** | Canopy + zipped pilot | Deploy gamepad (limited) | Inflation complete | B button + 1.5s | ✅ |
 | **canopy** | Canopy + unzipped pilot | Full canopy gamepad | Unzip complete | Ground contact | ✅ |
 | **landing** | Static | None | Ground contact | Reset | ⬜ planned |
 
@@ -55,8 +55,9 @@ Three distinct control mechanisms connect the pilot to the canopy. Each has diff
 - ✅ Slider UI exists
 - ✅ `SegmentControls.weightShiftLR` field exists and is piped from slider
 - ✅ Gamepad reads left stick X as `lateralShift`
-- ❌ No canopy segment reads `weightShiftLR` — needs Kirchhoff blending
-- ❌ `pilotLateralEOM()` exists but is WRONG for weight shift — it models a mass pendulum, which weight shift is not. Should be removed or repurposed.
+- ✅ Kirchhoff blending in canopy segments (differential tilt + CM)
+- ✅ Inverse span scaling (collapsed span amplifies effect)
+- ⬜ `pilotLateralEOM()` exists but is WRONG for weight shift — should be removed or repurposed
 
 ### Line Twist (Yaw) — Physical Rotation with Dynamics
 
@@ -85,9 +86,11 @@ Three distinct control mechanisms connect the pilot to the canopy. Each has diff
 - ✅ Integration in sim.ts (forwardEuler + RK4)
 - ✅ Gamepad twist recovery input wired
 - ✅ Deploy seeds line twist from bag tumble yaw
-- ❌ No 3D rendering of pilot yaw rotation
-- ❌ No slider for static mode visualization
-- ❌ No line twist visualization (spiral lines)
+- ✅ 3D rendering: `pilotPivot.rotation.y` (nested inside pitch)
+- ✅ Static slider ±360° for visualization
+- ✅ HUD: amber >10°, flashing red >90° with direction/rate/recovery
+- ⬜ Spiral line rendering (cosmetic, deferred)
+- ⬜ Torsional coupling from canopy yaw rate (future)
 
 ### Pilot Pitch Pendulum — Physical Swing (existing)
 
@@ -229,25 +232,35 @@ Wingsuit BASE exit from a cliff/object:
 
 ## Implementation Plan
 
-### Phase 1: Weight Shift Kirchhoff (static first)
-1. Design Kirchhoff blending for `weightShiftLR` in canopy segments
-2. Verify polar curve response with existing slider in static mode
-3. Remove or repurpose `pilotLateralEOM` (it models wrong physics for weight shift)
+### Phase 1: Weight Shift Kirchhoff ✅
+1. ✅ Kirchhoff blending for `weightShiftLR` in canopy segments (differential tilt + CM)
+2. ✅ Verified with slider in static mode + gamepad in sim
+3. ✅ Inverse span scaling for deploy effect
+4. ⬜ Remove or repurpose `pilotLateralEOM` (models wrong physics)
 
-### Phase 2: Line Twist Visualization (static first)
-4. Add `line-twist-slider` to HTML controls panel
-5. Render pilot yaw rotation in 3D (`pilotPivot.rotation.y` or equivalent)
-6. Verify restoring torque with slider + debug panel
-7. Line twist spiral visualization (optional, can defer)
+### Phase 2: Line Twist Visualization ✅
+5. ✅ Line-twist slider in HTML controls (±360°)
+6. ✅ Pilot yaw rotation in 3D (`pilotPivot.rotation.y`, nested inside pitch)
+7. ✅ HUD twist indicator with direction, rate, recovery status
+8. ⬜ Spiral line rendering (cosmetic, deferred)
 
-### Phase 3: Deploy Gamepad + Unzip
-8. Add `readDeployGamepad()` to `sim-gamepad.ts` — limited controls
-9. Add unzip state to `SimRunner` (progress, triggered flag)
-10. B button detection in step loop
-11. Gamepad mode selection: freefall → deploy → canopy based on phase + unzip
-12. HUD overlay for deploy/unzip state
-13. Wire unzip progress → `unzip` segment parameter
+### Phase 3: Deploy Gamepad + Unzip ✅
+9. ✅ `readDeployGamepad()` in `sim-gamepad.ts` — limited controls
+10. ✅ Unzip state in `CanopyDeployManager` (B button, 1.5s ramp)
+11. ✅ B button detection + gamepad mode selection based on phase + unzip
+12. ✅ HUD overlay for deploy/unzip state (brakes stowed, progress bar, flash prompts)
+13. ⬜ Wire unzip progress → `unzip` segment parameter (pilot drag morph)
 
-### Phase 4: Exit + Landing (future)
-14. Exit scenario with terrain
-15. Landing detection + flare model
+### Phase 3.5: Airspeed Inflation + Slider Rendering ✅
+14. ✅ Airspeed-dependent inflation model (K=1.0, V_REF=25, soft cap)
+15. ✅ Slider GLB descends from canopy to above pilot head
+
+### Phase 4: Cleanup + Polish
+16. ⬜ Wire unzip → pilot drag morph (wingsuit → slick)
+17. ⬜ Remove/repurpose `pilotLateralEOM()`
+18. ⬜ Strip diagnostic logging
+19. ⬜ Line twist torsional coupling from canopy yaw rate
+
+### Phase 5: Exit + Landing (future)
+20. ⬜ Exit scenario with terrain
+21. ⬜ Landing detection + flare model

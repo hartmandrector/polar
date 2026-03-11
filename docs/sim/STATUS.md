@@ -17,15 +17,18 @@
 - **Front risers**: α decrease (6°) + nose-up tilt (−0.35 rad) + CM (−0.15). Primary turn via drag asymmetry.
 - **Rear risers**: α increase (6°) + nose-up tilt (0.06 rad) + CM (+0.10). Primary flare via AoA shift.
 - **Brakes**: Full Kirchhoff δ derivatives, geometric cell pitch (0.14 rad), drag bump (0.12), center cell 50% coupling. Low stall angle (18°) brake flaps for drag-plate behavior.
-- **Weight shift**: Slider and gamepad input exist, `SegmentControls.weightShiftLR` field wired, but **no segment responds yet**. Needs Kirchhoff blending (same pattern as brakes/risers). See [CANOPY-CONTROLS.md](CANOPY-CONTROLS.md).
+- **Weight shift**: ✅ Kirchhoff blending implemented. Differential force tilt + CM per cell. Reuses brakeSensitivity for spanwise weighting (center=0, inner=0.4, mid=0.7, outer=1.0). Constants: WEIGHT_SHIFT_PITCH_MAX_RAD=0.04, WEIGHT_SHIFT_CM=-0.02. About 1/10th of front riser effect. Inverse span scaling: collapsed span amplifies effect (10× at 5% deploy, 1× at full). Gamepad left stick X wired.
 
 ### Pilot-Canopy Coupling
 - **Pitch pendulum**: Gravity-restoring swing at riser confluence (0.5m). Body-frame gravity vector tracking bypasses Euler singularity during deployment. Rendered as `pilotPivot.rotation.x`. **Cosmetic only** — does not feed back into canopy aero (feedback loop disabled to prevent oscillation).
-- **Line twist (yaw)**: Sinusoidal restoring torque from line geometry, clamped ±180°. Gamepad right stick X for recovery torque. Seeded from bag tumble at deployment. **Not yet rendered** in 3D — needs pilot yaw rotation + line spiral visualization + static slider.
-- **Lateral (weight shift)**: `pilotLateralEOM()` exists with stiff spring model, but this is **wrong physics** — weight shift is a pure aero control (Kirchhoff blending), not a mass/inertial rotation. Needs reclassification. See [WINGSUIT-BASE-FLOW.md](WINGSUIT-BASE-FLOW.md) §Pilot-Canopy Control Inputs.
+- **Line twist (yaw)**: ✅ Sinusoidal restoring torque (20 N·m stiffness, underdamped). Rendered as `pilotPivot.rotation.y` — nested inside pitch so twist spins around the hanging axis. Static slider ±360°. Seeded from bag tumble at deployment. Gamepad right stick X for kick recovery (2 N·m input → ~6° wobble in normal flight, critical at 180° where restoring torque = 0). HUD: amber >10°, flashing red >90° with direction/rate/recovery indicator.
+- **Lateral (weight shift)**: Reclassified as pure aero control (Kirchhoff blending). `pilotLateralEOM()` still exists but is wrong physics — needs removal/repurposing.
 
 ### Phase FSM & Scenarios
-- **Phase state machine**: idle → freefall → canopy → landed. Color-coded HUD. Auto-transitions.
+- **Phase state machine**: idle → freefall → deployment → canopy → landed. Color-coded HUD. Auto-transitions.
+- **Deploy gamepad**: ✅ Limited controls during deployment — brakes stowed, risers 25% range, weight shift + twist recovery full. B button triggers unzip.
+- **Unzip state machine**: ✅ B button → 1.5s linear ramp. Riser range 25%→100%, brake access 0%→100% during ramp. Full canopy controls at completion.
+- **HUD**: ✅ Deploy phase shows brake stow status, limited controls label, flashing "PRESS B TO UNZIP". Unzip progress bar. Line twist warning with direction/rate/recovery. Normal canopy HUD shows risers/brakes/weight shift.
 - **Scenario system**: Two-dropdown (scenario + polar). Wingsuit BASE pre-selects wingsuit + canopy polars.
 
 ### Wingsuit Deployment (full chain)
@@ -38,32 +41,28 @@
 ### Wingsuit → Canopy Transition
 - **Canopy IC**: Heading from tension axis, pitch from line angle, velocity via DCM. Bag yaw → line twist.
 - **Gravity vector**: Body-frame gravity unit vector (gx, gy, gz) tracked as auxiliary state for pendulum. Avoids Euler singularity corruption during steep-climb deployment. Used ONLY for pendulum — canopy translational EOM uses standard `gravityBody(phi, theta)`.
-- **Deploy inflation**: S-curve 0.05 → 1.0 over 3s. Initial brakes 30%.
+- **Deploy inflation**: ✅ Airspeed-dependent model. Snivel phase (0.6s linear ramp to 15%), then `dDeploy/dt = K * (V/V_ref)²` with soft cap above 1.5× V_ref. K=1.0, V_REF=25. Self-regulating: more area → more drag → V drops → inflation slows. Initial brakes 30% (stowed).
+- **Slider rendering**: ✅ slider.glb loaded, horizontal orientation, descends from canopy attachment to above pilot head based on deploy fraction.
 - **GLB preloading**: Canopy model loads at scenario start, instant swap at line stretch.
 
 ## Planned — Near Term
 
-### Weight Shift Kirchhoff (next)
-Weight shift is a pure aero control, same category as brakes/risers. Pilot shifts hips → changes riser loading → warps canopy. No mass/CG change. Needs:
-- Canopy segments to respond to `weightShiftLR` via Kirchhoff blending
-- Remove or repurpose `pilotLateralEOM()` (models wrong physics)
-- Verify polar curve response with existing slider
+### Unzip Pilot Drag Morph
+Unzip progress should morph pilot from wingsuit to slick drag profile via `unzip` segment parameter. Currently unzip only unlocks controls — aero morph not wired.
 
-### Line Twist Visualization
-Physical pilot yaw rotation needs rendering:
-- Add line-twist slider for static mode tuning
-- Render `pilotYaw` as pilot model rotation
-- Line twist spiral visualization (optional)
+### Cleanup
+- Remove or repurpose `pilotLateralEOM()` (models wrong physics for weight shift)
+- Strip diagnostic console.log from eom.ts, sim.ts, deploy-canopy.ts
 
-### Deploy Gamepad + Unzip
-Brakes stowed during deployment, risers limited to 25%. B button triggers 1.5s unzip → full controls. See [WINGSUIT-BASE-FLOW.md](WINGSUIT-BASE-FLOW.md).
+### Line Twist Torsional Coupling
+Currently twist is only seeded from bag tumble. Real canopy turns apply torsional input to pilot through the lines — need coupling from canopy yaw rate into twist EOM.
 
 ## Planned — Future
 
 - **Exit phase**: Standing start, push-off, proximity terrain
 - **Landing phase**: Flare detection, ground contact, quality score
-- **Deploy as simulated DOF**: Integrate deploy from aero forces (currently time-based ramp)
-- **Slider rendering**: Position slider.glb along lines based on deploy value
+- **Deploy as simulated DOF**: Integrate deploy from aero forces (currently airspeed-driven ramp)
+- **Spiral line rendering**: Visual twist of suspension lines during line twist (cosmetic)
 - **Camera transitions**: Per-phase zoom/tracking
 - **Canopy CP/CM tuning**: Pitch stability work per cell
 - **Pivot junction slider**: Assembly trim angle control
@@ -74,14 +73,15 @@ Brakes stowed during deployment, risers limited to 25%. B button triggers 1.5s u
 
 | File | Purpose |
 |------|---------|
-| `src/sim/sim-runner.ts` | RK4 loop, gamepad, deploy orchestration, canopy handoff |
+| `src/sim/sim-runner.ts` | RK4 loop, gamepad, deploy orchestration, canopy handoff, unzip state |
 | `src/sim/sim-ui.ts` | Control panel, HUD, phase FSM, scenario system, gamepad SVG |
-| `src/sim/sim-gamepad.ts` | Vehicle-aware gamepad reading |
+| `src/sim/sim-gamepad.ts` | Vehicle-aware gamepad: wingsuit, canopy, deploy (limited) |
 | `src/sim/deploy-wingsuit.ts` | 10-segment tension chain, PC drag, bag physics |
-| `src/sim/deploy-canopy.ts` | Canopy IC computation + inflation ramp |
+| `src/sim/deploy-canopy.ts` | Canopy IC computation + airspeed inflation + unzip state machine |
 | `src/sim/deploy-types.ts` | Vec3, deploy phases, render state, snapshot |
 | `src/viewer/deploy-render.ts` | Deploy segment spheres, chain, bag, PC ring |
 | `src/viewer/trail.ts` | Flight path ring buffer |
 | `src/polar/eom.ts` | Pendulum, lateral, twist EOM + aero damping |
 | `src/polar/sim.ts` | computeDerivatives, forwardEuler, rk4Step |
 | `src/polar/sim-state.ts` | SimState, SimStateExtended (18 states + gravity vector) |
+| `src/polar/segment-factories.ts` | Kirchhoff blending: brakes, risers, weight shift |
