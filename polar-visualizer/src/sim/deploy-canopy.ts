@@ -30,16 +30,19 @@ const INITIAL_DEPLOY = 0.05
 // produce a realistic double-exponential opening profile without engineered curves.
 
 /** Base inflation rate [1/s] at reference airspeed */
-const K_INFLATE = 0.45
+const K_INFLATE = 0.55
 
 /** Reference airspeed [m/s] — normalizer for dynamic pressure ratio */
-const V_REF = 25
+const V_REF = 30
 
 /** Snivel duration [s] — slow start while slider stretches square and fabric orients */
 const SNIVEL_TIME = 0.6
 
 /** Deploy fraction at end of snivel — how far canopy opens before slider starts moving */
 const SNIVEL_DEPLOY = 0.15
+
+/** Soft speed cap — above this ratio, inflation rate grows sublinearly (sqrt) */
+const V_RATIO_CAP = 1.5
 
 // ─── Canopy Deploy State ─────────────────────────────────────────────────────
 
@@ -255,10 +258,19 @@ export class CanopyDeployManager {
         const t = this.state.elapsed / SNIVEL_TIME
         this.state.deploy = INITIAL_DEPLOY + (SNIVEL_DEPLOY - INITIAL_DEPLOY) * t
       } else {
-        // ── Main inflation: rate ∝ dynamic pressure ──
-        // dDeploy/dt = K * (V / V_ref)²
+        // ── Main inflation: rate ∝ dynamic pressure with soft cap ──
+        // dDeploy/dt = K * qRatio, where qRatio = vRatio² up to the cap,
+        // then transitions to sqrt growth (fabric/slider structural limit).
         const vRatio = airspeed / V_REF
-        const dDeploy = K_INFLATE * vRatio * vRatio * dt
+        let qRatio: number
+        if (vRatio <= V_RATIO_CAP) {
+          qRatio = vRatio * vRatio
+        } else {
+          // Smooth transition: match value and slope at cap, then sqrt growth
+          const capQ = V_RATIO_CAP * V_RATIO_CAP
+          qRatio = capQ * Math.sqrt(vRatio / V_RATIO_CAP)
+        }
+        const dDeploy = K_INFLATE * qRatio * dt
         this.state.deploy = Math.min(1, this.state.deploy + dDeploy)
       }
 
