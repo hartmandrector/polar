@@ -334,6 +334,14 @@ export class SimRunner {
       // config.controls = { ...config.controls, pilotPitch: (ext.thetaPilot ?? 0) * RAD }
     }
 
+    // Wire unzip progress into aero controls (wingsuit → slick drag morph)
+    if (this.canopyDeploy) {
+      config.controls = {
+        ...config.controls,
+        unzip: this.canopyDeploy.state.unzipProgress,
+      }
+    }
+
     // Fixed-timestep integration
     let accumulator = elapsed
     while (accumulator >= DT) {
