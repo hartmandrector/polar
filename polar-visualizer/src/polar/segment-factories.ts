@@ -220,7 +220,7 @@ export function makeCanopyCellSegment(
       // fraction of the total span → much bigger effect. At full deploy, effect is subtle.
       const wsSpanScale = 0.1 + 0.9 * d  // same formula as span deployment scaling
       const wsDeployGain = 1 / wsSpanScale  // collapsed span amplifies weight shift
-      const wsSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
+      const wsSign = side === 'right' ? -1 : side === 'left' ? 1 : 0
       const wsInput = controls.weightShiftLR * wsSign * brakeSensitivity * wsDeployGain
       const weightShiftPitch = wsInput * ctrl.WEIGHT_SHIFT_PITCH_MAX_RAD
       const weightShiftCM = wsInput * ctrl.WEIGHT_SHIFT_CM
