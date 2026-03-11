@@ -44,6 +44,9 @@ const SNIVEL_DEPLOY = 0.15
 /** Soft speed cap — above this ratio, inflation rate grows sublinearly (sqrt) */
 const V_RATIO_CAP = 1.5
 
+/** Unzip ramp duration [s] */
+const UNZIP_DURATION = 1.5
+
 // ─── Canopy Deploy State ─────────────────────────────────────────────────────
 
 export interface CanopyDeployState {
@@ -57,6 +60,12 @@ export interface CanopyDeployState {
   brakeRight: number
   /** Whether inflation is complete */
   fullyInflated: boolean
+  /** Unzip progress [0–1]: 0 = zipped, 1 = fully unzipped */
+  unzipProgress: number
+  /** Whether unzip has been triggered */
+  unzipTriggered: boolean
+  /** Whether unzip is complete */
+  unzipped: boolean
 }
 
 // ─── IC Computation ──────────────────────────────────────────────────────────
@@ -234,6 +243,9 @@ export class CanopyDeployManager {
       brakeLeft: INITIAL_BRAKE,
       brakeRight: INITIAL_BRAKE,
       fullyInflated: false,
+      unzipProgress: 0,
+      unzipTriggered: false,
+      unzipped: false,
     }
   }
 
@@ -293,5 +305,37 @@ export class CanopyDeployManager {
   setBrakes(left: number, right: number): void {
     this.state.brakeLeft = left
     this.state.brakeRight = right
+  }
+
+  /** Trigger the unzip sequence (B button) */
+  triggerUnzip(): void {
+    if (this.state.unzipTriggered) return
+    this.state.unzipTriggered = true
+    console.log(`[CanopyDeploy] Unzip triggered at t+${this.state.elapsed.toFixed(1)}s`)
+  }
+
+  /** Step unzip progress. Call each physics step. */
+  stepUnzip(dt: number): void {
+    if (!this.state.unzipTriggered || this.state.unzipped) return
+    this.state.unzipProgress = Math.min(1, this.state.unzipProgress + dt / UNZIP_DURATION)
+    if (this.state.unzipProgress >= 1) {
+      this.state.unzipped = true
+      console.log(`[CanopyDeploy] Unzip complete at t+${this.state.elapsed.toFixed(1)}s`)
+    }
+  }
+
+  /** Whether the pilot is fully unzipped and has full controls */
+  get hasFullControls(): boolean {
+    return this.state.unzipped
+  }
+
+  /** Current riser range multiplier [0.25–1.0] based on unzip progress */
+  get riserRange(): number {
+    return 0.25 + 0.75 * this.state.unzipProgress
+  }
+
+  /** Current brake access [0–1] based on unzip progress (stowed until unzip starts) */
+  get brakeAccess(): number {
+    return this.state.unzipProgress
   }
 }

@@ -12,7 +12,7 @@
 import type { SimState, SimConfig, SimStateExtended, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
-import { readWingsuitGamepad, readCanopyGamepad } from './sim-gamepad.ts'
+import { readWingsuitGamepad, readCanopyGamepad, readDeployGamepad } from './sim-gamepad.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
@@ -230,26 +230,70 @@ export class SimRunner {
     let gamepadFlightOverrides: Partial<FlightState> = {}
 
     if (this.modelType === 'canopy') {
-      const gp = readCanopyGamepad()
-      if (gp) {
-        config.controls = {
-          ...config.controls,
-          brakeLeft: gp.brakeLeft,
-          brakeRight: gp.brakeRight,
-          frontRiserLeft: gp.frontRiserLeft,
-          frontRiserRight: gp.frontRiserRight,
-          rearRiserLeft: gp.rearRiserLeft,
-          rearRiserRight: gp.rearRiserRight,
-          weightShiftLR: gp.lateralShift,
+      const isDeployPhase = this.canopyDeploy && !this.canopyDeploy.hasFullControls
+
+      if (isDeployPhase) {
+        // ── Deploy gamepad: limited controls, brakes stowed ──
+        const gp = readDeployGamepad()
+        if (gp) {
+          // B button → trigger unzip
+          if (gp.unzipPressed) {
+            this.canopyDeploy!.triggerUnzip()
+          }
+
+          // Riser range expands during unzip (25% → 100%)
+          const riserMul = this.canopyDeploy!.riserRange
+          // Brake access unlocks during unzip (0% → 100%)
+          const brakeAccess = this.canopyDeploy!.brakeAccess
+
+          // Read full canopy gamepad for brake triggers during unzip transition
+          const fullGp = readCanopyGamepad()
+          const brakeL = (fullGp?.brakeLeft ?? 0) * brakeAccess
+          const brakeR = (fullGp?.brakeRight ?? 0) * brakeAccess
+
+          config.controls = {
+            ...config.controls,
+            brakeLeft: brakeL,
+            brakeRight: brakeR,
+            frontRiserLeft: gp.frontRiserLeft * (riserMul / 0.25),  // scale up from 25% base
+            frontRiserRight: gp.frontRiserRight * (riserMul / 0.25),
+            rearRiserLeft: gp.rearRiserLeft * (riserMul / 0.25),
+            rearRiserRight: gp.rearRiserRight * (riserMul / 0.25),
+            weightShiftLR: gp.lateralShift,
+          }
+          gamepadFlightOverrides = {
+            canopyControlMode: 'brakes' as const,
+            canopyLeftHand: brakeL,
+            canopyRightHand: brakeR,
+          }
+          if (config.pilotCoupling) {
+            config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
+            config.pilotCoupling.twistInputTorque = gp.twistInput * TWIST_INPUT_SCALE
+          }
         }
-        gamepadFlightOverrides = {
-          canopyControlMode: 'brakes' as const,
-          canopyLeftHand: gp.brakeLeft,
-          canopyRightHand: gp.brakeRight,
-        }
-        if (config.pilotCoupling) {
-          config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
-          config.pilotCoupling.twistInputTorque = gp.twistInput * TWIST_INPUT_SCALE
+      } else {
+        // ── Full canopy gamepad: all controls available ──
+        const gp = readCanopyGamepad()
+        if (gp) {
+          config.controls = {
+            ...config.controls,
+            brakeLeft: gp.brakeLeft,
+            brakeRight: gp.brakeRight,
+            frontRiserLeft: gp.frontRiserLeft,
+            frontRiserRight: gp.frontRiserRight,
+            rearRiserLeft: gp.rearRiserLeft,
+            rearRiserRight: gp.rearRiserRight,
+            weightShiftLR: gp.lateralShift,
+          }
+          gamepadFlightOverrides = {
+            canopyControlMode: 'brakes' as const,
+            canopyLeftHand: gp.brakeLeft,
+            canopyRightHand: gp.brakeRight,
+          }
+          if (config.pilotCoupling) {
+            config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
+            config.pilotCoupling.twistInputTorque = gp.twistInput * TWIST_INPUT_SCALE
+          }
         }
       }
     } else {
@@ -329,6 +373,11 @@ export class SimRunner {
         const { u, v, w } = this.simState
         const airspeed = Math.sqrt(u * u + v * v + w * w)
         this.canopyDeploy.step(DT, airspeed)
+      }
+
+      // Step unzip progress
+      if (this.canopyDeploy) {
+        this.canopyDeploy.stepUnzip(DT)
       }
 
       accumulator -= DT

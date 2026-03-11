@@ -391,7 +391,38 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
       if (currentPhase === 'canopy') {
         const cds = r.canopyDeployState
         const gr = spd > 1 ? Math.abs(r.groundSpeed / r.verticalSpeed) : 0
-        html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${cds ? (cds.brakeLeft * 100).toFixed(0) + '%' : '—'}</div>`
+
+        if (cds && !cds.unzipped) {
+          // ── Deploy / unzipping phase HUD ──
+          const deployPct = (cds.deploy * 100).toFixed(0)
+          const brakeStatus = cds.unzipTriggered
+            ? `UNLOCKING ${(cds.unzipProgress * 100).toFixed(0)}%`
+            : 'STOWED'
+
+          const controlLabel = cds.unzipTriggered
+            ? `risers (${(0.25 + 0.75 * cds.unzipProgress).toFixed(0) === '1' ? 'full' : (cds.unzipProgress * 100).toFixed(0) + '%'}) · brakes (${brakeStatus})`
+            : 'risers (limited) · weight shift'
+
+          html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${deployPct}% · Brakes: ${brakeStatus}</div>`
+          html += `<div>Controls: ${controlLabel}</div>`
+
+          if (cds.unzipTriggered && !cds.unzipped) {
+            // Unzipping progress bar
+            const pct = cds.unzipProgress
+            const filled = Math.round(pct * 10)
+            const bar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+            html += `<div style="color:#ff0;">UNZIPPING [${bar}] ${(pct * 100).toFixed(0)}%</div>`
+          } else {
+            // Flash "PRESS B TO UNZIP" — toggle on half-second
+            const flash = Math.floor(t * 2) % 2 === 0
+            html += `<div style="color:${flash ? '#ff0' : '#ff8'}; font-weight:bold;">⚡ PRESS B TO UNZIP ⚡</div>`
+          }
+        } else {
+          // ── Normal canopy flight HUD ──
+          const brakesPct = cds ? (cds.brakeLeft * 100).toFixed(0) + '%' : '—'
+          html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${brakesPct}</div>`
+          html += `<div>Controls: risers/brakes/weight shift</div>`
+        }
       } else if (currentPhase === 'freefall') {
         const ds = r.deployRenderState
         if (ds) {
