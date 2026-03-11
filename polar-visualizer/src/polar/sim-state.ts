@@ -48,6 +48,11 @@ export interface SimStateExtended extends SimState {
   pilotYaw: number
   /** Pilot yaw rate [rad/s] */
   pilotYawDot: number
+  /** Body-frame gravity unit vector — tracks "down" without Euler singularity.
+   *  Updated each step via ġ = -ω × g. Used by pendulum gravity computation. */
+  gravBodyX: number
+  gravBodyY: number
+  gravBodyZ: number
 }
 
 // ─── Derivative Vectors ──────────────────────────────────────────────────────
@@ -69,6 +74,10 @@ export interface SimDerivatives {
   thetaPilotDot?: number;  thetaPilotDDot?: number
   pilotRollDot?: number;   pilotRollDDot?: number
   pilotYawDot?: number;    pilotYawDDot?: number
+  // Body-frame gravity vector derivatives (from ġ = -ω × g)
+  gravBodyXDot?: number
+  gravBodyYDot?: number
+  gravBodyZDot?: number
 }
 
 // ─── Simulation Configuration ────────────────────────────────────────────────
@@ -145,4 +154,7 @@ export interface PilotCouplingConfig {
   // Gamepad input torques (set per frame, not persistent)
   lateralInputTorque?: number  // τ_input for weight shift [N·m]
   twistInputTorque?: number    // τ_input for twist recovery [N·m]
+
+  /** Deploy fraction [0–1]. Scales canopy coupling during inflation. */
+  deployFraction?: number
 }

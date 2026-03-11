@@ -153,7 +153,25 @@ function computePilotCouplingDerivatives(
     )
   }
 
-  // Pitch pendulum — gravity restoring + canopy coupling + aero damping
+  // Pitch pendulum — gravity restoring + aero damping + canopy coupling.
+  // Use tracked body-frame gravity vector instead of state.theta to avoid
+  // Euler angle singularity corruption.
+  const gx = ext.gravBodyX ?? -Math.sin(state.theta)
+  const gz = ext.gravBodyZ ?? Math.cos(state.theta)
+  // Log comparison: tracked gravity vector vs Euler-derived
+  const now = performance.now()
+  if (!(computePilotCouplingDerivatives as any)._lastLog || now - (computePilotCouplingDerivatives as any)._lastLog > 1000) {
+    (computePilotCouplingDerivatives as any)._lastLog = now
+    const eulerGx = -Math.sin(state.theta)
+    const eulerGz = Math.cos(state.theta)
+    const thetaFromGrav = Math.atan2(-gx, gz) * 180 / Math.PI
+    console.log(
+      `[GravCompare] θ_euler=${(state.theta * 180 / Math.PI).toFixed(1)}°` +
+      ` θ_grav=${thetaFromGrav.toFixed(1)}°` +
+      ` euler(gx=${eulerGx.toFixed(3)},gz=${eulerGz.toFixed(3)})` +
+      ` tracked(gx=${gx.toFixed(3)},gz=${gz.toFixed(3)})`,
+    )
+  }
   const pitchDDot = pilotPendulumEOM(
     {
       pilotMass: pc.pilotMass,
@@ -162,9 +180,9 @@ function computePilotCouplingDerivatives(
       cgOffset: { x: 0, z: -pc.riserLength },
     },
     thetaPilot,
-    state.theta,
+    gx, gz,
     -pc.pitchSpring * thetaPilot - pc.pitchDamp * thetaPilotDot + aeroDampTorque,
-    qDotCanopy,
+    0,  // coupling disabled — pilot pendulum is cosmetic, no canopy qDot feedback
   )
 
   // Lateral weight shift — stiff spring + gamepad input
@@ -181,6 +199,19 @@ function computePilotCouplingDerivatives(
     pc.twistInputTorque ?? 0,
   )
 
+  // Body-frame gravity vector derivatives: ġ = -ω × g
+  // Only tracking x and z components (pitch plane, φ≈0 → gy≈0)
+  // ġx = -q*gz + r*gy ≈ -q*gz  (since gy≈0)
+  // ġz = -p*gy + q*gx ≈ q*gx   (wait, full: ġz = p*gy - q*gx)
+  // Full 3D: ġ = -ω × g = -(p,q,r) × (gx,gy,gz)
+  //   ġx = -(q*gz - r*gy) = r*gy - q*gz
+  //   ġy = -(r*gx - p*gz) = p*gz - r*gx  
+  //   ġz = -(p*gy - q*gx) = q*gx - p*gy
+  const gy = ext.gravBodyY ?? Math.cos(state.theta) * Math.sin(state.phi)
+  const gravBodyXDot = state.r * gy - state.q * gz
+  const gravBodyYDot = state.p * gz - state.r * gx
+  const gravBodyZDot = state.q * gx - state.p * gy
+
   return {
     thetaPilotDot: thetaPilotDot,
     thetaPilotDDot: pitchDDot,
@@ -188,6 +219,9 @@ function computePilotCouplingDerivatives(
     pilotRollDDot: lateralDDot,
     pilotYawDot: pilotYawDot,
     pilotYawDDot: twistDDot,
+    gravBodyXDot,
+    gravBodyYDot,
+    gravBodyZDot,
   }
 }
 
@@ -230,19 +264,14 @@ export function forwardEuler(
     ;(base as SimStateExtended).thetaPilotDot =
       (ext.thetaPilotDot ?? 0) + deriv.thetaPilotDDot * dt
 
-    // Line tension constraint: pilot cannot rotate through risers.
-    // Physical geometry (harness + lines) blocks rotation beyond ±170°.
-    // Bounce back with energy absorption (lines absorb ~50% of energy).
-    const PILOT_PITCH_LIMIT = 170 * Math.PI / 180
-    const BOUNCE_RESTITUTION = 0.5  // fraction of velocity preserved on bounce
-    const tp = (base as SimStateExtended).thetaPilot
-    if (tp > PILOT_PITCH_LIMIT) {
-      ;(base as SimStateExtended).thetaPilot = 2 * PILOT_PITCH_LIMIT - tp  // reflect
-      ;(base as SimStateExtended).thetaPilotDot = -BOUNCE_RESTITUTION * (base as SimStateExtended).thetaPilotDot
-    } else if (tp < -PILOT_PITCH_LIMIT) {
-      ;(base as SimStateExtended).thetaPilot = -2 * PILOT_PITCH_LIMIT - tp  // reflect
-      ;(base as SimStateExtended).thetaPilotDot = -BOUNCE_RESTITUTION * (base as SimStateExtended).thetaPilotDot
-    }
+    // Unconstrained pendulum — wrap to [-π, π] instead of bouncing.
+    // No artificial limits; if the pilot swings over the top it wraps naturally.
+    // Gravity always restores toward hanging straight down.
+    let tp = (base as SimStateExtended).thetaPilot
+    if (tp > Math.PI) tp -= 2 * Math.PI
+    else if (tp < -Math.PI) tp += 2 * Math.PI
+    ;(base as SimStateExtended).thetaPilot = tp
+
     ;(base as SimStateExtended).pilotRoll =
       (ext.pilotRoll ?? 0) + (deriv.pilotRollDot ?? 0) * dt
     ;(base as SimStateExtended).pilotRollDot =
@@ -251,6 +280,19 @@ export function forwardEuler(
       (ext.pilotYaw ?? 0) + (deriv.pilotYawDot ?? 0) * dt
     ;(base as SimStateExtended).pilotYawDot =
       (ext.pilotYawDot ?? 0) + (deriv.pilotYawDDot ?? 0) * dt
+
+    // Integrate body-frame gravity vector (singularity-free attitude tracking)
+    if (deriv.gravBodyXDot !== undefined) {
+      let newGx = (ext.gravBodyX ?? -Math.sin(state.theta)) + deriv.gravBodyXDot * dt
+      let newGy = (ext.gravBodyY ?? Math.cos(state.theta) * Math.sin(state.phi)) + deriv.gravBodyYDot! * dt
+      let newGz = (ext.gravBodyZ ?? Math.cos(state.theta) * Math.cos(state.phi)) + deriv.gravBodyZDot! * dt
+      // Renormalize to unit vector (prevent drift)
+      const len = Math.sqrt(newGx * newGx + newGy * newGy + newGz * newGz)
+      if (len > 1e-6) { newGx /= len; newGy /= len; newGz /= len }
+      ;(base as SimStateExtended).gravBodyX = newGx
+      ;(base as SimStateExtended).gravBodyY = newGy
+      ;(base as SimStateExtended).gravBodyZ = newGz
+    }
   }
 
   return base
@@ -318,6 +360,9 @@ function rk4AvgPilot(
     pilotRollDDot:  avg(k1.pilotRollDDot, k2.pilotRollDDot, k3.pilotRollDDot, k4.pilotRollDDot),
     pilotYawDot:    avg(k1.pilotYawDot, k2.pilotYawDot, k3.pilotYawDot, k4.pilotYawDot),
     pilotYawDDot:   avg(k1.pilotYawDDot, k2.pilotYawDDot, k3.pilotYawDDot, k4.pilotYawDDot),
+    gravBodyXDot:   avg(k1.gravBodyXDot, k2.gravBodyXDot, k3.gravBodyXDot, k4.gravBodyXDot),
+    gravBodyYDot:   avg(k1.gravBodyYDot, k2.gravBodyYDot, k3.gravBodyYDot, k4.gravBodyYDot),
+    gravBodyZDot:   avg(k1.gravBodyZDot, k2.gravBodyZDot, k3.gravBodyZDot, k4.gravBodyZDot),
   }
 }
 

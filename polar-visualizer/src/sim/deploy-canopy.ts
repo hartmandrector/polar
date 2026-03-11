@@ -74,32 +74,36 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const ty = tensionAxisInertial.y  // East component
   const tz = tensionAxisInertial.z  // Down component
 
-  // Normalize tension axis → z_body direction.
-  // Tension axis points pilot→canopy. Body z-axis points DOWN (toward pilot).
-  // z_body direction from tension axis (for pilot coupling projection only)
-  const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz)
-  const zb = { x: tx / tLen, y: ty / tLen, z: tz / tLen }
+  // ── Direct Euler angles from tension axis geometry ─────────────────
+  // The canopy orientation at line stretch is fully determined by the
+  // tension axis (pilot → bag direction):
+  //
+  //   ψ = opposite of tension horizontal projection (canopy faces into wind)
+  //   θ = tension elevation + (90° - trim) (chord ⊥ riser line)
+  //   φ = attenuated bag roll (small)
+  //
+  // This avoids DCM/Gram-Schmidt sign ambiguities entirely.
 
-  // Inertial velocity from wingsuit body frame
+  const TRIM_ANGLE_DEG = 6
+
+  // Inertial velocity (needed for body-frame velocity transform below)
   const wsBodyVel = { x: bodyState.u, y: bodyState.v, z: bodyState.w }
   const vInertial = bodyToInertial(wsBodyVel, bodyState.phi, bodyState.theta, bodyState.psi)
 
-  // ── Euler angles: derive directly from geometry ────────────────────
-  // ψ: inherit wingsuit heading — canopy opens in the same direction
-  const psi = bodyState.psi
+  // ψ: canopy faces opposite to bag direction (into the wind)
+  // tension points pilot→bag; canopy nose = opposite = -tension horizontal
+  const psi = Math.atan2(-ty, -tx)
 
-  // θ: tension axis elevation + 90° (chord ⊥ riser line) - trim angle
-  // Tension points pilot→canopy. Elevation = angle above horizontal.
-  // When tension is horizontal → θ ≈ 84° (steep nose-up, normal deployment)
-  // When tension is vertical up (dive) → θ ≈ 174° (nearly inverted)
-  // When tension is vertical down (climb) → θ ≈ -6° (nearly level, canopy below)
-  const TRIM_ANGLE_DEG = 6
+  // θ: tension elevation + chord-perpendicular angle
+  // tensionElevation: angle of tension below/above horizontal
+  // In NED: +tz = down = bag below pilot (positive elevation)
   const horizLen = Math.sqrt(tx * tx + ty * ty)
-  const tensionElevation = Math.atan2(tz, horizLen)  // NED: +tz = down = canopy below
+  const tensionElevation = Math.atan2(tz, horizLen)
   const theta = tensionElevation + (90 - TRIM_ANGLE_DEG) * DEG_TO_RAD
 
-  // φ: from bag roll, attenuated by snatch
+  // φ: from bag roll, attenuated by snatch force
   const phi = canopyBag.roll * 0.3
+
   // ── Angular rates: near zero at line stretch ───────────────────────
   // Opening shock absorbs most angular energy. Start with small
   // perturbations from bag's residual tumble.
@@ -109,29 +113,22 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
   const r = canopyBag.yawRate * BAG_RATE_DAMP
 
   // ── Pilot coupling ICs from canopy→pilot geometry ──────────────────
-  // thetaPilot: project canopy→pilot direction into canopy body frame.
-  // Tension axis constructed body z-axis, so pilot is along -z_body → thetaPilot ≈ 0.
-  // Any offset comes from the actual geometry not being perfectly aligned.
-  const pilotDirInertial = { x: -tx, y: -ty, z: -tz }
-  const pd = inertialToBody(pilotDirInertial, phi, theta, psi)
+  // thetaPilot: pilot pitch at line stretch = wingsuit pitch (absolute).
+  // With θ_canopy capped at 90°, this always lands on the stable side
+  // of the body-frame gravity equilibrium.
+  const thetaPilot = bodyState.theta
 
-  // Pendulum angle: measured from body +z (hanging equilibrium).
-  const PILOT_PITCH_LIMIT = 170 * DEG_TO_RAD
-  const thetaPilotRaw = Math.atan2(pd.x, pd.z)
-  const thetaPilot = Math.max(-PILOT_PITCH_LIMIT, Math.min(PILOT_PITCH_LIMIT, thetaPilotRaw))
+  // Pilot pitch rate: zero at line stretch (snatch absorbs angular energy)
+  const thetaPilotDot = bodyState.q
 
-  // Pilot pitch rate: relative angular motion between wingsuit and canopy,
-  // heavily damped by snatch. Use bag pitch rate as a proxy (it captures
-  // the tumble state), heavily attenuated.
-  const thetaPilotDot = canopyBag.pitchRate * 0.15
+  // Lateral roll: pilot's roll at line stretch = wingsuit roll
+  const pilotRoll = bodyState.phi
+  const pilotRollDot = bodyState.p  // wingsuit roll rate
 
-  // Lateral: from bag roll, attenuated
-  const pilotRoll = canopyBag.roll * 0.3
-  const pilotRollDot = canopyBag.rollRate * 0.15
-
-  // Yaw → line twist: 1:1 from bag yaw accumulation. This is the payoff.
-  const pilotYaw = canopyBag.yaw
-  const pilotYawDot = canopyBag.yawRate
+  // Yaw (line twist): difference between wingsuit heading and canopy heading
+  // plus any accumulated bag twist
+  const pilotYaw = bodyState.psi - psi + canopyBag.yaw
+  const pilotYawDot = bodyState.r  // wingsuit yaw rate
 
   // ── Velocity: transform inertial → canopy body (already computed above) ──
   const canopyBodyVel = inertialToBody(vInertial, phi, theta, psi)
@@ -191,6 +188,11 @@ export function computeCanopyIC(snapshot: LineStretchSnapshot): SimStateExtended
     pilotRollDot,
     pilotYaw,
     pilotYawDot,
+    // Body-frame gravity vector — initialized from deployment Euler angles.
+    // Tracked via ġ = -ω × g to bypass Euler singularity corruption.
+    gravBodyX: -Math.sin(theta),
+    gravBodyY: Math.cos(theta) * Math.sin(phi),
+    gravBodyZ: Math.cos(theta) * Math.cos(phi),
   }
 }
 

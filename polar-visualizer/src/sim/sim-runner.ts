@@ -70,6 +70,9 @@ export function flightStateToSimState(fs: FlightState): SimStateExtended {
     pilotRollDot: 0,
     pilotYaw: 0,
     pilotYawDot: 0,
+    gravBodyX: -Math.sin(fs.pitch_deg * DEG),
+    gravBodyY: Math.cos(fs.pitch_deg * DEG) * Math.sin(fs.roll_deg * DEG),
+    gravBodyZ: Math.cos(fs.pitch_deg * DEG) * Math.cos(fs.roll_deg * DEG),
   }
 }
 
@@ -266,11 +269,11 @@ export class SimRunner {
     }
 
     if (config.pilotCoupling) {
-      const ext = this.simState as Partial<SimStateExtended>
-      config.controls = {
-        ...config.controls,
-        pilotPitch: (ext.thetaPilot ?? 0) * RAD,
-      }
+      // Pilot pendulum is cosmetic — do NOT feed thetaPilot back into
+      // the canopy aero model. This avoids a feedback loop where pilot
+      // drag changes destabilize the canopy during turns.
+      // const ext = this.simState as Partial<SimStateExtended>
+      // config.controls = { ...config.controls, pilotPitch: (ext.thetaPilot ?? 0) * RAD }
     }
 
     // Fixed-timestep integration

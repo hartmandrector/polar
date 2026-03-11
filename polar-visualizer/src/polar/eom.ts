@@ -410,7 +410,8 @@ export function computePilotPendulumParams(
 export function pilotPendulumEOM(
   params: PilotPendulumParams,
   thetaPilot: number,
-  thetaCanopy: number,
+  gx_body: number,
+  gz_body: number,
   aeroTorque: number,
   qDotCanopy: number = 0,
   g: number = 9.80665,
@@ -419,15 +420,42 @@ export function pilotPendulumEOM(
 
   if (Iy_riser < 1e-10) return 0  // degenerate — no inertia
 
-  // Gravity restoring torque: acts at pilot CG, distance riserToCG from pivot
-  const tau_gravity = -pilotMass * g * riserToCG * Math.sin(thetaPilot - thetaCanopy)
-
-  // Canopy coupling: canopy pitch acceleration transfers through risers
+  // Gravity restoring torque using tracked body-frame gravity direction.
+  // gx_body, gz_body are unit-vector components of "down" in canopy body frame,
+  // tracked via ġ = -ω × g to avoid Euler singularity corruption.
+  //
+  // Original Euler formula: τ = -m·g·l·sin(θp - θc)
+  // With gravity vector (gx = -sin(θc), gz = cos(θc)):
+  //   sin(θp - θc) = sin(θp)·cos(θc) - cos(θp)·sin(θc) = sin(θp)·gz + cos(θp)·gx
+  // So: τ = -m·g·l·(sin(θp)·gz + cos(θp)·gx)
+  const tau_gravity = -pilotMass * g * riserToCG * (
+    Math.sin(thetaPilot) * gz_body + Math.cos(thetaPilot) * gx_body
+  )
+  // Canopy coupling: canopy pitch acceleration transfers through risers.
+  // Positive qDotCanopy (nose-up accel) → pilot swings forward (positive θ_p).
   const tau_canopy = -Iy_riser * qDotCanopy
+
+  // Diagnostic: log every ~1s to trace pendulum behavior
+  const now = performance.now()
+  if (!pilotPendulumEOM._lastLog || now - pilotPendulumEOM._lastLog > 1000) {
+    pilotPendulumEOM._lastLog = now
+    const DDot = (tau_gravity + aeroTorque + tau_canopy) / Iy_riser
+    console.log(
+      `[Pendulum] θp=${(thetaPilot * 180 / Math.PI).toFixed(1)}°` +
+      ` θc=${(Math.atan2(-gx_body, gz_body) * 180 / Math.PI).toFixed(1)}°` +
+      ` gx=${gx_body.toFixed(3)} gz=${gz_body.toFixed(3)}` +
+      ` τ_grav=${tau_gravity.toFixed(1)}` +
+      ` τ_aero=${aeroTorque.toFixed(1)}` +
+      ` τ_coup=${tau_canopy.toFixed(1)}` +
+      ` DDot=${DDot.toFixed(2)} rad/s²`,
+    )
+  }
 
   // Total angular acceleration
   return (tau_gravity + aeroTorque + tau_canopy) / Iy_riser
 }
+// Static property for throttled logging
+pilotPendulumEOM._lastLog = 0 as number
 
 /**
  * Compute aerodynamic damping torque on the pilot body due to pitch swing.
