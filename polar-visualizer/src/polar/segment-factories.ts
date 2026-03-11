@@ -39,6 +39,10 @@ export interface ControlConstants {
   REAR_RISER_CM: number
   /** CD₀ increase per unit front riser input — leading-edge distortion drag */
   FRONT_RISER_CD_BUMP: number
+  /** Maximum geometric cell pitch from full weight shift [rad] — very subtle */
+  WEIGHT_SHIFT_PITCH_MAX_RAD: number
+  /** Pitching moment from full weight shift — subtle trim shift */
+  WEIGHT_SHIFT_CM: number
   /** Maximum geometric cell pitch from full riser input [rad] — tilts force vector */
   RISER_PITCH_MAX_RAD: number
   /** Maximum geometric cell pitch from full rear riser input [rad] — less tilt than fronts */
@@ -64,6 +68,8 @@ export const DEFAULT_CONSTANTS: ControlConstants = {
   REAR_RISER_PITCH_MAX_RAD: 0.06,  // ~3.4° rear riser tilt
   BRAKE_PITCH_MAX_RAD: 0.14,  // ~8° at full brake
   BRAKE_CD_BUMP: 0.12,        // TE distortion drag — asymmetric drag reinforces yaw
+  WEIGHT_SHIFT_PITCH_MAX_RAD: 0.04,  // ~2.3° — very subtle, similar to gentle front riser
+  WEIGHT_SHIFT_CM: -0.02,     // tiny trim shift toward pulled side
 }
 
 // ─── Deployment Constants ────────────────────────────────────────────────────
@@ -206,13 +212,23 @@ export function makeCanopyCellSegment(
       }
       const deltaEffective = brakeInput * brakeSensitivity
 
+      // ── Weight shift → differential force vector tilt + CM ──
+      // Weight shift is a pure aero control: pilot shifts hips → differential riser loading → canopy warp.
+      // Positive weightShiftLR = shift right → right cells get nose-up tilt (drag), left cells nose-down.
+      // Effect scales with spanwise position (brakeSensitivity: 0 center → 1.0 outer).
+      // Sign: right cell with positive shift gets positive tilt (like front riser on that side).
+      const wsSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
+      const wsInput = controls.weightShiftLR * wsSign * brakeSensitivity
+      const weightShiftPitch = wsInput * ctrl.WEIGHT_SHIFT_PITCH_MAX_RAD
+      const weightShiftCM = wsInput * ctrl.WEIGHT_SHIFT_CM
+
       // ── Geometric cell pitch (tilts force vector in body x-z plane) ──
       // Front riser: positive pitch (nose down) → lift tilts forward → yaw toward input
       // Rear riser: negative pitch (nose up) → lift tilts backward → yaw toward input
       // Brake: negative pitch (nose up) — TE pulled down acts like rear riser
       const riserPitch = (frontRiser * ctrl.RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD) * riserSensitivity
       const brakePitch = -brakeInput * brakeSensitivity * ctrl.BRAKE_PITCH_MAX_RAD
-      const cellPitchRad = riserPitch + brakePitch
+      const cellPitchRad = riserPitch + brakePitch + weightShiftPitch
 
       // ── Brake → α cross-coupling ──
       // Pulling brakes physically pulls the canopy TE down, slightly
@@ -238,9 +254,10 @@ export function makeCanopyCellSegment(
       } : (totalDragBump > 0 ? { ...polar, cd_0: polar.cd_0 + totalDragBump } : polar)
       const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, evalPolar)
 
-      // ── Riser pitching moment — direct trim shift ──
+      // ── Riser + weight shift pitching moment — direct trim shift ──
       const riserCM = frontRiser * ctrl.FRONT_RISER_CM * riserSensitivity
                     + rearRiser * ctrl.REAR_RISER_CM * riserSensitivity
+                    + weightShiftCM
 
       return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm + riserCM, cp: c.cp, cellPitchRad }
     },
