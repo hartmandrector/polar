@@ -240,6 +240,7 @@ export class SimRunner {
           frontRiserRight: gp.frontRiserRight,
           rearRiserLeft: gp.rearRiserLeft,
           rearRiserRight: gp.rearRiserRight,
+          weightShiftLR: gp.lateralShift,
         }
         gamepadFlightOverrides = {
           canopyControlMode: 'brakes' as const,
