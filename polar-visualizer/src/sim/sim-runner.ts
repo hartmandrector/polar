@@ -323,9 +323,11 @@ export class SimRunner {
         this.bridleChain.step(attachInertial, inertialVel, config.rho, DT)
       }
 
-      // Step canopy deployment inflation
+      // Step canopy deployment inflation (airspeed-driven)
       if (this.canopyDeploy && !this.canopyDeploy.state.fullyInflated) {
-        this.canopyDeploy.step(DT)
+        const { u, v, w } = this.simState
+        const airspeed = Math.sqrt(u * u + v * v + w * w)
+        this.canopyDeploy.step(DT, airspeed)
       }
 
       accumulator -= DT

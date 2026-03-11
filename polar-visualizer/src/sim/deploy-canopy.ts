@@ -21,11 +21,25 @@ import { bodyToInertial, inertialToBody } from './vec3-util.ts'
 /** Initial brake setting [0–1] — 30% keeps canopy from diving */
 const INITIAL_BRAKE = 0.30
 
-/** Inflation time [s] — deploy ramps from 0 → 1 over this period */
-const INFLATION_TIME = 3.0
-
 /** Initial deploy fraction at line stretch */
 const INITIAL_DEPLOY = 0.05
+
+// ─── Airspeed-Driven Inflation Model ─────────────────────────────────────────
+// Inflation rate ∝ dynamic pressure (V²). This couples with the sim's natural
+// deceleration (more canopy area → more drag → V drops → inflation slows) to
+// produce a realistic double-exponential opening profile without engineered curves.
+
+/** Base inflation rate [1/s] at reference airspeed */
+const K_INFLATE = 0.45
+
+/** Reference airspeed [m/s] — normalizer for dynamic pressure ratio */
+const V_REF = 25
+
+/** Snivel duration [s] — slow start while slider stretches square and fabric orients */
+const SNIVEL_TIME = 0.6
+
+/** Deploy fraction at end of snivel — how far canopy opens before slider starts moving */
+const SNIVEL_DEPLOY = 0.15
 
 // ─── Canopy Deploy State ─────────────────────────────────────────────────────
 
@@ -221,24 +235,37 @@ export class CanopyDeployManager {
   }
 
   /**
-   * Step the inflation.
+   * Step the inflation using airspeed-driven model.
+   *
+   * Inflation rate ∝ (V/V_ref)² — dynamic pressure drives the slider down.
+   * Initial snivel phase provides slow start (slider stretching, fabric orienting).
+   * The sim's own drag model closes the feedback loop: more area → more drag → V drops → inflation slows.
+   *
    * @param dt Time step [s]
+   * @param airspeed Current airspeed [m/s] — sqrt(u²+v²+w²) from sim state
    * @returns deploy fraction [0–1]
    */
-  step(dt: number): number {
+  step(dt: number, airspeed: number): number {
     this.state.elapsed += dt
 
     if (!this.state.fullyInflated) {
-      // S-curve: slow start (snivel/slider), faster middle, slow finish.
-      // Smoothstep: 3t² - 2t³ gives the right shape.
-      const t = Math.min(1, this.state.elapsed / INFLATION_TIME)
-      const s = t * t * (3 - 2 * t)  // smoothstep
-      this.state.deploy = INITIAL_DEPLOY + (1 - INITIAL_DEPLOY) * s
+      if (this.state.elapsed < SNIVEL_TIME) {
+        // ── Snivel phase: linear ramp to SNIVEL_DEPLOY ──
+        // Slider stretching square, fabric catching air, not yet pressurized.
+        const t = this.state.elapsed / SNIVEL_TIME
+        this.state.deploy = INITIAL_DEPLOY + (SNIVEL_DEPLOY - INITIAL_DEPLOY) * t
+      } else {
+        // ── Main inflation: rate ∝ dynamic pressure ──
+        // dDeploy/dt = K * (V / V_ref)²
+        const vRatio = airspeed / V_REF
+        const dDeploy = K_INFLATE * vRatio * vRatio * dt
+        this.state.deploy = Math.min(1, this.state.deploy + dDeploy)
+      }
 
       if (this.state.deploy >= 0.99) {
         this.state.deploy = 1.0
         this.state.fullyInflated = true
-        console.log(`[CanopyDeploy] Fully inflated at t+${this.state.elapsed.toFixed(1)}s`)
+        console.log(`[CanopyDeploy] Fully inflated at t+${this.state.elapsed.toFixed(1)}s V=${airspeed.toFixed(1)}m/s`)
       }
     }
 
