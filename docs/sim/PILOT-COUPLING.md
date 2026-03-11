@@ -1,8 +1,10 @@
 # Pilot–Canopy 3-DOF Coupling
 
-**Status**: Implemented and rendering. All three axes working with gamepad control. Initial conditions from deployment (bag yaw → line twist) wired at canopy handoff.
+**Status**: Pitch and twist implemented and integrated. Lateral weight shift needs reclassification — it is NOT a mass/inertial rotation (see §6.2 update).
 
-Extends the 1-DOF pitch pendulum (FRAMES.md §12) to full 3-DOF relative rotation between pilot and canopy at the riser confluence point.
+Extends the 1-DOF pitch pendulum (FRAMES.md §12) to relative rotation between pilot and canopy at the riser confluence point.
+
+**Key update (2026-03-11):** Weight shift is a **pure aero control** (Kirchhoff blending), not a physical rotation. The lateral DOF modeled here as a stiff spring pendulum is incorrect for weight shift. See [WINGSUIT-BASE-FLOW.md](WINGSUIT-BASE-FLOW.md) for the corrected classification.
 
 **Reference:** Slegers, N. & Costello, M. (2003). "Aspects of Control for a Parafoil and Payload System." *Journal of Guidance, Control, and Dynamics*, 26(6). DOI: 10.2514/2.6933
 
@@ -106,33 +108,41 @@ $$\vec{M}_{T,P} = \vec{r}_{C/CG_P} \times (-\vec{T})$$
 
 The relative angular acceleration between bodies is driven by the **coupling torques** at the confluence point. For small relative angles, each axis is modeled as a spring-damper:
 
-### 6.1  Pitch (Fore/Aft Swing) — Existing Pendulum
+### 6.1  Pitch (Fore/Aft Swing) — Gravity Pendulum
 
-$$\ddot{\delta}_\theta = -\frac{k_\theta}{I_\theta}\,\delta_\theta - \frac{c_\theta}{I_\theta}\,\dot{\delta}_\theta + \frac{\tau_{g,\theta}}{I_\theta}$$
+$$\ddot{\delta}_\theta = \frac{\tau_{g,\theta} + \tau_{\text{spring}} + \tau_{\text{damp}} + \tau_{\text{aero}}}{I_\theta}$$
 
-Gravity restoring torque (FRAMES.md §12):
+Gravity restoring torque:
 
-$$\tau_{g,\theta} = -m_P\,g\,l\,\sin(\delta_\theta)$$
+$$\tau_{g,\theta} = -m_P\,g\,l\,\sin(\delta_\theta - \theta_C)$$
 
-where $l$ is the riser length (CG-to-confluence distance for the payload).
+where $l$ is the riser length (0.5m, CG-to-confluence), $\theta_C$ is canopy pitch.
 
-### 6.2  Lateral (Weight Shift)
+**Singularity bypass (2026-03-11):** During steep-climb deployment, canopy pitch $\theta$ passes through ±90° Euler singularity. To prevent corrupted gravity computation, a body-frame gravity unit vector $(g_x, g_y, g_z)$ is tracked as auxiliary state:
+- Initialized from deployment $\theta$: $g_x = -\sin\theta$, $g_y = 0$, $g_z = \cos\theta$
+- Integrated via $\dot{\vec{g}} = -\vec{\omega} \times \vec{g}$ (full 3D cross product)
+- Renormalized each step to prevent drift
+- Gravity torque uses vector directly: $\tau_g = -m_P g l (\sin\delta_\theta \cdot g_z + \cos\delta_\theta \cdot g_x)$
+
+The gravity vector is used **only** for the pendulum. Canopy translational EOM uses standard `gravityBody(phi, theta)` — the gravity vector drifts during aggressive maneuvers and destabilizes the canopy if used there.
+
+**Feedback disabled:** Pilot pitch does NOT feed back into canopy aerodynamics (`pilotPitch` not passed to `rotatePilotMass()` during sim). This prevents a destabilizing feedback loop: pilot swing → segment position change → canopy moment change → more pilot swing. The pendulum is cosmetic only.
+
+Spring: $k_\theta = 5$ N·m/rad (small). Damping: 70% critical of spring ($c_\theta \approx 14$ N·m·s/rad).
+
+### 6.2  Weight Shift — ⚠️ RECLASSIFIED: Not a Physical Rotation
+
+> **Important:** Weight shift is NOT a mass/inertial rotation. The stiff-spring EOM below is incorrect for modeling weight shift. Weight shift is a **pure aerodynamic control input** — same category as brakes and risers.
+
+What the pilot actually does: shifts hips laterally within the harness, changing the relative loading on left vs right riser groups. This warps the canopy shape (differential span loading). The pilot's mass distribution does NOT change — the CG does not shift laterally in any meaningful way.
+
+**Correct implementation:** `weightShiftLR` should feed into canopy segment Kirchhoff blending (like brakes and risers), not into a lateral pendulum EOM. See [WINGSUIT-BASE-FLOW.md](WINGSUIT-BASE-FLOW.md) §Weight Shift.
+
+**Current code state:** `pilotLateralEOM()` exists in eom.ts with stiff spring + critical damping, and `pilotRoll`/`pilotRollDot` are integrated in sim.ts. This should be **removed or repurposed** once weight shift is implemented as Kirchhoff blending. The lateral EOM produces no meaningful physics because weight shift doesn't involve mass rotation.
+
+~~Original stiff-spring model (preserved for reference):~~
 
 $$\ddot{\delta}_\phi = -\frac{k_\phi}{I_\phi}\,\delta_\phi - \frac{c_\phi}{I_\phi}\,\dot{\delta}_\phi + \frac{\tau_{\text{input},\phi}}{I_\phi}$$
-
-**Not a pendulum.** Unlike pitch, there is no gravity-restoring swing. The pilot shifts hip/leg geometry within the harness, changing the relative height of the left vs right riser sets. This is a **geometric deformation** of the harness-riser system, not a dynamic swing.
-
-**Riser height differential:**
-
-$$\Delta h = d_{\text{riser}} \cdot \sin(\delta_\phi)$$
-
-where $d_{\text{riser}}$ is the lateral distance between left and right riser attachment points. This height difference causes the center cell of the canopy to twist, producing asymmetric lift → turn.
-
-**Stiff spring model:** Use a high spring constant $k_\phi$ with critical damping so that $\delta_\phi$ tracks the commanded input nearly instantaneously with no oscillation. This keeps the integrator structure uniform across all three axes while correctly representing the non-dynamic nature of the lateral shift.
-
-- Normal flight: essentially a kinematic constraint (stiff spring ≈ instant response)
-- Deployment: could soften $k_\phi$ to model harness settling dynamics
-- High-performance canopies: tune sensitivity of $\Delta h$ → turn rate coupling
 
 ### 6.3  Twist (Line Twist / Relative Yaw)
 
@@ -257,16 +267,15 @@ For wingsuit: lateral weight shift maps to existing roll throttle.
 
 ---
 
-## 11  Implementation Phases
+## 11  Implementation Status
 
-1. ✅ **Generalize pendulum** — `SimStateExtended` extended to 6 pilot states (pitch/lateral/twist × angle+rate). Three EOM functions in `eom.ts`: `pilotPendulumEOM()` (gravity), `pilotLateralEOM()` (stiff spring), `pilotTwistEOM()` (sinusoidal). `PilotCouplingConfig` on `SimConfig`. RK4 integrates all 18 states. Commits `41c1f7c`, `b5a21a1`.
-2. ✅ **Wire lateral weight shift to gamepad** — Left stick X → `lateralInputTorque` (scale 50 N·m). Canopy only.
-3. ✅ **Add twist DOF with sinusoidal spring** — $-k_\psi \sin(\delta_\psi)$, clamped at ±π. `TWIST_INPUT_SCALE = 2` N·m (~10% of $k_\psi$).
-4. ⬜ **Tune coupling parameters** — Default values set (`riserLength=0.5m`, `lateralSpring=200`, `twistStiffness=20`, `pitchSpring=5`). Need flight testing to dial in.
-5. ✅ **Gamepad twist recovery** — Right stick X → counter-torque.  Commit `b5a21a1`.
-6. ⬜ **Pilot aero torque** — `pilotSwingDampingTorque()` exists but not wired. At speed, drag on pilot body should pitch it forward.
-7. ⬜ **Secondary effects** — Riser shortening, brake authority degradation, lateral→turn coupling.
-8. ✅ **3D model rendering** — `thetaPilot` drives `pilotPivot.rotation.x` and `controls.pilotPitch` for aero segments. Commit `713842b`.
+1. ✅ **Pitch pendulum** — Gravity-restoring, body-frame gravity vector for singularity bypass. `pilotPendulumEOM()` in eom.ts. Rendered as `pilotPivot.rotation.x`. Feedback into canopy aero **disabled** (cosmetic only). Commits `41c1f7c`, `b5a21a1`, `a8db517`.
+2. ✅ **Twist DOF** — Sinusoidal restoring torque, clamped ±π. `pilotTwistEOM()` in eom.ts. Gamepad right stick X for recovery. Seeded from bag tumble yaw at deployment. **Not yet rendered** in 3D. Commit `b5a21a1`.
+3. ⚠️ **Lateral weight shift** — `pilotLateralEOM()` exists but models wrong physics (mass pendulum instead of aero control). Needs reclassification to Kirchhoff blending. See §6.2.
+4. ⬜ **Weight shift Kirchhoff** — Implement canopy segment response to `weightShiftLR` as differential span loading (same pattern as brakes/risers).
+5. ⬜ **Line twist rendering** — Pilot yaw rotation in 3D model, static slider for tuning, optional line spiral visualization.
+6. ⬜ **Pilot aero torque** — `pilotSwingDampingTorque()` exists but effect is minimal.
+7. ⬜ **Secondary effects** — Riser shortening from twist, brake authority degradation, etc.
 
 ---
 

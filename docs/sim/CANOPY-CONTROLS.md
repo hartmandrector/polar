@@ -2,17 +2,20 @@
 
 How riser, brake, and weight shift inputs modify per-cell aerodynamics in the simulation.
 
+**Key distinction:** All four control inputs (front risers, rear risers, brakes, weight shift) are **pure aerodynamic controls** that modify canopy shape via Kirchhoff blending. None of them involve physical rotation of the pilot body or mass/CG changes. See [PILOT-COUPLING.md](PILOT-COUPLING.md) for physical pilot rotations (pitch pendulum, line twist).
+
 ## Mechanism Summary
 
 Each control input applies up to 5 effects on the parent canopy cell:
 
-| Mechanism | Front Riser | Rear Riser | Brakes |
-|-----------|:-----------:|:----------:|:------:|
-| **α offset** (local AoA shift) | −6° | +6° | +2.5° |
-| **Force vector tilt** (cell pitch rotation) | −0.35 rad nose-up | 0.06 rad nose-up | 0.14 rad nose-up |
-| **Pitching moment** (system trim shift) | −0.15 (nose-down) | +0.10 (nose-up) | −0.04 (cm_delta) |
-| **Drag bump** (cd_0 increase) | 0 | 0 | 0.12 |
-| **Camber change** (δ control derivatives) | — | — | yes (full Kirchhoff) |
+| Mechanism | Front Riser | Rear Riser | Brakes | Weight Shift |
+|-----------|:-----------:|:----------:|:------:|:------------:|
+| **α offset** (local AoA shift) | −6° | +6° | +2.5° | ⬜ TBD |
+| **Force vector tilt** (cell pitch rotation) | −0.35 rad | 0.06 rad | 0.14 rad | ⬜ TBD |
+| **Pitching moment** (system trim shift) | −0.15 | +0.10 | −0.04 | ⬜ TBD |
+| **Drag bump** (cd_0 increase) | 0 | 0 | 0.12 | ⬜ TBD |
+| **Camber change** (δ control derivatives) | — | — | yes | — |
+| **Span loading shift** (differential L/R) | — | — | — | ⬜ TBD |
 
 ## Per-Input Detail
 
@@ -62,6 +65,22 @@ Brake flaps are separate `AeroSegment`s with their own polar (`BRAKE_FLAP_POLAR`
 
 Primary turn mechanism: asymmetric drag (bump + tilt) → yaw toward braked side.
 Primary flare mechanism: camber increase across all cells → higher CL at higher AoA.
+
+### Weight Shift
+Physically shifts pilot hips laterally within harness → changes relative loading on left vs right riser groups → warps canopy shape.
+
+**⬜ Not yet implemented** — `weightShiftLR` field exists in `SegmentControls` and the slider is wired, but no canopy segment responds to it.
+
+**What it is:** A pure aerodynamic control, same category as brakes and risers. The pilot changes the geometry of the riser loading, which warps the canopy. This is Kirchhoff blending — the canopy shape changes, producing differential lift and drag.
+
+**What it is NOT:** A physical rotation of the pilot body. The pilot's mass distribution does not change. There is no CG shift, no inertial rotation, no pendulum restoring force. The `pilotLateralEOM()` in eom.ts models this incorrectly as a mass pendulum and should be removed or repurposed.
+
+**Planned implementation:**
+- `weightShiftLR` (-1 to +1) feeds into canopy segment Kirchhoff blending
+- Differential effect: left/right cells get asymmetric parameter shifts
+- Likely a combination of force vector tilt + α offset (similar to combined front+rear riser pull on one side)
+- Specific parameter values TBD — need to tune against real canopy turn behavior
+- Visible in static polar curves via existing slider
 
 ## Force Vector Tilt (`cellPitchRad`)
 
