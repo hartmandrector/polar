@@ -30,7 +30,7 @@ const INITIAL_DEPLOY = 0.05
 // produce a realistic double-exponential opening profile without engineered curves.
 
 /** Base inflation rate [1/s] at reference airspeed */
-const K_INFLATE = 0.80
+const K_INFLATE = 1.0
 
 /** Reference airspeed [m/s] — normalizer for dynamic pressure ratio */
 const V_REF = 25
