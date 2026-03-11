@@ -162,12 +162,16 @@ If pilot never presses B, they stay in `deploy_zipped` with limited controls ind
 
 ## Simulation Overlay Updates
 
+The HUD should actively coach the pilot through the deployment sequence. Flashing prompts for time-sensitive actions.
+
 ### During Deploy (zipped)
 ```
 Phase: 🪂 Canopy
 Deploy: 85% · Brakes: STOWED
-Controls: risers (limited) · Press B to unzip
+Controls: risers (limited)
+⚡ PRESS B TO UNZIP ⚡  (flashing)
 ```
+The unzip prompt flashes continuously while zipped. If the pilot is trying to use brakes or full risers, they need to see immediately that they can't until they unzip.
 
 ### During Unzip
 ```
@@ -176,13 +180,22 @@ Deploy: 100% · UNZIPPING [████░░░░░░] 60%
 Controls: risers (expanding) · brakes (unlocking)
 ```
 
-### After Unzip
+### Line Twist Warning
+If `|pilotYaw| > threshold` (e.g. > 90°), overlay flashes a twist warning:
+```
+Phase: 🪂 Canopy
+⚡ LINE TWIST — KICK TO RECOVER ⚡  (flashing)
+Twist: 270° · Right stick X to kick
+```
+This flashes until the pilot recovers below the threshold. Real-world line twist is a critical emergency — the overlay should reflect that urgency.
+
+### After Unzip (normal flight)
 ```
 Phase: 🪂 Canopy
 Deploy: 100% · Brakes: 30%
 Controls: risers/brakes
 ```
-(Normal canopy HUD)
+(Normal canopy HUD, no special prompts)
 
 ## Effect on Aero Model
 
