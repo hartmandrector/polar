@@ -216,9 +216,12 @@ export function makeCanopyCellSegment(
       // Weight shift is a pure aero control: pilot shifts hips → differential riser loading → canopy warp.
       // Positive weightShiftLR = shift right → right cells get nose-up tilt (drag), left cells nose-down.
       // Effect scales with spanwise position (brakeSensitivity: 0 center → 1.0 outer).
-      // Sign: right cell with positive shift gets positive tilt (like front riser on that side).
+      // Inverse span scaling: at low deploy (collapsed span), weight shift is a much larger
+      // fraction of the total span → much bigger effect. At full deploy, effect is subtle.
+      const wsSpanScale = 0.1 + 0.9 * d  // same formula as span deployment scaling
+      const wsDeployGain = 1 / wsSpanScale  // collapsed span amplifies weight shift
       const wsSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
-      const wsInput = controls.weightShiftLR * wsSign * brakeSensitivity
+      const wsInput = controls.weightShiftLR * wsSign * brakeSensitivity * wsDeployGain
       const weightShiftPitch = wsInput * ctrl.WEIGHT_SHIFT_PITCH_MAX_RAD
       const weightShiftCM = wsInput * ctrl.WEIGHT_SHIFT_CM
 
