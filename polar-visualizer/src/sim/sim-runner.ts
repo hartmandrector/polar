@@ -211,6 +211,12 @@ export class SimRunner {
     return (ext.pilotYaw ?? 0) * RAD
   }
 
+  /** Line twist rate [deg/s] */
+  get lineTwistRate(): number {
+    const ext = this.simState as Partial<SimStateExtended>
+    return (ext.pilotYawDot ?? 0) * RAD
+  }
+
   /** Spawn the PC — called on A button during freefall */
   tossPilotChute(): void {
     if (this.wsDeploy) return

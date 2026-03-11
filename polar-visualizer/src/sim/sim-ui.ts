@@ -407,12 +407,22 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
           html += `<div>Controls: ${controlLabel}</div>`
 
           // Line twist warning during deploy
-          const twistDeg = Math.abs(r.lineTwist)
-          if (twistDeg > 90) {
+          const twistDeg = r.lineTwist
+          const absTwist = Math.abs(twistDeg)
+          const twistRate = r.lineTwistRate
+          if (absTwist > 90) {
             const flash = Math.floor(t * 2) % 2 === 0
-            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${twistDeg.toFixed(0)}° — KICK TO RECOVER ⚡</div>`
-          } else if (twistDeg > 30) {
-            html += `<div style="color:#fa0;">Twist: ${twistDeg.toFixed(0)}°</div>`
+            const dir = twistDeg > 0 ? 'RIGHT' : 'LEFT'
+            const recovering = (twistDeg > 0 && twistRate < -5) || (twistDeg < 0 && twistRate > 5)
+            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${absTwist.toFixed(0)}° ${dir} — KICK TO RECOVER ⚡</div>`
+            if (recovering) {
+              html += `<div style="color:#0f0;">↻ Recovering ${Math.abs(twistRate).toFixed(0)}°/s</div>`
+            } else {
+              html += `<div style="color:#f88;">Right stick X to kick</div>`
+            }
+          } else if (absTwist > 10) {
+            const dir = twistDeg > 0 ? 'R' : 'L'
+            html += `<div style="color:#fa0;">Twist: ${absTwist.toFixed(0)}°${dir} · ${Math.abs(twistRate).toFixed(0)}°/s</div>`
           }
 
           if (cds.unzipTriggered && !cds.unzipped) {
@@ -433,12 +443,22 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
           html += `<div>Controls: risers/brakes/weight shift</div>`
 
           // Line twist warning during canopy flight
-          const twistDeg = Math.abs(r.lineTwist)
-          if (twistDeg > 90) {
+          const twistDeg = r.lineTwist
+          const absTwist = Math.abs(twistDeg)
+          const twistRate = r.lineTwistRate
+          if (absTwist > 90) {
             const flash = Math.floor(t * 2) % 2 === 0
-            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${twistDeg.toFixed(0)}° — KICK TO RECOVER ⚡</div>`
-          } else if (twistDeg > 30) {
-            html += `<div style="color:#fa0;">Twist: ${twistDeg.toFixed(0)}°</div>`
+            const dir = twistDeg > 0 ? 'RIGHT' : 'LEFT'
+            const recovering = (twistDeg > 0 && twistRate < -5) || (twistDeg < 0 && twistRate > 5)
+            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${absTwist.toFixed(0)}° ${dir} — KICK TO RECOVER ⚡</div>`
+            if (recovering) {
+              html += `<div style="color:#0f0;">↻ Recovering ${Math.abs(twistRate).toFixed(0)}°/s</div>`
+            } else {
+              html += `<div style="color:#f88;">Right stick X to kick</div>`
+            }
+          } else if (absTwist > 10) {
+            const dir = twistDeg > 0 ? 'R' : 'L'
+            html += `<div style="color:#fa0;">Twist: ${absTwist.toFixed(0)}°${dir} · ${Math.abs(twistRate).toFixed(0)}°/s</div>`
           }
         }
       } else if (currentPhase === 'freefall') {
