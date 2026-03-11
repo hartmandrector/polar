@@ -725,7 +725,7 @@ function updateVisualization(state: FlightState): void {
           const topY = currentModel.baseBridlePos.y
           const topZ = currentModel.baseBridlePos.z * chordScale
           // Bottom position: above pilot's head (pivot + offset upward in Three.js Y)
-          const headOffset = 0.22  // above pilot head in normalized units
+          const headOffset = 0.264  // above pilot head in normalized units
           const botX = currentModel.pilotPivot.position.x
           const botY = currentModel.pilotPivot.position.y + headOffset
           const botZ = currentModel.pilotPivot.position.z - 0.05  // slightly forward
@@ -737,7 +737,7 @@ function updateVisualization(state: FlightState): void {
           )
         } else if (d >= 1) {
           // Fully deployed — slider rests above pilot head
-          const headOffset = 0.22
+          const headOffset = 0.264
           currentModel.sliderModel.visible = true
           currentModel.sliderModel.position.set(
             currentModel.pilotPivot.position.x,
