@@ -545,6 +545,8 @@ export async function loadModel(type: ModelType, pilotType?: PilotType, override
     const overlayPS = assembly.overlayPositionScale ?? 1.0
     const sliderScale = (assembly.deployScales?.slider ?? 1.5) * Math.abs(s) * overlayPS
     sliderGltf.scale.setScalar(sliderScale)
+    // Rotate 90° about X so slider plate sits horizontal (was vertical in GLB)
+    sliderGltf.rotation.x = -Math.PI / 2
     sliderModel = new THREE.Group()
     sliderModel.name = 'deployment-slider'
     sliderModel.add(sliderGltf)

@@ -720,15 +720,15 @@ function updateVisualization(state: FlightState): void {
         const d = state.deploy
         if (d > 0 && d < 1) {
           currentModel.sliderModel.visible = true
-          const cgOff = currentModel.cgOffsetThree ?? new THREE.Vector3()
           // Top position: bridle attachment (scaled for deployment)
-          const topX = currentModel.baseBridlePos.x * spanScale - cgOff.x
-          const topY = currentModel.baseBridlePos.y - cgOff.y
-          const topZ = currentModel.baseBridlePos.z * chordScale - cgOff.z
-          // Bottom position: pilot pivot (riser tops)
+          const topX = currentModel.baseBridlePos.x * spanScale
+          const topY = currentModel.baseBridlePos.y
+          const topZ = currentModel.baseBridlePos.z * chordScale
+          // Bottom position: above pilot's head (pivot + offset upward in Three.js Y)
+          const headOffset = 0.15  // above pilot head in normalized units
           const botX = currentModel.pilotPivot.position.x
-          const botY = currentModel.pilotPivot.position.y
-          const botZ = currentModel.pilotPivot.position.z
+          const botY = currentModel.pilotPivot.position.y + headOffset
+          const botZ = currentModel.pilotPivot.position.z - 0.05  // slightly forward
           // Lerp: at deploy=0 slider is at top, at deploy=1 slider is at bottom
           currentModel.sliderModel.position.set(
             topX + d * (botX - topX),
@@ -736,9 +736,14 @@ function updateVisualization(state: FlightState): void {
             topZ + d * (botZ - topZ),
           )
         } else if (d >= 1) {
-          // Fully deployed — slider rests at riser tops
+          // Fully deployed — slider rests above pilot head
+          const headOffset = 0.15
           currentModel.sliderModel.visible = true
-          currentModel.sliderModel.position.copy(currentModel.pilotPivot.position)
+          currentModel.sliderModel.position.set(
+            currentModel.pilotPivot.position.x,
+            currentModel.pilotPivot.position.y + headOffset,
+            currentModel.pilotPivot.position.z - 0.05,
+          )
         } else {
           currentModel.sliderModel.visible = false
         }
