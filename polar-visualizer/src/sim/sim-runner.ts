@@ -453,6 +453,7 @@ export class SimRunner {
       // Canopy deploy state (overrides deploy slider, model, and polar)
       ...(this.canopyDeploy ? {
         deploy: this.canopyDeploy.state.deploy,
+        delta: this.canopyDeploy.state.unzipProgress,  // drives ctrl.unzip via buildSegmentControls
         modelType: 'canopy' as const,
         canopyDeployState: this.canopyDeploy.state,
         ...(this.canopyPolarKey ? { polarKey: this.canopyPolarKey } : {}),
