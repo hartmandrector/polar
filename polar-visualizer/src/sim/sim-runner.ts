@@ -101,6 +101,7 @@ export function simStateToFlightState(
     thetaDot_degps: sim.q * RAD,
     psiDot_degps:   sim.r * RAD,
     pilotPitch: (ext.thetaPilot ?? 0) * RAD,
+    lineTwist: (ext.pilotYaw ?? 0) * RAD,
   }
 }
 
@@ -203,6 +204,12 @@ export class SimRunner {
 
   /** Wingsuit deployment render state (read-only, for HUD + renderer) */
   get deployRenderState(): Readonly<WingsuitDeployRenderState> | null { return this.wsDeployRender }
+
+  /** Line twist angle [deg] — pilot yaw relative to canopy */
+  get lineTwist(): number {
+    const ext = this.simState as Partial<SimStateExtended>
+    return (ext.pilotYaw ?? 0) * RAD
+  }
 
   /** Spawn the PC — called on A button during freefall */
   tossPilotChute(): void {

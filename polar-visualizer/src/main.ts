@@ -679,6 +679,8 @@ function updateVisualization(state: FlightState): void {
     // Pilot pitch — rotate pilot body about riser attachment point
     if (currentModel.pilotPivot) {
       currentModel.pilotPivot.rotation.x = state.pilotPitch * DEG2RAD
+      // Line twist — rotate pilot about hanging axis (yaw within pitch frame)
+      currentModel.pilotPivot.rotation.y = state.lineTwist * DEG2RAD
     }
     // Pilot height — rescale pilot body, keeping shoulder at riser junction
     if (currentModel.setPilotHeight) {

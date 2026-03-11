@@ -39,6 +39,7 @@ export interface FlightState {
   canopyRightHand: number   // 0–1
   canopyWeightShift: number // -1 to +1
   pilotPitch: number        // pilot body pitch relative to canopy [deg]
+  lineTwist: number         // line twist / pilot yaw relative to canopy [deg]
   deploy: number            // canopy deployment fraction: 0 = line stretch, 1 = fully deployed
   // ── Wingsuit throttle controls ──
   pitchThrottle: number     // [-1, +1] LE angle + weight shift fore/aft
@@ -100,6 +101,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const rightHandSlider = document.getElementById('right-hand-slider') as HTMLInputElement
   const weightShiftSlider = document.getElementById('weight-shift-slider') as HTMLInputElement
   const pilotPitchSlider = document.getElementById('pilot-pitch-slider') as HTMLInputElement
+  const lineTwistSlider = document.getElementById('line-twist-slider') as HTMLInputElement
   const deploySlider = document.getElementById('deploy-slider') as HTMLInputElement
   const canopyModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="canopy-mode"]')
 
@@ -109,6 +111,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const rightHandNameLabel = document.getElementById('right-hand-label')!
   const weightShiftLabel = document.getElementById('weight-shift-value')!
   const pilotPitchLabel = document.getElementById('pilot-pitch-value')!
+  const lineTwistLabel = document.getElementById('line-twist-value')!
   const deployLabel = document.getElementById('deploy-value')!
 
   // Wingsuit throttle controls
@@ -241,6 +244,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const canopyRightHand = parseFloat(rightHandSlider.value) / 100
     const canopyWeightShift = parseFloat(weightShiftSlider.value) / 100
     const pilotPitch = parseFloat(pilotPitchSlider.value)
+    const lineTwist = parseFloat(lineTwistSlider.value)
     const deploy = parseFloat(deploySlider.value) / 100
 
     const roll = parseFloat(rollSlider.value)
@@ -273,6 +277,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     rightHandLabel.textContent = `${(canopyRightHand * 100).toFixed(0)}%`
     weightShiftLabel.textContent = `${(canopyWeightShift * 100).toFixed(0)}`
     pilotPitchLabel.textContent = `${pilotPitch.toFixed(0)}°`
+    lineTwistLabel.textContent = `${lineTwist.toFixed(0)}°`
     deployLabel.textContent = `${(deploy * 100).toFixed(0)}%`
     const modeNames = { brakes: 'Brake', fronts: 'Front Riser', rears: 'Rear Riser' }
     leftHandNameLabel.textContent = `Left ${modeNames[canopyControlMode]}: `
@@ -383,6 +388,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       canopyRightHand,
       canopyWeightShift,
       pilotPitch,
+      lineTwist,
       deploy,
       pitchThrottle: wsPitch,
       yawThrottle: wsYaw,
@@ -409,7 +415,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider, wsDeploySlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, lineTwistSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider, wsDeploySlider]) {
     el.addEventListener('input', onInput)
   }
 

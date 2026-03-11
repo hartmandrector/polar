@@ -406,6 +406,15 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
           html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${deployPct}% · Brakes: ${brakeStatus}</div>`
           html += `<div>Controls: ${controlLabel}</div>`
 
+          // Line twist warning during deploy
+          const twistDeg = Math.abs(r.lineTwist)
+          if (twistDeg > 90) {
+            const flash = Math.floor(t * 2) % 2 === 0
+            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${twistDeg.toFixed(0)}° — KICK TO RECOVER ⚡</div>`
+          } else if (twistDeg > 30) {
+            html += `<div style="color:#fa0;">Twist: ${twistDeg.toFixed(0)}°</div>`
+          }
+
           if (cds.unzipTriggered && !cds.unzipped) {
             // Unzipping progress bar
             const pct = cds.unzipProgress
@@ -422,6 +431,15 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
           const brakesPct = cds ? (cds.brakeLeft * 100).toFixed(0) + '%' : '—'
           html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${brakesPct}</div>`
           html += `<div>Controls: risers/brakes/weight shift</div>`
+
+          // Line twist warning during canopy flight
+          const twistDeg = Math.abs(r.lineTwist)
+          if (twistDeg > 90) {
+            const flash = Math.floor(t * 2) % 2 === 0
+            html += `<div style="color:${flash ? '#f00' : '#f88'}; font-weight:bold;">⚡ LINE TWIST ${twistDeg.toFixed(0)}° — KICK TO RECOVER ⚡</div>`
+          } else if (twistDeg > 30) {
+            html += `<div style="color:#fa0;">Twist: ${twistDeg.toFixed(0)}°</div>`
+          }
         }
       } else if (currentPhase === 'freefall') {
         const ds = r.deployRenderState
