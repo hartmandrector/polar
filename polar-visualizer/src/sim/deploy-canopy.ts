@@ -30,10 +30,10 @@ const INITIAL_DEPLOY = 0.05
 // produce a realistic double-exponential opening profile without engineered curves.
 
 /** Base inflation rate [1/s] at reference airspeed */
-const K_INFLATE = 0.55
+const K_INFLATE = 0.65
 
 /** Reference airspeed [m/s] — normalizer for dynamic pressure ratio */
-const V_REF = 30
+const V_REF = 25
 
 /** Snivel duration [s] — slow start while slider stretches square and fabric orients */
 const SNIVEL_TIME = 0.6
