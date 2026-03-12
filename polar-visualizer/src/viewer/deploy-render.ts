@@ -265,6 +265,15 @@ export class DeployRenderer {
     const s = this.metersToScene
     const useGLB = this.glbsLoaded
 
+    // Position converter: NED body-frame → Three.js scene coordinates.
+    // When bodyQuat is provided (canopy mode), positions are in body frame
+    // and need rotation into scene space.
+    const toScene = (ned: Vec3): THREE.Vector3 => {
+      const v = nedToThree(ned, s, chainOffset)
+      if (bodyQuat) v.applyQuaternion(bodyQuat)
+      return v
+    }
+
     // Build chain of visible points: anchor → freed segments (inboard→outboard) → bag? → PC
     const chainPoints: THREE.Vector3[] = []
 
@@ -285,7 +294,7 @@ export class DeployRenderer {
     for (let i = 0; i < state.segments.length; i++) {
       const seg = state.segments[i]
       if (seg.visible) {
-        const pos = nedToThree(seg.position, s, chainOffset)
+        const pos = toScene(seg.position)
         segChainIdx[i] = chainPoints.length
         chainPoints.push(pos)
 
@@ -328,7 +337,7 @@ export class DeployRenderer {
         y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
         z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
       }
-      const bagPos = nedToThree(bagPosScaled, s, chainOffset)
+      const bagPos = toScene(bagPosScaled)
       chainPoints.push(bagPos)
 
       // Primitive fallback
@@ -356,7 +365,7 @@ export class DeployRenderer {
     }
 
     // PC at end of chain
-    const pcPos = nedToThree(state.pcPosition, s, chainOffset)
+    const pcPos = toScene(state.pcPosition)
     chainPoints.push(pcPos)
 
     // PC tension ring — scales with CD (visual tension feedback)
@@ -395,7 +404,7 @@ export class DeployRenderer {
         y: state.canopyBag.position.y * DEPLOY_LINE_SCALE,
         z: state.canopyBag.position.z * DEPLOY_LINE_SCALE,
       }
-      const bagPos = nedToThree(bagPosScaled, s, chainOffset)
+      const bagPos = toScene(bagPosScaled)
       // Riser attachment point = anchor (already in final scene coords)
       const riserAttach = anchorScene.clone()
 
