@@ -435,7 +435,27 @@ export class SimRunner {
 
     // Update deploy render state (from wrapper during wingsuit, from chain during canopy)
     if (this.wsDeploy && this.modelType !== 'canopy') {
-      this.wsDeployRender = this.wsDeploy.getRenderState(this.simState)
+      // Transform inertial-offset positions into body frame
+      const { x, y, z, phi, theta, psi } = this.simState
+      const bodyPos: Vec3 = { x, y, z }
+      const toBody = (inertialPos: Vec3): Vec3 =>
+        inertialToBody(v3sub(inertialPos, bodyPos), phi, theta, psi)
+
+      const raw = this.wsDeploy.getRenderStateRaw()
+      this.wsDeployRender = {
+        ...raw,
+        pcPosition: toBody(raw.pcPosition),
+        segments: raw.segments.map(s => ({
+          ...s,
+          position: toBody(s.position),
+        })),
+        canopyBag: raw.canopyBag ? {
+          ...raw.canopyBag,
+          position: toBody(raw.canopyBag.position),
+        } : null,
+        chainDistance: raw.chainDistance,
+        bagDistance: raw.bagDistance,
+      }
     } else if (this.bridleChain && this.modelType === 'canopy') {
       // Transform chain positions from inertial to body frame for rendering
       const { x, y, z, phi, theta, psi } = this.simState

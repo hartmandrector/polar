@@ -395,6 +395,31 @@ export class WingsuitDeploySim {
 
   // ── Render State ────────────────────────────────────────────────────────
 
+  /** Raw inertial positions (for proper body-frame transform by caller) */
+  getRenderStateRaw(): WingsuitDeployRenderState {
+    const tensionFactor = Math.min(1, Math.max(0, this.bridleTension / TENSION_FULL_INFLATION))
+    const pcCD = PC_CD_MIN + (PC_CD_MAX - PC_CD_MIN) * tensionFactor
+
+    return {
+      phase: this.phase,
+      pcPosition: { ...this.pcPos },
+      pcCD,
+      segments: this.segments.map(s => ({
+        ...s,
+        position: { ...s.position },
+      })),
+      canopyBag: this.canopyBag ? {
+        ...this.canopyBag,
+        position: { ...this.canopyBag.position },
+      } : null,
+      bridleTension: this.bridleTension,
+      pinTension: this.pinTension,
+      bagTension: this.bagTension,
+      chainDistance: 0,
+      bagDistance: 0,
+    }
+  }
+
   getRenderState(bodyState: SimState): WingsuitDeployRenderState {
     const bodyPos: Vec3 = { x: bodyState.x, y: bodyState.y, z: bodyState.z }
     const tensionFactor = Math.min(1, Math.max(0, this.bridleTension / TENSION_FULL_INFLATION))
