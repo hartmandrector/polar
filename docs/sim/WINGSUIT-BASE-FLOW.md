@@ -2,6 +2,8 @@
 
 Complete wingsuit BASE jump flow from exit through landing.
 
+<p align="center"><img src="../../polar-visualizer/docs/gifs/deploy-unzip-unstow.gif" width="720" alt="Full deployment sequence" /></p>
+
 ## Phase Sequence
 
 ```
@@ -60,6 +62,11 @@ Three distinct control mechanisms connect the pilot to the canopy. Each has diff
 - ⬜ `pilotLateralEOM()` exists but is WRONG for weight shift — should be removed or repurposed
 
 ### Line Twist (Yaw) — Physical Rotation with Dynamics
+
+<p align="center">
+  <img src="../../polar-visualizer/docs/gifs/line-twist-up.gif" width="360" alt="Line twist buildup" />
+  <img src="../../polar-visualizer/docs/gifs/line-twist-recovery.gif" width="360" alt="Line twist recovery" />
+</p>
 
 **What it is:** The pilot's body rotates around the vertical axis relative to the canopy. The suspension lines twist around each other. This is a **physical rotation** with real geometry-dependent restoring torque.
 

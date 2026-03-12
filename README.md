@@ -514,6 +514,38 @@ The slider is hidden for the slick pilot model (no wingsuit to unzip) and repurp
 
 ---
 
+### Wingsuit BASE Simulation
+
+The full wingsuit BASE jump sequence — from freefall through deployment to canopy flight — runs as a continuous real-time simulation with Xbox gamepad control.
+
+#### Deployment → Unzip → Brake Unstow
+
+<p align="center"><img src="polar-visualizer/docs/gifs/deploy-unzip-unstow.gif" width="720" alt="Full deployment sequence: canopy inflation, unzip, and brake unstow" /></p>
+
+The deployment sequence models the complete transition from wingsuit freefall to canopy flight:
+
+1. **PC toss → bridle chain → line stretch** — simulated segment-by-segment with drag and tension physics
+2. **Canopy inflation** — airspeed-driven ($\dot{D} \propto V^2$) with self-regulating feedback: more area → more drag → velocity drops → inflation slows
+3. **Deploy gamepad** — limited controls during inflation: no brakes (stowed at 30%), risers at 25% range, weight shift and twist recovery active
+4. **Unzip (B button)** — 1.5s ramp morphing pilot aerodynamics from wingsuit (S=2.0 m²) to slick (S=0.5 m²) via full polar interpolation
+5. **Brake unstow** — touching either brake trigger after unzip drops brakes from 30% stow to full pilot control
+
+The HUD tracks each phase with color-coded status: deploy percentage, brake stow state (orange → green), unzip progress bar, and control availability.
+
+#### Line Twist
+
+<p align="center"><img src="polar-visualizer/docs/gifs/line-twist-up.gif" width="720" alt="Line twist building during aggressive canopy maneuvers" /></p>
+
+Line twist builds naturally from canopy yaw dynamics — the canopy turns through the lines while the pilot's inertia resists, creating relative rotation. Aggressive turns can build thousands of degrees of twist. The twist model uses sinusoidal restoring torque from line geometry with a torsional coupling term ($\tau = -k_{yaw} \cdot r$) driven by canopy yaw rate.
+
+#### Line Twist Recovery
+
+<p align="center"><img src="polar-visualizer/docs/gifs/line-twist-recovery.gif" width="720" alt="Line twist recovery using asymmetric riser and kick input" /></p>
+
+Recovery uses real-world techniques: direct kick torque (right stick X) combined with asymmetric riser input to bias the untwisting direction. The combination of both inputs at full deflection untwists quickly without retwisting past center — matching the balanced feel of real canopy handling. The HUD displays twist angle, direction, rate, and recovery status with amber/red severity coloring.
+
+---
+
 ### Euler Rate Controls & Per-Segment Velocity
 
 <p align="center"><img src="polar-visualizer/docs/gifs/effect-euler-roll-rate.gif" width="720" alt="Effect of Euler roll rate on per-segment velocity vectors" /></p>
