@@ -14,7 +14,7 @@ import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
 import { readWingsuitGamepad, readCanopyGamepad, readDeployGamepad } from './sim-gamepad.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
-import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
+import { CanopyDeployManager, computeCanopyIC, INITIAL_BRAKE } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
 import { BridleChainSim } from './bridle-sim.ts'
 import { bodyToInertial, inertialToBody, v3add, v3sub } from './vec3-util.ts'
@@ -256,13 +256,29 @@ export class SimRunner {
 
           // Riser range expands during unzip (25% → 100%)
           const riserMul = this.canopyDeploy!.riserRange
-          // Brake access unlocks during unzip (0% → 100%)
-          const brakeAccess = this.canopyDeploy!.brakeAccess
 
           // Read full canopy gamepad for brake triggers during unzip transition
           const fullGp = readCanopyGamepad()
-          const brakeL = (fullGp?.brakeLeft ?? 0) * brakeAccess
-          const brakeR = (fullGp?.brakeRight ?? 0) * brakeAccess
+          const rawBrakeL = fullGp?.brakeLeft ?? 0
+          const rawBrakeR = fullGp?.brakeRight ?? 0
+
+          // Brake stowing: brakes locked at 30% until unzipped + user touches triggers
+          let brakeL: number
+          let brakeR: number
+          if (this.canopyDeploy!.brakesStowed) {
+            // Check if user is touching brakes after unzip → unstow
+            if (this.canopyDeploy!.state.unzipped && (rawBrakeL > 0.02 || rawBrakeR > 0.02)) {
+              this.canopyDeploy!.unstowBrakes()
+              brakeL = rawBrakeL
+              brakeR = rawBrakeR
+            } else {
+              brakeL = INITIAL_BRAKE
+              brakeR = INITIAL_BRAKE
+            }
+          } else {
+            brakeL = rawBrakeL
+            brakeR = rawBrakeR
+          }
 
           config.controls = {
             ...config.controls,

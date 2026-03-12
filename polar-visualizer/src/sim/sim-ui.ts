@@ -438,9 +438,12 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
           }
         } else {
           // ── Normal canopy flight HUD ──
-          const brakesPct = cds ? (cds.brakeLeft * 100).toFixed(0) + '%' : '—'
-          html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${brakesPct}</div>`
-          html += `<div>Controls: risers/brakes/weight shift</div>`
+          const brakesStowed = cds && !cds.brakesUnstowed
+          const brakeLabel = brakesStowed
+            ? '<span style="color:#fa0;">STOWED</span>'
+            : '<span style="color:#0f0;">UNSTOWED</span>'
+          html += `<div>GR: ${gr.toFixed(1)} · Deploy: ${cds ? (cds.deploy * 100).toFixed(0) + '%' : '100%'} · Brakes: ${brakeLabel}</div>`
+          html += `<div>Controls: risers/${brakesStowed ? '<span style="color:#fa0;">brakes (stowed)</span>' : 'brakes'}/weight shift</div>`
 
           // Line twist warning during canopy flight
           const twistDeg = r.lineTwist

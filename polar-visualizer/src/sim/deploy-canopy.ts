@@ -19,7 +19,7 @@ import { bodyToInertial, inertialToBody } from './vec3-util.ts'
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Initial brake setting [0–1] — 30% keeps canopy from diving */
-const INITIAL_BRAKE = 0.30
+export const INITIAL_BRAKE = 0.30
 
 /** Initial deploy fraction at line stretch */
 const INITIAL_DEPLOY = 0.05
@@ -66,6 +66,8 @@ export interface CanopyDeployState {
   unzipTriggered: boolean
   /** Whether unzip is complete */
   unzipped: boolean
+  /** Whether brakes have been unstowed (user touched brake triggers after unzip) */
+  brakesUnstowed: boolean
 }
 
 // ─── IC Computation ──────────────────────────────────────────────────────────
@@ -246,6 +248,7 @@ export class CanopyDeployManager {
       unzipProgress: 0,
       unzipTriggered: false,
       unzipped: false,
+      brakesUnstowed: false,
     }
   }
 
@@ -337,5 +340,17 @@ export class CanopyDeployManager {
   /** Current brake access [0–1] based on unzip progress (stowed until unzip starts) */
   get brakeAccess(): number {
     return this.state.unzipProgress
+  }
+
+  /** Whether brakes are still stowed (30% fixed until user touches triggers after unzip) */
+  get brakesStowed(): boolean {
+    return !this.state.brakesUnstowed
+  }
+
+  /** Unstow brakes — called when user touches brake triggers after unzip */
+  unstowBrakes(): void {
+    if (this.state.unzipped && !this.state.brakesUnstowed) {
+      this.state.brakesUnstowed = true
+    }
   }
 }
