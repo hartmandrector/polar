@@ -773,9 +773,14 @@ function updateVisualization(state: FlightState): void {
             currentModel.baseBridlePos.y              - cgOffset.y,
             currentModel.baseBridlePos.z * chordScale - cgOffset.z,
           )
+          // In inertial frame, rotate anchor with the body attitude
+          if (state.frameMode === 'inertial') anchor.applyQuaternion(bodyQuat)
         }
         const chainOffset = new THREE.Vector3(0, CANOPY_CHAIN_Y_OFFSET, 0)
-        deployRenderer.update(drs, bodyQuat, anchor, chainOffset)
+        // Only rotate chain by bodyQuat in inertial frame — in body frame,
+        // positions are already in the correct (unrotated) body-frame space.
+        const chainQuat = state.frameMode === 'inertial' ? bodyQuat : undefined
+        deployRenderer.update(drs, chainQuat, anchor, chainOffset)
       } else if (!drs) {
         // No deploy render state (e.g. fresh canopy, no deployment) — clean up
         if (deployRenderer) { deployRenderer.dispose(); deployRenderer = null }
