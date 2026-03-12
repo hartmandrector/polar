@@ -799,7 +799,7 @@ function updateVisualization(state: FlightState): void {
         if (!deployRenderer) {
           deployRenderer = new DeployRenderer(sceneCtx.scene, currentModel.bodyLength)
         }
-        deployRenderer.update(drs, bodyQuat)
+        deployRenderer.update(drs, state.frameMode === 'inertial' ? bodyQuat : undefined)
         // Hide the old deploy group — new renderer handles everything
         currentModel.deployGroup.group.visible = false
       } else if (state.deployPCPosition) {
