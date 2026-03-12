@@ -726,9 +726,11 @@ function updateVisualization(state: FlightState): void {
         const d = state.deploy
         if (d > 0 && d < 1) {
           currentModel.sliderModel.visible = true
-          // Top position: bridle attachment (scaled for deployment)
+          // Top position: line attachment level (bridleTop minus offset to sit
+          // just below canopy at line attachment points, not above canopy top)
+          const sliderTopDrop = 0.16  // ~30cm below bridleTop in normalized units
           const topX = currentModel.baseBridlePos.x * spanScale
-          const topY = currentModel.baseBridlePos.y
+          const topY = currentModel.baseBridlePos.y - sliderTopDrop
           const topZ = currentModel.baseBridlePos.z * chordScale
           // Bottom position: above pilot's head (pivot + offset upward in Three.js Y)
           const headOffset = 0.264  // above pilot head in normalized units
