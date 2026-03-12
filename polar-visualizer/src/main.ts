@@ -728,7 +728,7 @@ function updateVisualization(state: FlightState): void {
           currentModel.sliderModel.visible = true
           // Top position: line attachment level (bridleTop minus offset to sit
           // just below canopy at line attachment points, not above canopy top)
-          const sliderTopDrop = 0.16  // ~30cm below bridleTop in normalized units
+          const sliderTopDrop = 0.36  // ~30cm below bridleTop in normalized units
           const topX = currentModel.baseBridlePos.x * spanScale
           const topY = currentModel.baseBridlePos.y - sliderTopDrop
           const topZ = currentModel.baseBridlePos.z * chordScale
