@@ -675,6 +675,10 @@ function updateVisualization(state: FlightState): void {
   if (currentModel) {
     applyAttitude(currentModel.group, state.frameMode === 'inertial' ? bodyQuat : null)
     // Orient bridle + pilot chute along relative wind
+    // Hide prop bridle during wingsuit BASE sim (sim bridle chain replaces it)
+    if (currentModel.bridleGroup) {
+      currentModel.bridleGroup.visible = !state.deployRenderState
+    }
     updateBridleOrientation(currentModel, state.alpha_deg, state.beta_deg)
     // Pilot pitch — rotate pilot body about riser attachment point
     if (currentModel.pilotPivot) {
