@@ -138,4 +138,30 @@ export class BridleChainSim {
       bagDistance: 0,
     }
   }
+
+  /** Render state with raw inertial positions (for proper body-frame transform by caller). */
+  getRenderStateRaw(): {
+    phase: 'line_stretch',
+    pcPosition: Vec3,
+    pcCD: number,
+    segments: { position: Vec3; velocity: Vec3 }[],
+    canopyBag: null,
+    bridleTension: number,
+    chainDistance: number,
+  } {
+    const tensionFactor = Math.min(1, Math.max(0, this.bridleTension / TENSION_FULL_INFLATION))
+    const pcCD = PC_CD_MIN + (PC_CD_MAX - PC_CD_MIN) * tensionFactor
+    return {
+      phase: 'line_stretch',
+      pcPosition: { ...this.pcPos },
+      pcCD,
+      segments: this.segments.map(s => ({
+        position: { ...s.position },
+        velocity: { ...s.velocity },
+      })),
+      canopyBag: null,
+      bridleTension: this.bridleTension,
+      chainDistance: 0, // caller computes if needed
+    }
+  }
 }

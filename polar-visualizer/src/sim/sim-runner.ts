@@ -17,7 +17,7 @@ import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
 import { BridleChainSim } from './bridle-sim.ts'
-import { bodyToInertial, v3add } from './vec3-util.ts'
+import { bodyToInertial, inertialToBody, v3add, v3sub } from './vec3-util.ts'
 import { getCanopyBridleAttachNED } from '../polar/polar-data.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -409,19 +409,29 @@ export class SimRunner {
     if (this.wsDeploy && this.modelType !== 'canopy') {
       this.wsDeployRender = this.wsDeploy.getRenderState(this.simState)
     } else if (this.bridleChain && this.modelType === 'canopy') {
-      const bodyPos: Vec3 = { x: this.simState.x, y: this.simState.y, z: this.simState.z }
-      const br = this.bridleChain.getRenderState(bodyPos)
+      // Transform chain positions from inertial to body frame for rendering
+      const { x, y, z, phi, theta, psi } = this.simState
+      const bodyPos: Vec3 = { x, y, z }
+      const toBody = (inertialPos: Vec3): Vec3 =>
+        inertialToBody(v3sub(inertialPos, bodyPos), phi, theta, psi)
+
+      const br = this.bridleChain.getRenderStateRaw()
       this.wsDeployRender = {
         phase: br.phase,
-        pcPosition: br.pcPosition,
+        pcPosition: toBody(br.pcPosition),
         pcCD: br.pcCD,
-        segments: br.segments,
+        segments: br.segments.map(s => ({
+          position: toBody(s.position),
+          velocity: inertialToBody(s.velocity, phi, theta, psi),
+          visible: true,
+          freed: true,
+        })),
         canopyBag: br.canopyBag,
         bridleTension: br.bridleTension,
-        pinTension: br.pinTension,
-        bagTension: br.bagTension,
+        pinTension: 0,
+        bagTension: 0,
         chainDistance: br.chainDistance,
-        bagDistance: br.bagDistance,
+        bagDistance: 0,
       }
     }
 
