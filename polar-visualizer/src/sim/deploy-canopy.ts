@@ -351,6 +351,8 @@ export class CanopyDeployManager {
   unstowBrakes(): void {
     if (this.state.unzipped && !this.state.brakesUnstowed) {
       this.state.brakesUnstowed = true
+      this.state.brakeLeft = 0
+      this.state.brakeRight = 0
     }
   }
 }
