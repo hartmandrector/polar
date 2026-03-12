@@ -304,10 +304,22 @@ export class SimRunner {
         // ── Full canopy gamepad: all controls available ──
         const gp = readCanopyGamepad()
         if (gp) {
+          // Brake stow: hold at 30% until user touches triggers after unzip
+          let brakeL = gp.brakeLeft
+          let brakeR = gp.brakeRight
+          if (this.canopyDeploy && this.canopyDeploy.brakesStowed) {
+            if (brakeL > 0.02 || brakeR > 0.02) {
+              this.canopyDeploy.unstowBrakes()
+            } else {
+              brakeL = INITIAL_BRAKE
+              brakeR = INITIAL_BRAKE
+            }
+          }
+
           config.controls = {
             ...config.controls,
-            brakeLeft: gp.brakeLeft,
-            brakeRight: gp.brakeRight,
+            brakeLeft: brakeL,
+            brakeRight: brakeR,
             frontRiserLeft: gp.frontRiserLeft,
             frontRiserRight: gp.frontRiserRight,
             rearRiserLeft: gp.rearRiserLeft,
@@ -316,8 +328,8 @@ export class SimRunner {
           }
           gamepadFlightOverrides = {
             canopyControlMode: 'brakes' as const,
-            canopyLeftHand: gp.brakeLeft,
-            canopyRightHand: gp.brakeRight,
+            canopyLeftHand: brakeL,
+            canopyRightHand: brakeR,
           }
           if (config.pilotCoupling) {
             config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
