@@ -270,10 +270,10 @@ For wingsuit: lateral weight shift maps to existing roll throttle.
 ## 11  Implementation Status
 
 1. ✅ **Pitch pendulum** — Gravity-restoring, body-frame gravity vector for singularity bypass. `pilotPendulumEOM()` in eom.ts. Rendered as `pilotPivot.rotation.x`. Feedback into canopy aero **disabled** (cosmetic only). Commits `41c1f7c`, `b5a21a1`, `a8db517`.
-2. ✅ **Twist DOF** — Sinusoidal restoring torque, clamped ±π. `pilotTwistEOM()` in eom.ts. Gamepad right stick X for recovery. Seeded from bag tumble yaw at deployment. **Not yet rendered** in 3D. Commit `b5a21a1`.
-3. ⚠️ **Lateral weight shift** — `pilotLateralEOM()` exists but models wrong physics (mass pendulum instead of aero control). Needs reclassification to Kirchhoff blending. See §6.2.
-4. ⬜ **Weight shift Kirchhoff** — Implement canopy segment response to `weightShiftLR` as differential span loading (same pattern as brakes/risers).
-5. ⬜ **Line twist rendering** — Pilot yaw rotation in 3D model, static slider for tuning, optional line spiral visualization.
+2. ✅ **Twist DOF** — Sinusoidal restoring torque, clamped ±π. `pilotTwistEOM()` in eom.ts. Torsional coupling from canopy yaw rate (`twistYawCoupling = 5 N·m·s/rad`). Gamepad right stick X for recovery. Seeded from bag tumble yaw at deployment. Commit `b5a21a1`, `32c0115`.
+3. ✅ **Weight shift Kirchhoff** — Implemented as differential Kirchhoff blending across canopy segments. `weightShiftLR` in SegmentControls, spanwise distribution reuses brakeSensitivity (center=0, inner=0.4, mid=0.7, outer=1.0). Inverse span scaling during deploy. Commits `660d77b`, `4f50e63`, `0c7ecfc`.
+4. ⚠️ **Lateral EOM cleanup** — `pilotLateralEOM()` exists but models wrong physics (mass pendulum instead of aero control). Should be removed or repurposed. See §6.2.
+5. ⬜ **Line twist 3D rendering** — Pilot yaw rotation in 3D model, line spiral visualization, slider for static tuning.
 6. ⬜ **Pilot aero torque** — `pilotSwingDampingTorque()` exists but effect is minimal.
 7. ⬜ **Secondary effects** — Riser shortening from twist, brake authority degradation, etc.
 

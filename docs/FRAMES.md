@@ -560,6 +560,8 @@ body frame:
 - Gravity provides a restoring torque: $\tau_g = -m_p g l \sin(\theta_p - \theta)$.
 - Canopy pitch acceleration couples through the risers: $\tau_c = -I_p \dot{q}$.
 
+This is one axis of the full **3-DOF pilot–canopy coupling** derived from the Slegers & Costello (2003) two-body parafoil-payload formulation. The pitch pendulum, line twist (relative yaw), and weight shift (lateral loading) are covered in detail in [PILOT-COUPLING.md](sim/PILOT-COUPLING.md), which extends the single-DOF pendulum here to the complete coupling model with constraint forces, relative rotation dynamics, and the sinusoidal line-twist restoring torque.
+
 **Code:** `computePilotPendulumParams()`, `pilotPendulumEOM()`, `pilotSwingDampingTorque()` in `eom.ts`
 
 ---
@@ -581,6 +583,8 @@ The bridle and pilot chute (PC) chain lives in a hybrid frame pipeline that cros
 The key subtlety: the chain physics must run in inertial NED (gravity and drag are inertial-frame forces), but the rendering must live in body frame (attached to the rotating model). The double frame crossing — body→inertial for the anchor, inertial→body for display — is what keeps the chain physically correct while visually attached.
 
 **Code:** `WingsuitDeploySim` (`deploy-wingsuit.ts`), `BridleChainSim` (`bridle-sim.ts`), `inertialToBody()` (`frames.ts`), `DeployRenderer.toScene()` (`deploy-render.ts`)
+
+The bridle tension force is the same constraint force $\vec{T}$ that appears in the Slegers & Costello two-body coupling (§12, [PILOT-COUPLING.md](sim/PILOT-COUPLING.md) §4–5). During deployment the tension is computed explicitly by the chain sim; after line stretch it becomes the implicit constraint at the confluence point.
 
 ---
 
