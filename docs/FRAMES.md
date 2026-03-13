@@ -564,6 +564,26 @@ body frame:
 
 ---
 
+## 12.1  Bridle / Pilot Chute Frame
+
+<p align="center"><img src="../polar-visualizer/docs/gifs/bridal-body-frame.gif" width="720" alt="Bridle chain simulation in vehicle body frame" /></p>
+
+The bridle and pilot chute (PC) chain lives in a hybrid frame pipeline that crosses body↔inertial boundaries twice:
+
+1. **Anchor (body → inertial):** The bridle attachment point is defined in the body frame (mid-back of the wingsuit model). At each step it is transformed to inertial NED via the body DCM using the current $(φ, θ, ψ)$.
+
+2. **Chain simulation (inertial):** The entire bridle chain — PC, segments, canopy bag — is simulated in inertial NED. Drag forces use freestream velocity, gravity acts along inertial down. Tension propagates segment-to-segment in inertial coordinates.
+
+3. **Render transform (inertial → body):** For display, the inertial positions are translated relative to the body position and then rotated into the body frame via `inertialToBody(pos, φ, θ, ψ)`. This keeps the chain correctly attached to the model regardless of vehicle attitude.
+
+4. **Scene conversion (body → Three.js):** Body-frame NED positions pass through `nedToThree()` for Y-up rendering. In inertial view mode, an additional `bodyQuat` rotation is applied to keep the chain aligned with the world frame.
+
+The key subtlety: the chain physics must run in inertial NED (gravity and drag are inertial-frame forces), but the rendering must live in body frame (attached to the rotating model). The double frame crossing — body→inertial for the anchor, inertial→body for display — is what keeps the chain physically correct while visually attached.
+
+**Code:** `WingsuitDeploySim` (`deploy-wingsuit.ts`), `BridleChainSim` (`bridle-sim.ts`), `inertialToBody()` (`frames.ts`), `DeployRenderer.toScene()` (`deploy-render.ts`)
+
+---
+
 ## 13  Integration Pipeline (Frame Flow)
 
 The complete frame flow through one integration step:
