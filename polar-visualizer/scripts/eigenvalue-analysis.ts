@@ -87,7 +87,12 @@ function main(): void {
   console.log(`╚══════════════════════════════════════════════════════════════╝`)
 
   const config = buildConfig(polar)
-  const speeds = specificSpeed ? [specificSpeed] : [8, 10, 12, 14, 16, 18, 20]
+  // Default speed range depends on vehicle type
+  const isWingsuit = polarName.startsWith('a5') || polarName === 'aurafive' || polarName === 'slicksin'
+  const defaultSpeeds = isWingsuit
+    ? [25, 30, 35, 40, 45, 50, 55]
+    : [8, 10, 12, 14, 16, 18, 20]
+  const speeds = specificSpeed ? [specificSpeed] : defaultSpeeds
 
   for (const V of speeds) {
     console.log(`\n${'═'.repeat(60)}`)
@@ -95,7 +100,10 @@ function main(): void {
     console.log(`${'═'.repeat(60)}`)
 
     // 1. Find trim
-    const trim = findTrim(V, config)
+    const trimOpts = isWingsuit
+      ? { alphaGuess_deg: 10, thetaGuess_deg: -10 }
+      : { alphaGuess_deg: 10, thetaGuess_deg: -30 }
+    const trim = findTrim(V, config, trimOpts)
     if (!trim.converged) {
       console.log(`  ⚠️  Trim did not converge (residual: ${trim.residual.toExponential(2)})`)
       console.log(`      Best guess: α=${trim.alpha_deg.toFixed(2)}°, θ=${trim.theta_deg.toFixed(2)}°`)
