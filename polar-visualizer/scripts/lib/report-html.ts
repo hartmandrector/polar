@@ -38,22 +38,24 @@ function getConvergedPoints(run: AnalysisRun): SpeedPoint[] {
 
 /** Assign consistent color index to modes across speeds by sorting */
 function getModeTraces(points: SpeedPoint[]): Map<string, Array<{ v: number, mode: import('./linearize.ts').NaturalMode }>> {
-  // Group modes by type: oscillatory sorted by descending frequency, real sorted by |σ|
+  // Collect all unique mode names across all speed points to get stable ordering
+  const nameOrder: string[] = []
+  for (const sp of points) {
+    for (const m of sp.modes) {
+      if (m.name && !nameOrder.includes(m.name)) nameOrder.push(m.name)
+    }
+  }
+
   const traces = new Map<string, Array<{ v: number, mode: import('./linearize.ts').NaturalMode }>>()
+  for (const name of nameOrder) {
+    traces.set(name, [])
+  }
 
   for (const sp of points) {
-    // Filter: skip conjugate negatives, skip near-zero heading mode
-    const unique = sp.modes.filter(m => m.imagPart >= -1e-6)
-
-    // Sort: oscillatory by descending freq, then real by descending |σ|
-    const osc = unique.filter(m => m.imagPart > 1e-6).sort((a, b) => b.frequency_Hz - a.frequency_Hz)
-    const real = unique.filter(m => m.imagPart <= 1e-6).sort((a, b) => Math.abs(b.realPart) - Math.abs(a.realPart))
-
-    const ordered = [...osc, ...real]
-    for (let i = 0; i < ordered.length; i++) {
-      const key = `mode_${i}`
+    for (const m of sp.modes) {
+      const key = m.name || 'Unknown'
       if (!traces.has(key)) traces.set(key, [])
-      traces.get(key)!.push({ v: sp.airspeed_ms, mode: ordered[i] })
+      traces.get(key)!.push({ v: sp.airspeed_ms, mode: m })
     }
   }
   return traces
@@ -147,7 +149,13 @@ export function generateReport(current: AnalysisRun, baseline?: AnalysisRun): st
   <canvas id="qdotChart"></canvas>
 </div>
 
-<!-- 7. Trim Table -->
+<!-- 7. Mode Legend -->
+<div class="chart-box full">
+  <h2>Mode Legend</h2>
+  ${generateModeLegend(currentPoints)}
+</div>
+
+<!-- 8. Trim Table -->
 <div class="chart-box full">
   <h2>Trim Conditions Table</h2>
   ${generateTrimTable(currentPoints, baselinePoints)}
@@ -172,6 +180,46 @@ ${chartScripts()}
 </script>
 </body>
 </html>`
+}
+
+function generateModeLegend(points: SpeedPoint[]): string {
+  // Collect unique mode names in order, with color assignment matching getModeTraces
+  const nameOrder: string[] = []
+  for (const sp of points) {
+    for (const m of sp.modes) {
+      if (m.name && !nameOrder.includes(m.name)) nameOrder.push(m.name)
+    }
+  }
+
+  const descriptions: Record<string, string> = {
+    'Short period': 'Fast pitch oscillation. Determines how quickly the vehicle responds to angle-of-attack changes.',
+    'Phugoid': 'Slow speed/altitude exchange. Long-period oscillation trading kinetic ↔ potential energy.',
+    'Dutch roll': 'Coupled yaw-roll oscillation. "Wagging" motion after lateral disturbances.',
+    'Roll subsidence': 'Pure roll damping. How quickly a roll disturbance dies out (non-oscillatory).',
+    'Yaw damping': 'Pure yaw damping. How quickly a yaw disturbance dies out (non-oscillatory).',
+    'Spiral': 'Slow lateral divergence/convergence. Unstable spiral = turns tighten without pilot input.',
+    'Lateral divergence': 'Fast lateral instability. Vehicle yaws/sideslips divergently — requires active pilot control.',
+    'Heading': 'Neutral yaw mode (σ≈0). No restoring force to a heading — this is normal.',
+    'Slow mode': 'Slow stable mode. Long time constant, minor dynamic significance.',
+  }
+
+  let rows = ''
+  for (let i = 0; i < nameOrder.length; i++) {
+    const name = nameOrder[i]
+    const color = COLORS[i % COLORS.length]
+    const desc = descriptions[name] ?? ''
+    const type = ['Short period', 'Phugoid', 'Dutch roll'].includes(name) ? 'Oscillatory' : 'Real'
+    rows += `<tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${color};vertical-align:middle;margin-right:6px"></span> ${name}</td>
+      <td style="color:#aaa">${type}</td>
+      <td style="color:#999;text-align:left">${desc}</td>
+    </tr>`
+  }
+
+  return `<table class="trim-table">
+    <thead><tr><th style="text-align:left">Mode</th><th style="text-align:left">Type</th><th style="text-align:left">Description</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`
 }
 
 function generateTrimTable(current: SpeedPoint[], baseline: SpeedPoint[]): string {
@@ -210,18 +258,13 @@ function chartScripts(): string {
   return `
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
-function modeLabel(idx) {
-  const labels = ['Mode 1 (highest freq)', 'Mode 2', 'Mode 3', 'Mode 4', 'Mode 5', 'Mode 6', 'Mode 7', 'Mode 8', 'Mode 9'];
-  return labels[idx] || 'Mode ' + idx;
-}
-
 function makeDatasets(tracesObj, colorsArr, dashed) {
   const datasets = [];
   let idx = 0;
-  for (const [key, points] of Object.entries(tracesObj)) {
+  for (const [name, points] of Object.entries(tracesObj)) {
     const color = colorsArr[idx % colorsArr.length];
     datasets.push({
-      label: (dashed ? '[baseline] ' : '') + modeLabel(idx),
+      label: (dashed ? '[baseline] ' : '') + name,
       data: points,
       borderColor: dashed ? color + '${BASELINE_ALPHA}' : color,
       backgroundColor: dashed ? color + '${BASELINE_ALPHA}' : color,
@@ -249,10 +292,10 @@ const defaultScales = {
 (function() {
   const datasets = [];
   let idx = 0;
-  for (const [key, points] of Object.entries(CURRENT_TRACES)) {
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
     const color = COLORS[idx % COLORS.length];
     datasets.push({
-      label: modeLabel(idx),
+      label: name,
       data: points.map(p => ({ x: p.mode.realPart, y: Math.abs(p.mode.imagPart) })),
       borderColor: color,
       backgroundColor: color,
@@ -265,10 +308,10 @@ const defaultScales = {
 
   if (HAS_BASELINE) {
     idx = 0;
-    for (const [key, points] of Object.entries(BASELINE_TRACES)) {
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
       const color = COLORS[idx % COLORS.length] + '${BASELINE_ALPHA}';
       datasets.push({
-        label: '[baseline] ' + modeLabel(idx),
+        label: '[baseline] ' + name,
         data: points.map(p => ({ x: p.mode.realPart, y: Math.abs(p.mode.imagPart) })),
         borderColor: color,
         backgroundColor: color,
@@ -314,10 +357,10 @@ const defaultScales = {
 (function() {
   const datasets = [];
   let idx = 0;
-  for (const [key, points] of Object.entries(CURRENT_TRACES)) {
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
     const color = COLORS[idx % COLORS.length];
     datasets.push({
-      label: modeLabel(idx),
+      label: name,
       data: points.map(p => ({ x: p.v, y: p.mode.dampingRatio })),
       borderColor: color, backgroundColor: color,
       pointRadius: 5, showLine: true, tension: 0.3,
@@ -326,10 +369,10 @@ const defaultScales = {
   }
   if (HAS_BASELINE) {
     idx = 0;
-    for (const [key, points] of Object.entries(BASELINE_TRACES)) {
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
       const color = COLORS[idx % COLORS.length] + '${BASELINE_ALPHA}';
       datasets.push({
-        label: '[baseline] ' + modeLabel(idx),
+        label: '[baseline] ' + name,
         data: points.map(p => ({ x: p.v, y: p.mode.dampingRatio })),
         borderColor: color, backgroundColor: color, borderDash: [6,4],
         pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
@@ -357,10 +400,10 @@ const defaultScales = {
 (function() {
   const datasets = [];
   let idx = 0;
-  for (const [key, points] of Object.entries(CURRENT_TRACES)) {
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
     const color = COLORS[idx % COLORS.length];
     datasets.push({
-      label: modeLabel(idx),
+      label: name,
       data: points.map(p => ({ x: p.v, y: p.mode.frequency_Hz })),
       borderColor: color, backgroundColor: color,
       pointRadius: 5, showLine: true, tension: 0.3,
@@ -369,10 +412,10 @@ const defaultScales = {
   }
   if (HAS_BASELINE) {
     idx = 0;
-    for (const [key, points] of Object.entries(BASELINE_TRACES)) {
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
       const color = COLORS[idx % COLORS.length] + '${BASELINE_ALPHA}';
       datasets.push({
-        label: '[baseline] ' + modeLabel(idx),
+        label: '[baseline] ' + name,
         data: points.map(p => ({ x: p.v, y: p.mode.frequency_Hz })),
         borderColor: color, backgroundColor: color, borderDash: [6,4],
         pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
@@ -400,10 +443,10 @@ const defaultScales = {
 (function() {
   const datasets = [];
   let idx = 0;
-  for (const [key, points] of Object.entries(CURRENT_TRACES)) {
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
     const color = COLORS[idx % COLORS.length];
     datasets.push({
-      label: modeLabel(idx),
+      label: name,
       data: points.map(p => ({ x: p.v, y: Math.min(p.mode.timeToHalf_s, 30) })),  // cap at 30s for readability
       borderColor: color, backgroundColor: color,
       pointRadius: 5, showLine: true, tension: 0.3,
@@ -412,10 +455,10 @@ const defaultScales = {
   }
   if (HAS_BASELINE) {
     idx = 0;
-    for (const [key, points] of Object.entries(BASELINE_TRACES)) {
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
       const color = COLORS[idx % COLORS.length] + '${BASELINE_ALPHA}';
       datasets.push({
-        label: '[baseline] ' + modeLabel(idx),
+        label: '[baseline] ' + name,
         data: points.map(p => ({ x: p.v, y: Math.min(p.mode.timeToHalf_s, 30) })),
         borderColor: color, backgroundColor: color, borderDash: [6,4],
         pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,

@@ -283,3 +283,70 @@ export function sortModes(modes: NaturalMode[]): NaturalMode[] {
     return b.frequency_Hz - a.frequency_Hz
   })
 }
+
+/**
+ * Auto-name modes based on heuristics.
+ *
+ * Call on the deduplicated (no negative conjugates) mode list for ONE speed point.
+ * Mutates the `name` field in place and returns the same array.
+ *
+ * Heuristics:
+ *   Oscillatory (sorted by descending frequency):
+ *     - Highest freq → "Short period"
+ *     - Lowest freq (< 0.15 Hz) → "Phugoid"
+ *     - Remaining → "Dutch roll"
+ *   Real (sorted by descending |σ|):
+ *     - σ ≈ 0 (|σ| < 0.001) → "Heading"
+ *     - σ > 0 → "Spiral" (or "Lateral divergence" if fast, T₂ < 0.5s)
+ *     - Fastest stable → "Roll subsidence"
+ *     - Second fastest → "Yaw damping"
+ *     - Remaining → "Slow mode"
+ */
+export function nameModes(modes: NaturalMode[]): NaturalMode[] {
+  // Split into oscillatory and real
+  const osc = modes.filter(m => m.imagPart > 1e-6).sort((a, b) => b.frequency_Hz - a.frequency_Hz)
+  const real = modes.filter(m => m.imagPart <= 1e-6)
+
+  // Name oscillatory modes
+  if (osc.length >= 1) osc[0].name = 'Short period'
+  if (osc.length >= 2) {
+    // Check if lowest freq is phugoid-like (< 0.15 Hz)
+    const lowest = osc[osc.length - 1]
+    if (lowest.frequency_Hz < 0.15) {
+      lowest.name = 'Phugoid'
+      // Everything in between is Dutch roll
+      for (let i = 1; i < osc.length - 1; i++) osc[i].name = 'Dutch roll'
+    } else {
+      // No clear phugoid — remaining are Dutch roll
+      for (let i = 1; i < osc.length; i++) osc[i].name = 'Dutch roll'
+    }
+  }
+  // If exactly 2 and lowest not phugoid, second is Dutch roll (already handled)
+  if (osc.length === 2 && !osc[1].name) osc[1].name = 'Dutch roll'
+
+  // Name real modes
+  // First pass: heading (neutral)
+  for (const m of real) {
+    if (Math.abs(m.realPart) < 0.001) {
+      m.name = 'Heading'
+    }
+  }
+
+  // Second pass: unstable modes
+  for (const m of real) {
+    if (m.name) continue
+    if (m.realPart > 0) {
+      m.name = m.timeToHalf_s < 0.5 ? 'Lateral divergence' : 'Spiral'
+    }
+  }
+
+  // Third pass: stable modes sorted by |σ| descending
+  const stableUnnamed = real.filter(m => !m.name).sort((a, b) => Math.abs(b.realPart) - Math.abs(a.realPart))
+  if (stableUnnamed.length >= 1) stableUnnamed[0].name = 'Roll subsidence'
+  if (stableUnnamed.length >= 2) stableUnnamed[1].name = 'Yaw damping'
+  for (let i = 2; i < stableUnnamed.length; i++) {
+    stableUnnamed[i].name = 'Slow mode'
+  }
+
+  return modes
+}

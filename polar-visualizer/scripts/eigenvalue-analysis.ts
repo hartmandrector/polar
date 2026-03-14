@@ -31,7 +31,7 @@ import type { SimConfig } from '../src/polar/sim-state.ts'
 import { computeInertia, computeCenterOfMass, ZERO_INERTIA } from '../src/polar/inertia.ts'
 import { defaultControls } from '../src/polar/aero-segment.ts'
 import { findTrim } from './lib/trim-finder.ts'
-import { numericalJacobian, eigenvalues, classifyModes, sortModes, STATE_NAMES } from './lib/linearize.ts'
+import { numericalJacobian, eigenvalues, classifyModes, sortModes, nameModes, STATE_NAMES } from './lib/linearize.ts'
 import type { AnalysisRun, SpeedPoint } from './lib/analysis-types.ts'
 import { generateReport } from './lib/report-html.ts'
 
@@ -111,7 +111,7 @@ function analyzeSpeed(V: number, config: SimConfig, isWingsuit: boolean, include
   const eigs = eigenvalues(A)
   const modes = sortModes(classifyModes(eigs))
   // Filter out conjugate duplicates
-  const uniqueModes = modes.filter(m => m.imagPart >= -1e-6)
+  const uniqueModes = nameModes(modes.filter(m => m.imagPart >= -1e-6))
 
   return {
     airspeed_ms: V,
@@ -160,16 +160,16 @@ function printSpeedPoint(sp: SpeedPoint, showMatrix: boolean, baseline?: SpeedPo
 
   // Mode table
   console.log(`\n  Natural Modes:`)
-  console.log(`  ${'─'.repeat(56)}`)
-  console.log(`  ${'Mode'.padEnd(6)} ${'σ [1/s]'.padStart(10)} ${'ω [rad/s]'.padStart(10)} ${'f [Hz]'.padStart(8)} ${'ζ'.padStart(6)} ${'T½ [s]'.padStart(8)} ${'Stable'.padStart(7)}`)
-  console.log(`  ${'─'.repeat(56)}`)
+  console.log(`  ${'─'.repeat(72)}`)
+  console.log(`  ${'Name'.padEnd(20)} ${'σ [1/s]'.padStart(10)} ${'ω [rad/s]'.padStart(10)} ${'f [Hz]'.padStart(8)} ${'ζ'.padStart(6)} ${'T½ [s]'.padStart(8)} ${'Stable'.padStart(7)}`)
+  console.log(`  ${'─'.repeat(72)}`)
 
   for (const m of sp.modes) {
-    const typeStr = m.imagPart > 1e-6 ? 'osc' : 'real'
     const stableStr = m.stable ? '  ✓' : '  ✗'
     const t2h = m.timeToHalf_s < 1000 ? m.timeToHalf_s.toFixed(2) : '   ∞'
+    const name = (m.name || (m.imagPart > 1e-6 ? 'osc' : 'real')).padEnd(20)
 
-    console.log(`  ${typeStr.padEnd(6)} ${fmt(m.realPart, 10, 4)} ${fmt(m.imagPart, 10, 4)} ${fmt(m.frequency_Hz, 8, 3)} ${fmt(m.dampingRatio, 6, 3)} ${t2h.padStart(8)} ${stableStr}`)
+    console.log(`  ${name} ${fmt(m.realPart, 10, 4)} ${fmt(m.imagPart, 10, 4)} ${fmt(m.frequency_Hz, 8, 3)} ${fmt(m.dampingRatio, 6, 3)} ${t2h.padStart(8)} ${stableStr}`)
   }
 }
 
