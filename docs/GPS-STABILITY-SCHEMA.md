@@ -11,30 +11,30 @@ Interface specification for flight data exported from CloudBASE (or any GPS pipe
 
 ## Required Columns
 
-| Column | Units | Description |
-|--------|-------|-------------|
-| `t` | s | Time (seconds from segment start) |
-| `V` | m/s | True airspeed magnitude |
-| `alpha` | deg | Angle of attack (from polar coefficient matching) |
-| `gamma` | deg | Flight path angle (negative = descending) |
-| `phi` | deg | Bank angle (aerodynamic roll, from acceleration) |
-| `theta` | deg | Pitch angle (= α + γ) |
-| `psi` | deg | Heading (GPS track, 0=N, CW positive) |
-| `p` | deg/s | Body roll rate |
-| `q` | deg/s | Body pitch rate |
-| `r` | deg/s | Body yaw rate |
+| Column | Units | Sign / Zero | Description |
+|--------|-------|-------------|-------------|
+| `t` | s | 0 = segment start | Time from segment start |
+| `V` | m/s | always positive | True airspeed magnitude |
+| `alpha` | deg | **+nose above airspeed vector** | Angle of attack (from polar coefficient matching). Typical range: 2–18° wingsuit, 5–15° canopy |
+| `gamma` | deg | **+climbing, −descending** | Flight path angle. −19° = typical wingsuit glide, −25° = steep canopy |
+| `phi` | deg | **+right wing down** (bank right) | Bank angle (aerodynamic roll, from acceleration). 0° = wings level, +30° = right turn |
+| `theta` | deg | **+nose above horizon** | Pitch angle (= α + γ). Negative in normal descent flight |
+| `psi` | deg | **0=North, +clockwise** (East=90°) | Heading. 0–360° or ±180°, both accepted |
+| `p` | deg/s | **+rolling right** (right wing going down) | Body roll rate |
+| `q` | deg/s | **+pitching nose up** | Body pitch rate |
+| `r` | deg/s | **+yawing nose right** | Body yaw rate |
 
 ## Optional Columns
 
-| Column | Units | Description |
-|--------|-------|-------------|
-| `CL` | — | Lift coefficient (system-level, from acceleration) |
-| `CD` | — | Drag coefficient (system-level, from acceleration) |
-| `beta` | deg | Sideslip angle (if available; usually unknown) |
-| `ax` | m/s² | Body-frame x acceleration (for cross-check) |
-| `az` | m/s² | Body-frame z acceleration (for cross-check) |
-| `alt_msl` | m | Altitude MSL (for density correction if needed) |
-| `qbar` | Pa | Dynamic pressure (½ρV², if density-corrected) |
+| Column | Units | Sign / Zero | Description |
+|--------|-------|-------------|-------------|
+| `CL` | — | **+upward lift** | Lift coefficient (system-level, from acceleration). Positive in normal flight. |
+| `CD` | — | **+opposing motion** | Drag coefficient (system-level). Always positive. |
+| `beta` | deg | **+wind from right** (nose left of airspeed) | Sideslip angle. Usually unknown — leave empty if not available. |
+| `ax` | m/s² | **+forward** | Body-frame x acceleration (for cross-check) |
+| `az` | m/s² | **+downward** (NED) | Body-frame z acceleration (for cross-check) |
+| `alt_msl` | m | — | Altitude MSL (for density correction if needed) |
+| `qbar` | Pa | always positive | Dynamic pressure (½ρV²) |
 
 ## Metadata Header
 
@@ -50,6 +50,28 @@ Optional comment block at top of file (lines starting with `#`). Parsers should 
 # gps_rate_hz: 10
 # notes: clean air, no turbulence
 ```
+
+## Sign Verification Checks
+
+Use these sanity checks when wiring up a new data source. If any fail, you have a sign flip somewhere.
+
+| Check | Expected | If wrong... |
+|-------|----------|-------------|
+| Steady glide: `gamma` | **negative** (e.g., −19°) | γ sign is flipped |
+| Steady glide: `theta` | **negative** (nose below horizon) | θ sign is flipped, or α+γ composition is wrong |
+| Steady glide: `alpha` | **positive** (e.g., +8°) | α sign is flipped |
+| `theta` ≈ `alpha + gamma` | should hold within ~1° | one of the three has wrong sign or convention |
+| Right turn: `phi` | **positive** (~+20–40°) | φ sign is flipped |
+| Right turn: `r` | **positive** (nose going right) | r sign is flipped |
+| Right turn: `p` | **near zero or slightly positive** during steady turn | p sign is flipped if large negative |
+| Right turn: `psi` | **increasing** (e.g., 90→120°) | ψ direction is flipped (CCW convention) |
+| Pullout / flare: `q` | **positive** (nose pitching up) | q sign is flipped |
+| Level flight: `CL` | **positive** (~0.3–0.8) | CL sign is flipped |
+| Any flight: `CD` | **positive** (always) | CD sign is flipped |
+| Any flight: `V` | **positive** (always) | something is very wrong |
+
+### Quick test procedure
+Pick one right-hand turn from your data. Verify: φ>0, r>0, ψ increasing. If all three agree, your lateral signs are consistent. Then pick a steady glide segment: γ<0, α>0, θ<0, θ≈α+γ. If those hold, longitudinal signs are good.
 
 ## Conventions
 
