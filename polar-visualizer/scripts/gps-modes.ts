@@ -107,18 +107,58 @@ function parseCsv(filepath: string): { meta: Metadata, rows: GpsRow[] } {
 
 // ─── Signal Processing ──────────────────────────────────────────────────────
 
-/** Remove linear trend from signal */
-function detrend(signal: number[]): number[] {
+/** Remove polynomial trend from signal (default order 5 for maneuver removal) */
+function detrend(signal: number[], order = 5): number[] {
   const n = signal.length
   if (n < 2) return signal
-  // Least-squares linear fit: y = a + b*x
-  let sx = 0, sy = 0, sxx = 0, sxy = 0
+
+  // Normalize x to [-1, 1] for numerical stability
+  const x = signal.map((_, i) => 2 * i / (n - 1) - 1)
+
+  // Build Vandermonde matrix and solve via normal equations
+  // A^T A c = A^T y
+  const cols = order + 1
+  const AtA: number[][] = Array.from({ length: cols }, () => new Array(cols).fill(0))
+  const Aty: number[] = new Array(cols).fill(0)
+
   for (let i = 0; i < n; i++) {
-    sx += i; sy += signal[i]; sxx += i * i; sxy += i * signal[i]
+    const basis: number[] = [1]
+    for (let j = 1; j <= order; j++) basis.push(basis[j - 1] * x[i])
+    for (let j = 0; j < cols; j++) {
+      Aty[j] += basis[j] * signal[i]
+      for (let k = 0; k < cols; k++) AtA[j][k] += basis[j] * basis[k]
+    }
   }
-  const b = (n * sxy - sx * sy) / (n * sxx - sx * sx)
-  const a = (sy - b * sx) / n
-  return signal.map((v, i) => v - (a + b * i))
+
+  // Solve via Gaussian elimination
+  const aug = AtA.map((row, i) => [...row, Aty[i]])
+  for (let col = 0; col < cols; col++) {
+    // Pivot
+    let maxRow = col
+    for (let row = col + 1; row < cols; row++) {
+      if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row
+    }
+    [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]]
+
+    const pivot = aug[col][col]
+    if (Math.abs(pivot) < 1e-15) continue
+    for (let j = col; j <= cols; j++) aug[col][j] /= pivot
+    for (let row = 0; row < cols; row++) {
+      if (row === col) continue
+      const factor = aug[row][col]
+      for (let j = col; j <= cols; j++) aug[row][j] -= factor * aug[col][j]
+    }
+  }
+  const coeffs = aug.map(row => row[cols])
+
+  // Subtract polynomial fit
+  return signal.map((v, i) => {
+    let trend = 0
+    let xi = 1
+    const xn = x[i]
+    for (let j = 0; j < cols; j++) { trend += coeffs[j] * xi; xi *= xn }
+    return v - trend
+  })
 }
 
 /** Hann window */
@@ -216,7 +256,7 @@ function computePsd(signal: number[], fs_hz: number, segmentLength?: number): Ps
 function findPeaks(freqs: number[], power: number[], minFreq = 0.01, maxFreq = 2.5): Peak[] {
   const peaks: Peak[] = []
   const maxPower = Math.max(...power.filter((_, i) => freqs[i] >= minFreq && freqs[i] <= maxFreq))
-  const threshold = maxPower * 0.05  // 5% of max
+  const threshold = maxPower * 0.01  // 1% of max — permissive, let classification filter
 
   for (let i = 2; i < power.length - 2; i++) {
     if (freqs[i] < minFreq || freqs[i] > maxFreq) continue
