@@ -1500,9 +1500,9 @@ const A5_CENTER_POLAR: ContinuousPolar = {
   cy_beta: -0.3,
   cn_beta: 0.08,
   cl_beta: -0.04,            // body only — less dihedral effect than system
-  cm_0: 0.085,
-  cm_alpha: -0.255,
-  cp_0: 0.36,
+  cm_0: 0.055,
+  cm_alpha: -0.30,
+  cp_0: 0.30,
   cp_alpha: 0.025,
   cg: 0.40,
   cp_lateral: 0.50,
@@ -1561,9 +1561,9 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
   cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
   cl_beta: -0.08,            // dihedral effect
-  cm_0: 0.01,
-  cm_alpha: -0.20,
-  cp_0: 0.15,
+  cm_0: 0.03,
+  cm_alpha: -0.10,
+  cp_0: 0.25,
   cp_alpha: 0.04,
   cg: 0.40,
   cp_lateral: 0.50,
