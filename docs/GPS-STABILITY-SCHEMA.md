@@ -107,6 +107,47 @@ On the polar-visualizer side, this data feeds:
 4. **Damping estimation** — log-decrement or curve fitting on oscillation envelopes
 5. **Frequency comparison** — FFT peaks vs predicted natural frequencies from eigenvalue analysis
 
+## Canopy Normal CSV (for `--mode canopy`)
+
+A separate CSV format for canopy flight data, where orientation is derived from the
+canopy normal vector (canopy position relative to pilot in NED) rather than from
+coefficient matching.
+
+### Required Columns
+
+| Column | Units | Description |
+|--------|-------|-------------|
+| `t`    | s     | Time from segment start |
+| `V`    | m/s   | True airspeed magnitude |
+| `vN`   | m/s   | Air-relative velocity North |
+| `vE`   | m/s   | Air-relative velocity East |
+| `vD`   | m/s   | Air-relative velocity Down (positive = descending) |
+| `cnN`  | m     | Canopy normal North — canopy position relative to pilot |
+| `cnE`  | m     | Canopy normal East |
+| `cnD`  | m     | Canopy normal Down (negative = canopy above pilot) |
+
+### Optional Columns
+
+CL, CD, qbar, rho — passed through if present.
+
+### Sign Convention
+
+The canopy normal vector points from pilot to canopy. In normal flight:
+- `cnD` is **negative** (canopy is above the pilot)
+- `cnN` is slightly positive (canopy is ahead due to trim AOA)
+- `cnE` is near zero in straight flight, positive in right turns
+
+### Processing
+
+`gps-beta-enhance.ts --mode canopy` derives canopy orientation from this vector:
+1. CN unit vector = tension line direction (pilot → canopy)
+2. Project airspeed onto the plane ⊥ to CN → canopy forward axis
+3. Cross product → canopy lateral axis
+4. Extract Euler angles from the resulting DCM
+5. α from airspeed projected into canopy longitudinal plane + trim offset
+6. β from airspeed lateral component in canopy body frame
+7. Body rates via inverse DKE on the derived Euler angles
+
 ## Example
 
 ```csv

@@ -30,3 +30,9 @@ memory.md
 memory/
 HEARTBEAT.md
 BOOTSTRAP.md
+
+# Data files (derived results)
+*.csv
+
+# VS Code MCP config
+.vscode/mcp.json
