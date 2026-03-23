@@ -13,6 +13,7 @@ import type { SimState, SimConfig, SimStateExtended, PilotCouplingConfig } from 
 import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
 import { readWingsuitGamepad, readCanopyGamepad, readDeployGamepad } from './sim-gamepad.ts'
+import { WingsuitInputFilter, CanopyInputFilter, DeployInputFilter } from './input-filter.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC, INITIAL_BRAKE } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
@@ -136,6 +137,11 @@ export class SimRunner {
   /** Standalone bridle chain — persists from deploy through canopy flight */
   private bridleChain: BridleChainSim | null = null
 
+  /** Input filters — EMA smoothing between gamepad and aero model */
+  private wingsuitFilter = new WingsuitInputFilter()
+  private canopyFilter = new CanopyInputFilter()
+  private deployFilter = new DeployInputFilter()
+
   /** Canopy polar key to switch to at line stretch (set from scenario) */
   private canopyPolarKey: string | null = null
 
@@ -249,6 +255,8 @@ export class SimRunner {
         // ── Deploy gamepad: limited controls, brakes stowed ──
         const gp = readDeployGamepad()
         if (gp) {
+          const filtered = this.deployFilter.apply(gp, elapsed)
+
           // B button → trigger unzip
           if (gp.unzipPressed) {
             this.canopyDeploy!.triggerUnzip()
@@ -284,11 +292,11 @@ export class SimRunner {
             ...config.controls,
             brakeLeft: brakeL,
             brakeRight: brakeR,
-            frontRiserLeft: gp.frontRiserLeft * (riserMul / 0.25),  // scale up from 25% base
-            frontRiserRight: gp.frontRiserRight * (riserMul / 0.25),
-            rearRiserLeft: gp.rearRiserLeft * (riserMul / 0.25),
-            rearRiserRight: gp.rearRiserRight * (riserMul / 0.25),
-            weightShiftLR: gp.lateralShift,
+            frontRiserLeft: filtered.frontRiserLeft * (riserMul / 0.25),
+            frontRiserRight: filtered.frontRiserRight * (riserMul / 0.25),
+            rearRiserLeft: filtered.rearRiserLeft * (riserMul / 0.25),
+            rearRiserRight: filtered.rearRiserRight * (riserMul / 0.25),
+            weightShiftLR: filtered.lateralShift,
           }
           gamepadFlightOverrides = {
             canopyControlMode: 'brakes' as const,
@@ -296,19 +304,21 @@ export class SimRunner {
             canopyRightHand: brakeR,
           }
           if (config.pilotCoupling) {
-            config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
-            config.pilotCoupling.twistInputTorque = gp.twistInput * TWIST_INPUT_SCALE
+            config.pilotCoupling.lateralInputTorque = filtered.lateralShift * LATERAL_INPUT_SCALE
+            config.pilotCoupling.twistInputTorque = filtered.twistInput * TWIST_INPUT_SCALE
           }
         }
       } else {
         // ── Full canopy gamepad: all controls available ──
         const gp = readCanopyGamepad()
         if (gp) {
+          const filtered = this.canopyFilter.apply(gp, elapsed)
+
           // Brake stow: hold at 30% until user touches triggers after unzip
-          let brakeL = gp.brakeLeft
-          let brakeR = gp.brakeRight
+          let brakeL = filtered.brakeLeft
+          let brakeR = filtered.brakeRight
           if (this.canopyDeploy && this.canopyDeploy.brakesStowed) {
-            if (brakeL > 0.02 || brakeR > 0.02) {
+            if (gp.brakeLeft > 0.02 || gp.brakeRight > 0.02) {
               this.canopyDeploy.unstowBrakes()
             } else {
               brakeL = INITIAL_BRAKE
@@ -320,11 +330,11 @@ export class SimRunner {
             ...config.controls,
             brakeLeft: brakeL,
             brakeRight: brakeR,
-            frontRiserLeft: gp.frontRiserLeft,
-            frontRiserRight: gp.frontRiserRight,
-            rearRiserLeft: gp.rearRiserLeft,
-            rearRiserRight: gp.rearRiserRight,
-            weightShiftLR: gp.lateralShift,
+            frontRiserLeft: filtered.frontRiserLeft,
+            frontRiserRight: filtered.frontRiserRight,
+            rearRiserLeft: filtered.rearRiserLeft,
+            rearRiserRight: filtered.rearRiserRight,
+            weightShiftLR: filtered.lateralShift,
           }
           gamepadFlightOverrides = {
             canopyControlMode: 'brakes' as const,
@@ -332,24 +342,25 @@ export class SimRunner {
             canopyRightHand: brakeR,
           }
           if (config.pilotCoupling) {
-            config.pilotCoupling.lateralInputTorque = gp.lateralShift * LATERAL_INPUT_SCALE
-            config.pilotCoupling.twistInputTorque = gp.twistInput * TWIST_INPUT_SCALE
+            config.pilotCoupling.lateralInputTorque = filtered.lateralShift * LATERAL_INPUT_SCALE
+            config.pilotCoupling.twistInputTorque = filtered.twistInput * TWIST_INPUT_SCALE
           }
         }
       }
     } else {
       const gp = readWingsuitGamepad()
       if (gp) {
+        const filtered = this.wingsuitFilter.apply(gp, elapsed)
         config.controls = {
           ...config.controls,
-          pitchThrottle: gp.pitchThrottle,
-          yawThrottle: gp.yawThrottle,
-          rollThrottle: gp.rollThrottle,
+          pitchThrottle: filtered.pitchThrottle,
+          yawThrottle: filtered.yawThrottle,
+          rollThrottle: filtered.rollThrottle,
         }
         gamepadFlightOverrides = {
-          pitchThrottle: gp.pitchThrottle,
-          yawThrottle: gp.yawThrottle,
-          rollThrottle: gp.rollThrottle,
+          pitchThrottle: filtered.pitchThrottle,
+          yawThrottle: filtered.yawThrottle,
+          rollThrottle: filtered.rollThrottle,
         }
       }
     }
