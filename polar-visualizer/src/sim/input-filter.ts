@@ -84,11 +84,11 @@ export interface CanopyFilterConfig {
 }
 
 export const CANOPY_FILTER_DEFAULTS: CanopyFilterConfig = {
-  brakeTau: 0.03,
-  frontRiserTau: 0.08,
-  rearRiserTau: 0.08,
-  lateralTau: 0.05,
-  twistTau: 0.05,
+  brakeTau: 0.40,          // ~1.2m travel, 1.0–1.5s zero→full (3τ ≈ 1.2s)
+  frontRiserTau: 0.30,     // ~0.4m travel, 0.8–1.0s zero→full (3τ ≈ 0.9s)
+  rearRiserTau: 0.30,      // same as front risers
+  lateralTau: 0.12,        // weight shift — fast body movement, 0.3–0.5s
+  twistTau: 0.05,          // intentional body twist — quick
 };
 
 export class CanopyInputFilter {

@@ -1069,7 +1069,7 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // Positions from GLB mesh (cp2.gltf) via _cellQC(), relative to riser convergence.
   // Roll angles kept at 12° spacing (physics-tuned); GLB-derived angles would be
   // smaller (~0°/7°/11°/16°) due to flatter canopy arc (R≈2.96 vs old R=1.55).
-  makeCanopyCellSegment('cell_c',  _cellQC(1, 'center'),   0, 'center', 0,   1.0, CANOPY_CELL_POLAR),
+  makeCanopyCellSegment('cell_c',  _cellQC(1, 'center'),   0, 'center', 1.0, 1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_r1', _cellQC(2, 'right'),   12, 'right',  0.4, 1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_l1', _cellQC(2, 'left'),   -12, 'left',   0.4, 1.0, CANOPY_CELL_POLAR),
   makeCanopyCellSegment('cell_r2', _cellQC(3, 'right'),   24, 'right',  0.7, 1.0, CANOPY_CELL_POLAR),
