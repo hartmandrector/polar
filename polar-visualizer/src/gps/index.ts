@@ -25,7 +25,7 @@ export { geodeticToNED, nedToGeodetic } from './geo-utils';
 // WSE aero extraction
 export {
   extractAero, calculateWingsuitParameters, calculateSustainedSpeeds, coeffToSustainedSpeeds,
-  matchAOAFromTable,
+  matchAOAFromTable, computeBodyRates,
 } from './wse';
 export type { SystemPolarPoint } from './wse';
 
@@ -40,5 +40,5 @@ export type { FlightComputerConfig, FlightComputerInput, FlightComputerOutput } 
 export type {
   GNSSData, TrackDataset, StabilityCSVRow,
   GPSProcessedPoint, GPSPipelinePoint, AeroExtraction,
-  WindVector, SustainedSpeeds,
+  WindVector, SustainedSpeeds, FlightModeOutput, BodyRates,
 } from './types';

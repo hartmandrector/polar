@@ -15,8 +15,10 @@ import { applySGFilterMultiPass } from './sg-filter';
 import { calculateDerivative } from './math-utils';
 import { getRho, dynamicPressure } from './atmosphere';
 import { geodeticToNED } from './geo-utils';
-import { extractAero, SystemPolarPoint } from './wse';
+import { extractAero, SystemPolarPoint, computeBodyRates } from './wse';
 import { zeroWind, applyWindCorrection } from './wind-model';
+import { FlightComputer } from './flight-computer';
+import type { FlightComputerInput } from './flight-computer';
 import {
   GNSSData, StabilityCSVRow,
   GPSProcessedPoint, GPSPipelinePoint,
@@ -170,6 +172,32 @@ export function processGNSSData(
     }
 
     results.push({ processed, aero });
+  }
+
+  // ---- Step 5: Flight computer mode detection ----
+  const fc = new FlightComputer();
+  const fcInputs: FlightComputerInput[] = results.map(r => ({
+    t: r.processed.t,
+    groundSpeed: r.processed.groundSpeed,
+    climb: -r.processed.velD,  // climb = -velD (positive up)
+    hMSL: r.processed.hMSL,
+    aero: r.aero,
+  }));
+  const modes = fc.processAll(fcInputs);
+  for (let i = 0; i < results.length; i++) {
+    results[i].flightMode = modes[i];
+  }
+
+  // ---- Step 6: Body rates from Euler angle differentiation ----
+  const eulerPoints = results.map(r => ({
+    t: r.processed.t,
+    phi: r.aero.roll,
+    theta: r.aero.theta,
+    psi: r.aero.psi,
+  }));
+  const bodyRates = computeBodyRates(eulerPoints);
+  for (let i = 0; i < results.length; i++) {
+    results[i].bodyRates = bodyRates[i];
   }
 
   return results;

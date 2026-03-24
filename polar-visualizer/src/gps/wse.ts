@@ -13,7 +13,7 @@
  */
 
 import { GRAVITY } from './atmosphere';
-import { AeroExtraction, SustainedSpeeds } from './types';
+import { AeroExtraction, SustainedSpeeds, BodyRates } from './types';
 
 function signum(x: number): number {
   return x > 0 ? 1 : x < 0 ? -1 : 0;
@@ -192,6 +192,15 @@ export function extractAero(
     residual = match.residual;
   }
 
+  // Euler angles — compose AOA on top of airspeed vector (matches CloudBASE)
+  const airHorizontal = Math.sqrt(vN * vN + vE * vE);
+  const gamma = airHorizontal > 0.1 ? -Math.atan2(vD, airHorizontal) : 0;
+  const headingAir = Math.atan2(vE, vN);
+  const theta = gamma + aoa * Math.cos(roll);
+  // Heading correction: α·sin(φ) projects into heading plane, scaled by 1/cos(θ)
+  const cosTheta = Math.cos(theta);
+  const psi = headingAir + (Math.abs(cosTheta) > 0.01 ? aoa * Math.sin(roll) / cosTheta : 0);
+
   return {
     kl, kd, roll,
     cl, cd,
@@ -200,5 +209,93 @@ export function extractAero(
     sustainedMag: ssMag,
     aoa,
     aoaResidual: residual,
+    gamma,
+    theta,
+    psi,
   };
+}
+
+// ============================================================================
+// Body Rates — Inverse DKE from Euler Angle Differentiation
+// ============================================================================
+
+const R2D = 180 / Math.PI;
+
+/**
+ * Unwrap angle difference to [-π, π] to handle wraparound (especially heading).
+ */
+function unwrapAngleDiff(a2: number, a1: number): number {
+  let diff = a2 - a1;
+  while (diff > Math.PI) diff -= 2 * Math.PI;
+  while (diff < -Math.PI) diff += 2 * Math.PI;
+  return diff;
+}
+
+/**
+ * Compute body-axis angular rates (p, q, r) from Euler angle time histories.
+ *
+ * Uses central differences for the interior and forward/backward at the edges,
+ * then applies the inverse DKE (Differential Kinematic Equation):
+ *   p = φ̇ − ψ̇·sin(θ)
+ *   q = θ̇·cos(φ) + ψ̇·sin(φ)·cos(θ)
+ *   r = −θ̇·sin(φ) + ψ̇·cos(φ)·cos(θ)
+ *
+ * Matches CloudBASE speedpage-gps-export.ts computeBodyRates().
+ *
+ * @param aeroPoints Array of { t, phi, theta, psi } extracted from pipeline points
+ * @returns BodyRates[] with p, q, r in deg/s
+ */
+export function computeBodyRates(
+  aeroPoints: { t: number; phi: number; theta: number; psi: number }[],
+): BodyRates[] {
+  const n = aeroPoints.length;
+  if (n === 0) return [];
+  if (n === 1) return [{ p: 0, q: 0, r: 0 }];
+
+  const rates: BodyRates[] = [];
+
+  for (let i = 0; i < n; i++) {
+    let phiDot: number, thetaDot: number, psiDot: number;
+
+    if (i === 0) {
+      // Forward difference
+      const dt = aeroPoints[1].t - aeroPoints[0].t;
+      if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
+      phiDot = (aeroPoints[1].phi - aeroPoints[0].phi) / dt;
+      thetaDot = (aeroPoints[1].theta - aeroPoints[0].theta) / dt;
+      psiDot = unwrapAngleDiff(aeroPoints[1].psi, aeroPoints[0].psi) / dt;
+    } else if (i === n - 1) {
+      // Backward difference
+      const dt = aeroPoints[i].t - aeroPoints[i - 1].t;
+      if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
+      phiDot = (aeroPoints[i].phi - aeroPoints[i - 1].phi) / dt;
+      thetaDot = (aeroPoints[i].theta - aeroPoints[i - 1].theta) / dt;
+      psiDot = unwrapAngleDiff(aeroPoints[i].psi, aeroPoints[i - 1].psi) / dt;
+    } else {
+      // Central difference
+      const dt = aeroPoints[i + 1].t - aeroPoints[i - 1].t;
+      if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
+      phiDot = (aeroPoints[i + 1].phi - aeroPoints[i - 1].phi) / dt;
+      thetaDot = (aeroPoints[i + 1].theta - aeroPoints[i - 1].theta) / dt;
+      psiDot = unwrapAngleDiff(aeroPoints[i + 1].psi, aeroPoints[i - 1].psi) / dt;
+    }
+
+    const { phi, theta } = aeroPoints[i];
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    const sinTheta = Math.sin(theta);
+    const cosTheta = Math.cos(theta);
+
+    const p = phiDot - psiDot * sinTheta;
+    const q = thetaDot * cosPhi + psiDot * sinPhi * cosTheta;
+    const r = -thetaDot * sinPhi + psiDot * cosPhi * cosTheta;
+
+    rates.push({
+      p: p * R2D,
+      q: q * R2D,
+      r: r * R2D,
+    });
+  }
+
+  return rates;
 }

@@ -115,12 +115,36 @@ export interface AeroExtraction {
   // AOA from segment model matching
   aoa: number;             // radians, estimated angle of attack
   aoaResidual: number;     // CL/CD match residual (quality metric)
+
+  // Euler angles — airspeed-based with AOA composition (matches CloudBASE)
+  gamma: number;           // radians, flight path angle (negative = descending)
+  theta: number;           // radians, pitch = gamma_air + alpha·cos(roll)
+  psi: number;             // radians, heading = heading_air + alpha·sin(roll)
 }
 
 /** Full GPS pipeline output point */
 export interface GPSPipelinePoint {
   processed: GPSProcessedPoint;
   aero: AeroExtraction;
+  /** Flight mode from state machine (populated after pipeline run) */
+  flightMode?: FlightModeOutput;
+  /** Body-axis angular rates from Euler angle differentiation */
+  bodyRates?: BodyRates;
+}
+
+/** Flight mode output attached to each pipeline point */
+export interface FlightModeOutput {
+  mode: number;            // FlightMode enum value
+  modeString: string;      // human-readable mode label
+  deployConfidence: number;
+  landingConfidence: number;
+}
+
+/** Body-axis angular rates via inverse DKE from Euler angles */
+export interface BodyRates {
+  p: number;               // deg/s roll rate
+  q: number;               // deg/s pitch rate
+  r: number;               // deg/s yaw rate
 }
 
 // ============================================================================
