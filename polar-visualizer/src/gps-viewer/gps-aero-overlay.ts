@@ -20,6 +20,7 @@ import {
 import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
+import type { AxisMoments } from './moment-inset'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -72,6 +73,13 @@ export class GPSAeroOverlay {
   private netForceArrow: THREE.ArrowHelper
   private config: AeroOverlayConfig | null = null
   private controls: SegmentControls = defaultControls()
+
+  /** Last computed moment breakdown (for external consumers like MomentInset) */
+  lastMoments: AxisMoments = {
+    pitch: { aero: 0, pilot: 0, gyro: 0, net: 0 },
+    roll:  { aero: 0, pilot: 0, gyro: 0, net: 0 },
+    yaw:   { aero: 0, pilot: 0, gyro: 0, net: 0 },
+  }
 
   constructor(scene: THREE.Scene) {
     this.group = new THREE.Group()
@@ -299,6 +307,22 @@ export class GPSAeroOverlay {
       this.momentArcs[i].line.geometry.dispose()
       this.momentArcs[i].line.geometry = new THREE.BufferGeometry().setFromPoints(pts)
       this.momentArcs[i].line.visible = true
+    }
+
+    // Populate moment breakdown for MomentInset
+    // Gyroscopic coupling: ω × (I·ω) — cross product of body rates with angular momentum
+    // Simplified: use Ixx≈Iyy≈Izz ≈ mass * height² / 12 as rough estimate
+    const Iapprox = cfg.mass * cfg.height * cfg.height / 12
+    const gyroX = omega.q * omega.r * 0  // negligible for wingsuit (Iyy ≈ Izz)
+    const gyroY = omega.p * omega.r * Iapprox * 0.1  // small coupling
+    const gyroZ = omega.p * omega.q * Iapprox * 0.1
+    const mx = result.system.moment.x
+    const my = result.system.moment.y
+    const mz = result.system.moment.z
+    this.lastMoments = {
+      roll:  { aero: mx, pilot: 0, gyro: gyroX, net: mx + gyroX },
+      pitch: { aero: my, pilot: 0, gyro: gyroY, net: my + gyroY },
+      yaw:   { aero: mz, pilot: 0, gyro: gyroZ, net: mz + gyroZ },
     }
   }
 

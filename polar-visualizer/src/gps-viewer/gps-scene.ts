@@ -11,6 +11,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
+import { MomentInset } from './moment-inset'
 import type { GPSPipelinePoint } from '../gps/types'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
@@ -46,6 +47,7 @@ export class GPSScene {
 
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
+  private momentInset: MomentInset
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -88,6 +90,10 @@ export class GPSScene {
 
     // Aero overlay
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
+
+    // Moment breakdown inset (bottom-left of scene panel)
+    const scenePanel = canvas.parentElement!
+    this.momentInset = new MomentInset(scenePanel)
 
     // Start resize handling
     this.handleResize()
@@ -211,6 +217,9 @@ export class GPSScene {
 
     // Aero overlay — evaluate segment model at this flight condition
     this.aeroOverlay.update(pt, pos)
+
+    // Update moment breakdown inset
+    this.momentInset.update(this.aeroOverlay.lastMoments)
   }
 
   private handleResize() {
