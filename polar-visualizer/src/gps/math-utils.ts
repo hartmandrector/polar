@@ -119,3 +119,23 @@ export function calculateAcceleration<T>(
   
   return { accelNorth, accelWest, accelUp };
 }
+
+// ============================================================================
+// Angle Utilities
+// ============================================================================
+
+/**
+ * Unwrap an angle array so that adjacent samples don't have jumps > π.
+ * Returns a new array with continuous (unwrapped) angles in radians.
+ */
+export function unwrapAngles(angles: number[]): number[] {
+  if (angles.length === 0) return [];
+  const out = [angles[0]];
+  for (let i = 1; i < angles.length; i++) {
+    let diff = angles[i] - out[i - 1];
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    out.push(out[i - 1] + diff);
+  }
+  return out;
+}

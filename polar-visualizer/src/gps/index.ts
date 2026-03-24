@@ -14,7 +14,7 @@ export { applySGFilter, applySGFilterMultiPass, applySGFilterToArray, smoothGPSV
 export type { SGWindowSize } from './sg-coefficients';
 
 // Math utilities
-export { getSlope, calculateDerivative, calculateAcceleration } from './math-utils';
+export { getSlope, calculateDerivative, calculateAcceleration, unwrapAngles } from './math-utils';
 
 // Atmosphere
 export { getRho, dynamicPressure, altitudeToPressure, temperature, GRAVITY } from './atmosphere';
@@ -25,7 +25,7 @@ export { geodeticToNED, nedToGeodetic } from './geo-utils';
 // WSE aero extraction
 export {
   extractAero, calculateWingsuitParameters, calculateSustainedSpeeds, coeffToSustainedSpeeds,
-  matchAOAFromTable, computeBodyRates,
+  matchAOAFromTable, computeBodyRates, applyInverseDKE,
 } from './wse';
 export type { SystemPolarPoint } from './wse';
 

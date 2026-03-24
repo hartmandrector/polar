@@ -13,9 +13,10 @@
 import { SGWindowSize } from './sg-coefficients';
 import { applySGFilterMultiPass } from './sg-filter';
 import { calculateDerivative } from './math-utils';
+import { unwrapAngles } from './math-utils';
 import { getRho, dynamicPressure } from './atmosphere';
 import { geodeticToNED } from './geo-utils';
-import { extractAero, SystemPolarPoint, computeBodyRates } from './wse';
+import { extractAero, SystemPolarPoint, applyInverseDKE } from './wse';
 import { zeroWind, applyWindCorrection } from './wind-model';
 import { FlightComputer } from './flight-computer';
 import type { FlightComputerInput } from './flight-computer';
@@ -188,33 +189,43 @@ export function processGNSSData(
     results[i].flightMode = modes[i];
   }
 
-  // ---- Step 6: Body rates from Euler angle differentiation ----
-  const eulerPoints = results.map(r => ({
+  // ---- Step 6: SG-smooth Euler angles, LS differentiate, inverse DKE → body rates ----
+  // Extract raw Euler angles from aero extraction
+  const rawPhi   = results.map(r => r.aero.roll);
+  const rawTheta = results.map(r => r.aero.theta);
+  const rawPsi   = results.map(r => r.aero.psi);
+
+  // Unwrap heading to handle ±π wraparound before smoothing
+  const unwrappedPsi = unwrapAngles(rawPsi);
+
+  // SG multi-pass smooth (same windows as velocity)
+  const smoothPhi   = applySGFilterMultiPass(rawPhi, config.smoothingWindows, v => v);
+  const smoothTheta = applySGFilterMultiPass(rawTheta, config.smoothingWindows, v => v);
+  const smoothPsi   = applySGFilterMultiPass(unwrappedPsi, config.smoothingWindows, v => v);
+
+  // LS linear fit derivative → Euler rates (rad/s)
+  const timedAngles = results.map((r, i) => ({
     t: r.processed.t,
-    phi: r.aero.roll,
-    theta: r.aero.theta,
-    psi: r.aero.psi,
+    phi: smoothPhi[i],
+    theta: smoothTheta[i],
+    psi: smoothPsi[i],
   }));
-  const bodyRates = computeBodyRates(eulerPoints);
+  const phiDots   = calculateDerivative(timedAngles, config.accelWindowSize, d => d.t, d => d.phi);
+  const thetaDots = calculateDerivative(timedAngles, config.accelWindowSize, d => d.t, d => d.theta);
+  const psiDots   = calculateDerivative(timedAngles, config.accelWindowSize, d => d.t, d => d.psi);
+
+  // Inverse DKE: (φ̇, θ̇, ψ̇) + (φ, θ) → (p, q, r)
+  const bodyRates = applyInverseDKE(smoothPhi, smoothTheta, phiDots, thetaDots, psiDots);
   for (let i = 0; i < results.length; i++) {
     results[i].bodyRates = bodyRates[i];
   }
 
-  // ---- Step 7: SG-smooth body rates, then LS angular acceleration ----
-  // Smooth rates first to avoid amplifying noise through differentiation
-  const rawP = bodyRates.map(r => r.p);
-  const rawQ = bodyRates.map(r => r.q);
-  const rawR = bodyRates.map(r => r.r);
-  const smoothP = applySGFilterMultiPass(rawP, config.smoothingWindows, v => v);
-  const smoothQ = applySGFilterMultiPass(rawQ, config.smoothingWindows, v => v);
-  const smoothR = applySGFilterMultiPass(rawR, config.smoothingWindows, v => v);
-
-  // Build timed array for LS derivative
+  // ---- Step 7: LS angular acceleration from body rates (no additional smoothing) ----
   const timedRates = results.map((r, i) => ({
     t: r.processed.t,
-    p: smoothP[i],
-    q: smoothQ[i],
-    r: smoothR[i],
+    p: bodyRates[i].p,
+    q: bodyRates[i].q,
+    r: bodyRates[i].r,
   }));
   const pDots = calculateDerivative(timedRates, config.accelWindowSize, d => d.t, d => d.p);
   const qDots = calculateDerivative(timedRates, config.accelWindowSize, d => d.t, d => d.q);

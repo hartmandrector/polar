@@ -216,34 +216,56 @@ export function extractAero(
 }
 
 // ============================================================================
-// Body Rates — Inverse DKE from Euler Angle Differentiation
+// Body Rates — Inverse DKE from Euler Rates
 // ============================================================================
 
 const R2D = 180 / Math.PI;
 
 /**
- * Unwrap angle difference to [-π, π] to handle wraparound (especially heading).
- */
-function unwrapAngleDiff(a2: number, a1: number): number {
-  let diff = a2 - a1;
-  while (diff > Math.PI) diff -= 2 * Math.PI;
-  while (diff < -Math.PI) diff += 2 * Math.PI;
-  return diff;
-}
-
-/**
- * Compute body-axis angular rates (p, q, r) from Euler angle time histories.
+ * Apply inverse DKE (Differential Kinematic Equation) to convert
+ * Euler rates (φ̇, θ̇, ψ̇) to body-axis rates (p, q, r).
  *
- * Uses central differences for the interior and forward/backward at the edges,
- * then applies the inverse DKE (Differential Kinematic Equation):
  *   p = φ̇ − ψ̇·sin(θ)
  *   q = θ̇·cos(φ) + ψ̇·sin(φ)·cos(θ)
  *   r = −θ̇·sin(φ) + ψ̇·cos(φ)·cos(θ)
  *
- * Matches CloudBASE speedpage-gps-export.ts computeBodyRates().
+ * All inputs/outputs in radians and rad/s; returned BodyRates in deg/s.
  *
- * @param aeroPoints Array of { t, phi, theta, psi } extracted from pipeline points
- * @returns BodyRates[] with p, q, r in deg/s
+ * @param phi    Smoothed roll angles (rad)
+ * @param theta  Smoothed pitch angles (rad)
+ * @param phiDot   Euler roll rate (rad/s) from LS derivative
+ * @param thetaDot Euler pitch rate (rad/s) from LS derivative
+ * @param psiDot   Euler yaw rate (rad/s) from LS derivative
+ */
+export function applyInverseDKE(
+  phi: number[],
+  theta: number[],
+  phiDot: number[],
+  thetaDot: number[],
+  psiDot: number[],
+): BodyRates[] {
+  const n = phi.length;
+  const rates: BodyRates[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const sinPhi = Math.sin(phi[i]);
+    const cosPhi = Math.cos(phi[i]);
+    const sinTheta = Math.sin(theta[i]);
+    const cosTheta = Math.cos(theta[i]);
+
+    const p = phiDot[i] - psiDot[i] * sinTheta;
+    const q = thetaDot[i] * cosPhi + psiDot[i] * sinPhi * cosTheta;
+    const r = -thetaDot[i] * sinPhi + psiDot[i] * cosPhi * cosTheta;
+
+    rates.push({ p: p * R2D, q: q * R2D, r: r * R2D });
+  }
+
+  return rates;
+}
+
+/**
+ * Legacy: Compute body rates from Euler angle time histories using finite differences.
+ * @deprecated Use SG-smoothed angles + LS derivative + applyInverseDKE instead.
  */
 export function computeBodyRates(
   aeroPoints: { t: number; phi: number; theta: number; psi: number }[],
@@ -252,32 +274,37 @@ export function computeBodyRates(
   if (n === 0) return [];
   if (n === 1) return [{ p: 0, q: 0, r: 0 }];
 
+  /** Unwrap angle difference to [-π, π] */
+  function unwrap(a2: number, a1: number): number {
+    let diff = a2 - a1;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    return diff;
+  }
+
   const rates: BodyRates[] = [];
 
   for (let i = 0; i < n; i++) {
     let phiDot: number, thetaDot: number, psiDot: number;
 
     if (i === 0) {
-      // Forward difference
       const dt = aeroPoints[1].t - aeroPoints[0].t;
       if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
       phiDot = (aeroPoints[1].phi - aeroPoints[0].phi) / dt;
       thetaDot = (aeroPoints[1].theta - aeroPoints[0].theta) / dt;
-      psiDot = unwrapAngleDiff(aeroPoints[1].psi, aeroPoints[0].psi) / dt;
+      psiDot = unwrap(aeroPoints[1].psi, aeroPoints[0].psi) / dt;
     } else if (i === n - 1) {
-      // Backward difference
       const dt = aeroPoints[i].t - aeroPoints[i - 1].t;
       if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
       phiDot = (aeroPoints[i].phi - aeroPoints[i - 1].phi) / dt;
       thetaDot = (aeroPoints[i].theta - aeroPoints[i - 1].theta) / dt;
-      psiDot = unwrapAngleDiff(aeroPoints[i].psi, aeroPoints[i - 1].psi) / dt;
+      psiDot = unwrap(aeroPoints[i].psi, aeroPoints[i - 1].psi) / dt;
     } else {
-      // Central difference
       const dt = aeroPoints[i + 1].t - aeroPoints[i - 1].t;
       if (dt < 1e-6) { rates.push({ p: 0, q: 0, r: 0 }); continue; }
       phiDot = (aeroPoints[i + 1].phi - aeroPoints[i - 1].phi) / dt;
       thetaDot = (aeroPoints[i + 1].theta - aeroPoints[i - 1].theta) / dt;
-      psiDot = unwrapAngleDiff(aeroPoints[i + 1].psi, aeroPoints[i - 1].psi) / dt;
+      psiDot = unwrap(aeroPoints[i + 1].psi, aeroPoints[i - 1].psi) / dt;
     }
 
     const { phi, theta } = aeroPoints[i];
@@ -290,11 +317,7 @@ export function computeBodyRates(
     const q = thetaDot * cosPhi + psiDot * sinPhi * cosTheta;
     const r = -thetaDot * sinPhi + psiDot * cosPhi * cosTheta;
 
-    rates.push({
-      p: p * R2D,
-      q: q * R2D,
-      r: r * R2D,
-    });
+    rates.push({ p: p * R2D, q: q * R2D, r: r * R2D });
   }
 
   return rates;
