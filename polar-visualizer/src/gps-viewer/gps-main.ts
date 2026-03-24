@@ -9,6 +9,8 @@ import { buildSystemPolarTable } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
+import { a5segmentsContinuous } from '../polar/polar-data'
+import { computeCenterOfMass } from '../polar/inertia'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -108,6 +110,18 @@ async function loadFile(file: File) {
     scene = new GPSScene(canvas)
   }
   scene.setData(result.points)
+
+  // Set aero overlay config from A5 segments model
+  const polar = a5segmentsContinuous
+  const massRef = 1.875  // pilot height
+  const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
+  scene.setAeroConfig({
+    segments: polar.aeroSegments ?? [],
+    cgMeters,
+    height: massRef,
+    mass: polar.m,
+    rho: 1.225,
+  })
 
   // Initialize replay
   if (!replay) {

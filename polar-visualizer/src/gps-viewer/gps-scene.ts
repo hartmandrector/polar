@@ -10,6 +10,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
+import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import type { GPSPipelinePoint } from '../gps/types'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
@@ -42,6 +43,9 @@ export class GPSScene {
   private followTightness = 0.3
   private prevModelPos = new THREE.Vector3()
   private flightDir = new THREE.Vector3(0, 0, 1)
+
+  // Aero overlay
+  private aeroOverlay: GPSAeroOverlay
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -82,6 +86,9 @@ export class GPSScene {
     const axes = new THREE.AxesHelper(2)
     this.scene.add(axes)
 
+    // Aero overlay
+    this.aeroOverlay = new GPSAeroOverlay(this.scene)
+
     // Start resize handling
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
@@ -108,6 +115,11 @@ export class GPSScene {
   /** Set follow tightness: 0 = static camera, 1 = tight follow */
   setFollowTightness(value: number) {
     this.followTightness = Math.max(0, Math.min(1, value))
+  }
+
+  /** Set the aero model config for force vector overlay */
+  setAeroConfig(config: AeroOverlayConfig) {
+    this.aeroOverlay.setConfig(config)
   }
 
   setData(points: GPSPipelinePoint[]) {
@@ -196,6 +208,9 @@ export class GPSScene {
       const lerpFactor = this.followTightness * this.followTightness * 0.15
       this.camera.position.lerp(idealPos, lerpFactor)
     }
+
+    // Aero overlay — evaluate segment model at this flight condition
+    this.aeroOverlay.update(pt, pos)
   }
 
   private handleResize() {
