@@ -219,7 +219,11 @@ export class GPSScene {
     this.aeroOverlay.update(pt, pos)
 
     // Update moment breakdown inset
-    this.momentInset.update(this.aeroOverlay.lastMoments)
+    this.momentInset.update(
+      this.aeroOverlay.lastMoments,
+      this.aeroOverlay.lastControls,
+      this.aeroOverlay.lastConverged,
+    )
   }
 
   private handleResize() {

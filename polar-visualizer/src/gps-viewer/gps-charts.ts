@@ -25,7 +25,7 @@ const R2D = 180 / Math.PI
 // ─── Chart View Types ───────────────────────────────────────────────────────
 
 type Chart1View = 'polar' | 'speed' | 'ld'
-type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'theta' | 'psi' | 'klkd' | 'clcd' | 'roll' | 'mode' | 'bodyrates' | 'eulerrates' | 'angaccel'
+type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'theta' | 'psi' | 'klkd' | 'clcd' | 'roll' | 'mode' | 'bodyrates' | 'eulerrates' | 'angaccel' | 'controls'
 type Chart3View = 'position' | 'profile'
 
 // ─── Color Constants ────────────────────────────────────────────────────────
@@ -229,6 +229,12 @@ export class GPSCharts {
         y2Data = pts.map(p => p.bodyRates?.qDot ?? 0)
         y3Data = pts.map(p => p.bodyRates?.rDot ?? 0)
         yLabel = 'Angular Accel (°/s²)  ṗ=blue q̇=orange ṙ=green'
+        break
+      case 'controls':
+        yData = pts.map(p => (p.solvedControls?.pitchThrottle ?? 0) * 100)
+        y2Data = pts.map(p => (p.solvedControls?.rollThrottle ?? 0) * 100)
+        y3Data = pts.map(p => (p.solvedControls?.yawThrottle ?? 0) * 100)
+        yLabel = 'Control Inputs (%)  pitch=blue roll=orange yaw=green'
         break
       case 'eulerrates': {
         // Euler rates: φ̇, θ̇, ψ̇ via finite differences on aero angles

@@ -130,6 +130,8 @@ export interface GPSPipelinePoint {
   flightMode?: FlightModeOutput;
   /** Body-axis angular rates from Euler angle differentiation */
   bodyRates?: BodyRates;
+  /** Solved pilot control inputs from control inversion (Pass 2) */
+  solvedControls?: SolvedControls;
 }
 
 /** Flight mode output attached to each pipeline point */
@@ -149,6 +151,14 @@ export interface BodyRates {
   pDot?: number;
   qDot?: number;
   rDot?: number;
+}
+
+/** Solved pilot control inputs from control inversion */
+export interface SolvedControls {
+  pitchThrottle: number;   // [-1, 1]
+  rollThrottle: number;    // [-1, 1]
+  yawThrottle: number;     // [-1, 1]
+  converged: boolean;
 }
 
 // ============================================================================

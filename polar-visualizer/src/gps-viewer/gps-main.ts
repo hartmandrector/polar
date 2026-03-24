@@ -10,7 +10,8 @@ import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
 import { a5segmentsContinuous } from '../polar/polar-data'
-import { computeCenterOfMass } from '../polar/inertia'
+import { computeCenterOfMass, computeInertia } from '../polar/inertia'
+import { solveControlInputs, type ControlInversionConfig } from './control-solver'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -115,13 +116,39 @@ async function loadFile(file: File) {
   const polar = a5segmentsContinuous
   const massRef = 1.875  // pilot height
   const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
+  const inertia = computeInertia(polar.massSegments ?? [], massRef, polar.m)
   scene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
     cgMeters,
     height: massRef,
     mass: polar.m,
     rho: 1.225,
+    inertia,
   })
+
+  // Batch-solve control inputs for all points (Pass 2)
+  const solverCfg: ControlInversionConfig = {
+    segments: polar.aeroSegments ?? [],
+    cgMeters,
+    height: massRef,
+    mass: polar.m,
+    inertia,
+    rho: 1.225,
+  }
+  let convergeCount = 0
+  for (const pt of result.points) {
+    if (pt.bodyRates?.pDot !== undefined) {
+      const sol = solveControlInputs(pt, solverCfg)
+      pt.solvedControls = {
+        pitchThrottle: sol.pitchThrottle,
+        rollThrottle: sol.rollThrottle,
+        yawThrottle: sol.yawThrottle,
+        converged: sol.converged,
+      }
+      if (sol.converged) convergeCount++
+    }
+  }
+  console.log(`Control inversion: ${convergeCount}/${result.points.length} converged`)
 
   // Initialize replay
   if (!replay) {

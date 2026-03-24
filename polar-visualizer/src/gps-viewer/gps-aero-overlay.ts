@@ -21,6 +21,8 @@ import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
 import type { AxisMoments } from './moment-inset'
+import { solveControlInputs, type ControlInversionConfig, type ControlInversionResult } from './control-solver'
+import type { InertiaComponents } from '../polar/inertia'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ export interface AeroOverlayConfig {
   height: number       // reference height for denormalization
   mass: number
   rho?: number
+  inertia?: InertiaComponents
 }
 
 // ─── Aero Overlay ───────────────────────────────────────────────────────────
@@ -80,6 +83,13 @@ export class GPSAeroOverlay {
     roll:  { aero: 0, pilot: 0, gyro: 0, net: 0 },
     yaw:   { aero: 0, pilot: 0, gyro: 0, net: 0 },
   }
+
+  /** Last solved control inputs (Pass 2) */
+  lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
+  lastConverged = false
+
+  /** Enable Pass 2 control inversion (requires inertia in config) */
+  enableControlSolver = true
 
   constructor(scene: THREE.Scene) {
     this.group = new THREE.Group()
@@ -311,19 +321,38 @@ export class GPSAeroOverlay {
     }
 
     // Populate moment breakdown for MomentInset
-    // Gyroscopic coupling: ω × (I·ω) — cross product of body rates with angular momentum
-    // Simplified: use Ixx≈Iyy≈Izz ≈ mass * height² / 12 as rough estimate
-    const Iapprox = cfg.mass * cfg.height * cfg.height / 12
-    const gyroX = omega.q * omega.r * 0  // negligible for wingsuit (Iyy ≈ Izz)
-    const gyroY = omega.p * omega.r * Iapprox * 0.1  // small coupling
-    const gyroZ = omega.p * omega.q * Iapprox * 0.1
-    const mx = result.system.moment.x
-    const my = result.system.moment.y
-    const mz = result.system.moment.z
-    this.lastMoments = {
-      roll:  { aero: mx, pilot: 0, gyro: gyroX, net: mx + gyroX },
-      pitch: { aero: my, pilot: 0, gyro: gyroY, net: my + gyroY },
-      yaw:   { aero: mz, pilot: 0, gyro: gyroZ, net: mz + gyroZ },
+    if (this.enableControlSolver && cfg.inertia && pt.bodyRates?.pDot !== undefined) {
+      // Pass 2: Full control inversion
+      const solverCfg: ControlInversionConfig = {
+        segments: cfg.segments,
+        cgMeters: cfg.cgMeters,
+        height: cfg.height,
+        mass: cfg.mass,
+        inertia: cfg.inertia,
+        rho,
+      }
+      const sol = solveControlInputs(pt, solverCfg)
+      this.lastMoments = sol.moments
+      this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
+      this.lastConverged = sol.converged
+
+      // Update force vectors with solved controls (re-evaluate)
+      this.controls = defaultControls()
+      this.controls.pitchThrottle = sol.pitchThrottle
+      this.controls.rollThrottle = sol.rollThrottle
+      this.controls.yawThrottle = sol.yawThrottle
+    } else {
+      // Pass 1: Neutral controls only
+      const mx = result.system.moment.x
+      const my = result.system.moment.y
+      const mz = result.system.moment.z
+      this.lastMoments = {
+        roll:  { aero: mx, pilot: 0, gyro: 0, net: mx },
+        pitch: { aero: my, pilot: 0, gyro: 0, net: my },
+        yaw:   { aero: mz, pilot: 0, gyro: 0, net: mz },
+      }
+      this.lastControls = { pitch: 0, roll: 0, yaw: 0 }
+      this.lastConverged = true
     }
   }
 

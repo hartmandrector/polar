@@ -225,7 +225,11 @@ export class MomentInset {
   }
 
   /** Update moment breakdown and re-render */
-  update(moments: AxisMoments) {
+  update(
+    moments: AxisMoments,
+    controls?: { pitch: number; roll: number; yaw: number },
+    converged?: boolean,
+  ) {
     for (const axisName of ['pitch', 'roll', 'yaw'] as const) {
       const m = moments[axisName]
       const center = AXIS_OFFSETS[axisName]
@@ -258,11 +262,18 @@ export class MomentInset {
     }
 
     // Update legend
+    const ctrl = controls ?? { pitch: 0, roll: 0, yaw: 0 }
+    const convStr = converged === false ? ' <span style="color:#f44">✗</span>' : ''
     this.legend.innerHTML = [
       `<span style="color:#ff6644">■</span> Aero`,
       `<span style="color:#44ff88">■</span> Pilot`,
       `<span style="color:#ffdd44">■</span> Gyro`,
       `<span style="color:#ffffff">■</span> Net`,
+      `─────────`,
+      `<b>Controls</b>${convStr}`,
+      `  Pitch ${fmtCtrl(ctrl.pitch)}`,
+      `  Roll  ${fmtCtrl(ctrl.roll)}`,
+      `  Yaw   ${fmtCtrl(ctrl.yaw)}`,
       `─────────`,
       `<b>Pitch</b>`,
       `  A ${fmt(moments.pitch.aero)} P ${fmt(moments.pitch.pilot)}`,
@@ -288,4 +299,13 @@ export class MomentInset {
 function fmt(v: number): string {
   const s = v.toFixed(1)
   return v >= 0 ? `+${s}` : s
+}
+
+/** Format control input as percentage with bar */
+function fmtCtrl(v: number): string {
+  const pct = (v * 100).toFixed(0)
+  const bar = v >= 0
+    ? '░'.repeat(5) + '█'.repeat(Math.min(5, Math.round(Math.abs(v) * 5)))
+    : '█'.repeat(Math.min(5, Math.round(Math.abs(v) * 5))) + '░'.repeat(5)
+  return `${bar} ${v >= 0 ? '+' : ''}${pct}%`
 }
