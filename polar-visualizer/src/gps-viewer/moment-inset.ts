@@ -39,9 +39,9 @@ const COLORS = {
 // Axis orientations in the mini scene (fixed camera looking at origin)
 // We arrange pitch, roll, yaw as three separate "gauge" clusters
 const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
-  pitch: new THREE.Vector3(0, 1.8, 0),
-  roll:  new THREE.Vector3(-2.2, -1.2, 0),
-  yaw:   new THREE.Vector3(2.2, -1.2, 0),
+  pitch: new THREE.Vector3(0, 2.2, 0),
+  roll:  new THREE.Vector3(-2.8, -1.5, 0),
+  yaw:   new THREE.Vector3(2.8, -1.5, 0),
 }
 
 // Arc plane normals for each axis (in mini-scene space)
@@ -149,8 +149,8 @@ export class MomentInset {
     this.container = document.createElement('div')
     this.container.id = 'moment-inset'
     this.container.style.cssText = `
-      position: absolute; bottom: 8px; left: 8px;
-      width: 280px; height: 260px;
+      position: absolute; top: 8px; left: 8px;
+      width: 400px; height: 380px;
       pointer-events: none; z-index: 10;
     `
     parentEl.style.position = 'relative'
@@ -164,22 +164,22 @@ export class MomentInset {
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setSize(280, 260)
+    this.renderer.setSize(400, 380)
     this.renderer.setClearColor(0x000000, 0)
 
     // Scene
     this.scene = new THREE.Scene()
 
     // Semi-transparent background
-    const bgGeo = new THREE.PlaneGeometry(8, 7)
+    const bgGeo = new THREE.PlaneGeometry(10, 9)
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1a, transparent: true, opacity: 0.75 })
     const bg = new THREE.Mesh(bgGeo, bgMat)
     bg.position.z = -0.5
     this.scene.add(bg)
 
     // Orthographic camera looking at origin
-    const aspect = 280 / 260
-    const viewSize = 3.5
+    const aspect = 400 / 380
+    const viewSize = 4.5
     this.camera = new THREE.OrthographicCamera(
       -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 0.1, 10,
     )
