@@ -8,6 +8,7 @@ import { processGPSFile, type PipelineResult } from '../gps/gps-pipeline'
 import { buildSystemPolarTable } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
+import { GPSScene } from './gps-scene'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -20,11 +21,13 @@ const scrubber = document.getElementById('scrubber') as HTMLInputElement
 const timeDisplay = document.getElementById('time-display')!
 const speedSelect = document.getElementById('speed-select') as HTMLSelectElement
 const btnLoadNew = document.getElementById('btn-load-new')!
+const followSlider = document.getElementById('follow-slider') as HTMLInputElement
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let charts: GPSCharts | null = null
 let replay: GPSReplay | null = null
+let scene: GPSScene | null = null
 let result: PipelineResult | null = null
 
 // ─── Drop Zone ──────────────────────────────────────────────────────────────
@@ -99,10 +102,18 @@ async function loadFile(file: File) {
   }
   charts.setData(result.points)
 
+  // Initialize 3D scene
+  if (!scene) {
+    const canvas = document.getElementById('three-canvas') as HTMLCanvasElement
+    scene = new GPSScene(canvas)
+  }
+  scene.setData(result.points)
+
   // Initialize replay
   if (!replay) {
     replay = new GPSReplay(result.points, (index, t) => {
       charts?.setCursor(index)
+      scene?.setIndex(index)
       updateReadout(index)
       updateTransport(t, dur)
     })
@@ -116,6 +127,7 @@ async function loadFile(file: File) {
 
   // Go to first frame
   charts.setCursor(0)
+  scene.setIndex(0)
   updateReadout(0)
   updateTransport(0, dur)
 }
@@ -138,6 +150,7 @@ scrubber.addEventListener('input', () => {
   const idx = parseInt(scrubber.value)
   replay.seekIndex(idx)
   charts?.setCursor(idx)
+  scene?.setIndex(idx)
   updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
@@ -145,6 +158,10 @@ scrubber.addEventListener('input', () => {
 
 speedSelect.addEventListener('change', () => {
   if (replay) replay.speed = parseFloat(speedSelect.value)
+})
+
+followSlider.addEventListener('input', () => {
+  scene?.setFollowTightness(parseInt(followSlider.value) / 100)
 })
 
 function updateTransport(t: number, duration: number) {
@@ -183,16 +200,19 @@ function updateReadout(index: number) {
   const p = result.points[index]
   const g = p.processed
   const a = p.aero
+  const fm = p.flightMode
+  const br = p.bodyRates
 
   const ms2mph = 2.237
   const ms2kmh = 3.6
   const r2d = 180 / Math.PI
 
-  const gammaD = Math.atan2(g.velD, Math.sqrt(g.velN ** 2 + g.velE ** 2)) * r2d
-  const headingD = Math.atan2(g.velE, g.velN) * r2d
   const ld = a.cd > 0.001 ? a.cl / a.cd : 0
+  const psiDeg = ((a.psi * r2d) % 360 + 360) % 360
 
   readoutEl.innerHTML = `
+    <div class="section">Flight Mode</div>
+    <div class="row"><span class="label">Mode</span><span class="value">${fm?.modeString ?? 'N/A'}</span></div>
     <div class="section">Position</div>
     <div class="row"><span class="label">Altitude</span><span class="value">${g.hMSL.toFixed(0)} m (${(g.hMSL * 3.281).toFixed(0)} ft)</span></div>
     <div class="row"><span class="label">N / E</span><span class="value">${g.posN.toFixed(0)} / ${g.posE.toFixed(0)} m</span></div>
@@ -200,10 +220,15 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">Airspeed</span><span class="value">${g.airspeed.toFixed(1)} m/s (${(g.airspeed * ms2mph).toFixed(0)} mph)</span></div>
     <div class="row"><span class="label">Ground</span><span class="value">${g.groundSpeed.toFixed(1)} m/s (${(g.groundSpeed * ms2mph).toFixed(0)} mph)</span></div>
     <div class="row"><span class="label">Vert</span><span class="value">${(-g.velD).toFixed(1)} m/s (${(-g.velD * ms2mph).toFixed(0)} mph)</span></div>
-    <div class="section">Orientation</div>
-    <div class="row"><span class="label">γ (FPA)</span><span class="value">${gammaD.toFixed(1)}°</span></div>
-    <div class="row"><span class="label">Heading</span><span class="value">${((headingD + 360) % 360).toFixed(1)}°</span></div>
-    <div class="row"><span class="label">Bank (φ)</span><span class="value">${(a.roll * r2d).toFixed(1)}°</span></div>
+    <div class="section">Orientation (Euler)</div>
+    <div class="row"><span class="label">φ (Bank)</span><span class="value">${(a.roll * r2d).toFixed(1)}°</span></div>
+    <div class="row"><span class="label">θ (Pitch)</span><span class="value">${(a.theta * r2d).toFixed(1)}°</span></div>
+    <div class="row"><span class="label">ψ (Heading)</span><span class="value">${psiDeg.toFixed(1)}°</span></div>
+    <div class="row"><span class="label">γ (FPA)</span><span class="value">${(a.gamma * r2d).toFixed(1)}°</span></div>
+    <div class="section">Body Rates</div>
+    <div class="row"><span class="label">p (roll)</span><span class="value">${(br?.p ?? 0).toFixed(1)} °/s</span></div>
+    <div class="row"><span class="label">q (pitch)</span><span class="value">${(br?.q ?? 0).toFixed(1)} °/s</span></div>
+    <div class="row"><span class="label">r (yaw)</span><span class="value">${(br?.r ?? 0).toFixed(1)} °/s</span></div>
     <div class="section">Aerodynamics</div>
     <div class="row"><span class="label">α (AOA)</span><span class="value">${(a.aoa * r2d).toFixed(1)}°</span></div>
     <div class="row"><span class="label">CL</span><span class="value">${a.cl.toFixed(3)}</span></div>
