@@ -180,11 +180,12 @@ export class GPSAeroOverlay {
     const bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
 
     // Wind frame directions in body NED
-    // Lift ⊥ velocity in the xz plane (toward -z = upward in NED body)
-    // Drag opposite to velocity
-    const liftDirNED = new THREE.Vector3(-sinA, 0, -cosA)  // perpendicular to V, upward
-    const dragDirNED = new THREE.Vector3(-cosA, 0, sinA)   // opposite to V direction
-    const sideDirNED = new THREE.Vector3(0, 1, 0)          // +y = right
+    // Body airflow: V_hat = (cos(α), 0, sin(α)) in xz plane
+    // Drag opposes airflow: (-cos(α), 0, -sin(α))
+    // Lift perpendicular to airflow toward "up" (-z): (sin(α), 0, -cos(α))
+    const liftDirNED = new THREE.Vector3(sinA, 0, -cosA)
+    const dragDirNED = new THREE.Vector3(-cosA, 0, -sinA)
+    const sideDirNED = new THREE.Vector3(0, 1, 0)
 
     // Convert to scene frame
     const liftDirWorld = nedToThreeJS(vToObj(liftDirNED)).applyQuaternion(bodyQuat).normalize()
