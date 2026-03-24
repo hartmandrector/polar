@@ -39,9 +39,9 @@ const COLORS = {
 // Axis orientations in the mini scene (fixed camera looking at origin)
 // We arrange pitch, roll, yaw as three separate "gauge" clusters
 const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
-  pitch: new THREE.Vector3(0, 2.2, 0),
-  roll:  new THREE.Vector3(-2.8, -1.5, 0),
-  yaw:   new THREE.Vector3(2.8, -1.5, 0),
+  pitch: new THREE.Vector3(1.5, 2.2, 0),
+  roll:  new THREE.Vector3(-1.3, -1.5, 0),
+  yaw:   new THREE.Vector3(4.0, -1.5, 0),
 }
 
 // Arc plane normals for each axis (in mini-scene space)
@@ -150,7 +150,7 @@ export class MomentInset {
     this.container.id = 'moment-inset'
     this.container.style.cssText = `
       position: absolute; top: 8px; left: 8px;
-      width: 400px; height: 380px;
+      width: 480px; height: 380px;
       pointer-events: none; z-index: 10;
     `
     parentEl.style.position = 'relative'
@@ -164,21 +164,21 @@ export class MomentInset {
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setSize(400, 380)
+    this.renderer.setSize(480, 380)
     this.renderer.setClearColor(0x000000, 0)
 
     // Scene
     this.scene = new THREE.Scene()
 
     // Semi-transparent background
-    const bgGeo = new THREE.PlaneGeometry(10, 9)
+    const bgGeo = new THREE.PlaneGeometry(12, 9)
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1a, transparent: true, opacity: 0.75 })
     const bg = new THREE.Mesh(bgGeo, bgMat)
     bg.position.z = -0.5
     this.scene.add(bg)
 
     // Orthographic camera looking at origin
-    const aspect = 400 / 380
+    const aspect = 480 / 380
     const viewSize = 4.5
     this.camera = new THREE.OrthographicCamera(
       -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 0.1, 10,
@@ -194,10 +194,11 @@ export class MomentInset {
     // Legend overlay
     this.legend = document.createElement('div')
     this.legend.style.cssText = `
-      position: absolute; top: 4px; right: 4px;
+      position: absolute; top: 4px; left: 4px;
       font-size: 10px; font-family: monospace;
       color: #ccc; line-height: 1.4;
       pointer-events: none;
+      white-space: pre;
     `
     this.container.appendChild(this.legend)
 
@@ -301,11 +302,17 @@ function fmt(v: number): string {
   return v >= 0 ? `+${s}` : s
 }
 
-/** Format control input as percentage with bar */
+/** Format control input as fixed-width percentage bar */
 function fmtCtrl(v: number): string {
-  const pct = (v * 100).toFixed(0)
-  const bar = v >= 0
-    ? '░'.repeat(5) + '█'.repeat(Math.min(5, Math.round(Math.abs(v) * 5)))
-    : '█'.repeat(Math.min(5, Math.round(Math.abs(v) * 5))) + '░'.repeat(5)
-  return `${bar} ${v >= 0 ? '+' : ''}${pct}%`
+  const pct = Math.round(v * 100)
+  const pctStr = (pct >= 0 ? '+' : '') + String(pct).padStart(pct < 0 ? 3 : 3, ' ') + '%'
+  // Fixed 10-char bar: left half = negative, right half = positive
+  const filled = Math.min(5, Math.round(Math.abs(v) * 5))
+  let bar: string
+  if (v >= 0) {
+    bar = '░░░░░' + '█'.repeat(filled) + '░'.repeat(5 - filled)
+  } else {
+    bar = '░'.repeat(5 - filled) + '█'.repeat(filled) + '░░░░░'
+  }
+  return `${bar} ${pctStr}`
 }
