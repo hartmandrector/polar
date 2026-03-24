@@ -25,13 +25,14 @@ const R2D = 180 / Math.PI
 // ─── Chart View Types ───────────────────────────────────────────────────────
 
 type Chart1View = 'polar' | 'speed' | 'ld'
-type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'klkd' | 'clcd' | 'roll'
+type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'theta' | 'psi' | 'klkd' | 'clcd' | 'roll' | 'mode' | 'bodyrates' | 'eulerrates'
 type Chart3View = 'position' | 'profile'
 
 // ─── Color Constants ────────────────────────────────────────────────────────
 
 const COL_TRACE  = 'rgba(100, 180, 255, 0.6)'
 const COL_TRACE2 = 'rgba(255, 140, 80, 0.6)'
+const COL_TRACE3 = 'rgba(120, 220, 120, 0.6)'
 const COL_CURSOR = 'rgba(233, 69, 96, 1.0)'
 const COL_GRID   = 'rgba(60, 60, 100, 0.3)'
 const COL_TICK   = 'rgba(140, 140, 180, 0.6)'
@@ -147,14 +148,19 @@ export class GPSCharts {
       showLine: false,
     })
 
+    // Axis options depend on view
+    const xReverse = this.chart1View === 'polar'
+    const yReverse = this.chart1View === 'speed'
+    const yMin = undefined
+
     this.chart1 = new Chart(ctx, {
       type: 'scatter',
       data: { datasets },
       options: {
         ...CHART_OPTS,
         scales: {
-          x: { ...CHART_OPTS.scales.x, title: { display: true, text: xLabel, color: COL_TICK } },
-          y: { ...CHART_OPTS.scales.y, title: { display: true, text: yLabel, color: COL_TICK } },
+          x: { ...CHART_OPTS.scales.x, reverse: xReverse, title: { display: true, text: xLabel, color: COL_TICK } },
+          y: { ...CHART_OPTS.scales.y, reverse: yReverse, min: yMin, title: { display: true, text: yLabel, color: COL_TICK } },
         },
       },
     })
@@ -166,7 +172,7 @@ export class GPSCharts {
     const ctx = canvas.getContext('2d')!
     const pts = this.data
 
-    let yData: number[], yLabel: string, y2Data: number[] | null = null
+    let yData: number[], yLabel: string, y2Data: number[] | null = null, y3Data: number[] | null = null
     const xData = pts.map(p => p.processed.t)
 
     switch (this.chart2View) {
@@ -183,8 +189,16 @@ export class GPSCharts {
         yLabel = 'α (°)'
         break
       case 'gamma':
-        yData = pts.map(p => Math.atan2(p.processed.velD, Math.sqrt(p.processed.velN ** 2 + p.processed.velE ** 2)) * R2D)
+        yData = pts.map(p => p.aero.gamma * R2D)
         yLabel = 'γ (°)'
+        break
+      case 'theta':
+        yData = pts.map(p => p.aero.theta * R2D)
+        yLabel = 'θ Pitch (°)'
+        break
+      case 'psi':
+        yData = pts.map(p => ((p.aero.psi * R2D) % 360 + 360) % 360)
+        yLabel = 'ψ Heading (°)'
         break
       case 'klkd':
         yData = pts.map(p => p.aero.kl)
@@ -200,6 +214,47 @@ export class GPSCharts {
         yData = pts.map(p => p.aero.roll * R2D)
         yLabel = 'Bank (°)'
         break
+      case 'mode':
+        yData = pts.map(p => p.flightMode?.mode ?? 0)
+        yLabel = 'Flight Mode'
+        break
+      case 'bodyrates':
+        yData = pts.map(p => p.bodyRates?.p ?? 0)
+        y2Data = pts.map(p => p.bodyRates?.q ?? 0)
+        y3Data = pts.map(p => p.bodyRates?.r ?? 0)
+        yLabel = 'Body Rates (°/s)  p=blue q=orange r=green'
+        break
+      case 'eulerrates': {
+        // Euler rates: φ̇, θ̇, ψ̇ via finite differences on aero angles
+        const dt = (i: number) => {
+          if (i === 0) return pts[1].processed.t - pts[0].processed.t
+          if (i === pts.length - 1) return pts[i].processed.t - pts[i - 1].processed.t
+          return (pts[i + 1].processed.t - pts[i - 1].processed.t)
+        }
+        const diffPhi = (i: number) => {
+          if (i === 0) return (pts[1].aero.roll - pts[0].aero.roll)
+          if (i === pts.length - 1) return (pts[i].aero.roll - pts[i - 1].aero.roll)
+          return (pts[i + 1].aero.roll - pts[i - 1].aero.roll)
+        }
+        const diffTheta = (i: number) => {
+          if (i === 0) return (pts[1].aero.theta - pts[0].aero.theta)
+          if (i === pts.length - 1) return (pts[i].aero.theta - pts[i - 1].aero.theta)
+          return (pts[i + 1].aero.theta - pts[i - 1].aero.theta)
+        }
+        const unwrap = (a: number, b: number) => {
+          let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d
+        }
+        const diffPsi = (i: number) => {
+          if (i === 0) return unwrap(pts[1].aero.psi, pts[0].aero.psi)
+          if (i === pts.length - 1) return unwrap(pts[i].aero.psi, pts[i - 1].aero.psi)
+          return unwrap(pts[i + 1].aero.psi, pts[i - 1].aero.psi)
+        }
+        yData = pts.map((_, i) => dt(i) > 1e-6 ? (diffPhi(i) / dt(i)) * R2D : 0)
+        y2Data = pts.map((_, i) => dt(i) > 1e-6 ? (diffTheta(i) / dt(i)) * R2D : 0)
+        y3Data = pts.map((_, i) => dt(i) > 1e-6 ? (diffPsi(i) / dt(i)) * R2D : 0)
+        yLabel = 'Euler Rates (°/s)  φ̇=blue θ̇=orange ψ̇=green'
+        break
+      }
       default:
         yData = []; yLabel = ''
     }
@@ -217,6 +272,17 @@ export class GPSCharts {
       datasets.push({
         data: xData.map((x, i) => ({ x, y: y2Data![i] })),
         borderColor: COL_TRACE2,
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        borderWidth: 1.5,
+        showLine: true,
+      })
+    }
+
+    if (y3Data) {
+      datasets.push({
+        data: xData.map((x, i) => ({ x, y: y3Data![i] })),
+        borderColor: COL_TRACE3,
         backgroundColor: 'transparent',
         pointRadius: 0,
         borderWidth: 1.5,

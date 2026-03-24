@@ -37,6 +37,8 @@
             <option value="4">4×</option>
           </select>
           <button id="btn-load-new" title="Load new file">📂</button>
+          <span style="margin-left: 8px; font-size: 11px; opacity: 0.6;">🎥</span>
+          <input type="range" id="follow-slider" min="0" max="100" value="30" style="width: 80px;" title="Camera follow tightness (0=static, 100=tight)" />
         </div>
       </div>
 
@@ -55,16 +57,24 @@
             </div>
             <canvas id="chart1"></canvas>
           </div>
+        </div>
+
+        <div class="chart-row">
           <div class="chart-container">
             <div class="chart-header">
               <select id="chart2-select">
                 <option value="altitude">Altitude</option>
                 <option value="airspeed">Airspeed</option>
                 <option value="aoa">Angle of Attack</option>
-                <option value="gamma">Flight Path Angle</option>
+                <option value="gamma">Flight Path Angle (γ)</option>
+                <option value="theta">Pitch (θ)</option>
+                <option value="psi">Heading (ψ)</option>
                 <option value="klkd">kL / kD</option>
                 <option value="clcd">CL / CD</option>
-                <option value="roll">Bank Angle</option>
+                <option value="roll">Bank Angle (φ)</option>
+                <option value="bodyrates">Body Rates (p, q, r)</option>
+                <option value="eulerrates">Euler Rates (φ̇, θ̇, ψ̇)</option>
+                <option value="mode">Flight Mode</option>
               </select>
             </div>
             <canvas id="chart2"></canvas>
@@ -81,6 +91,9 @@
             </div>
             <canvas id="chart3"></canvas>
           </div>
+        </div>
+
+        <div class="chart-row">
           <div class="chart-container" id="readout-panel">
             <div class="chart-header"><span>Flight Data</span></div>
             <div id="readout"></div>

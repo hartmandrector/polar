@@ -16,6 +16,12 @@ html, body {
   background: #1a1a2e;
 }
 
+#gps-app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .hidden { display: none !important; }
 
 /* ─── Drop Zone ─────────────────────────────────────────────── */
@@ -94,6 +100,7 @@ html, body {
 #three-canvas {
   flex: 1;
   width: 100%;
+  min-height: 0;
 }
 
 /* ─── Transport Bar ─────────────────────────────────────────── */
@@ -170,8 +177,7 @@ html, body {
 .chart-row {
   display: flex;
   gap: 8px;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .chart-container {
@@ -182,7 +188,9 @@ html, body {
   border: 1px solid #0f3460;
   border-radius: 4px;
   overflow: hidden;
-  min-height: 200px;
+  height: 480px;
+  max-height: 480px;
+  position: relative;
 }
 
 .chart-header {
@@ -206,12 +214,21 @@ html, body {
 .chart-container canvas {
   flex: 1;
   padding: 4px;
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 /* ─── Readout Panel ─────────────────────────────────────────── */
 
-#readout {
-  padding: 8px 12px;
+#readout-panel {
+  height: auto;
+  max-height: none;
+}
+
+#readout {  padding: 8px 12px;
   font-family: 'Consolas', monospace;
   font-size: 12px;
   line-height: 1.6;
