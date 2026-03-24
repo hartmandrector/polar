@@ -18,10 +18,12 @@ const MODEL_PATH = '/models/tsimwingsuit.glb'
 // GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
 const MODEL_SCALE = 1.875 / 3.55  // ≈ 0.528
 
-/** Default follow distance behind the model (meters) */
-const FOLLOW_DIST = 15
-/** Default follow height above the model (meters) */
-const FOLLOW_HEIGHT = 5
+/** Follow distance range (meters) — lerps from far (loose) to near (tight) */
+const FOLLOW_DIST_FAR = 15
+const FOLLOW_DIST_NEAR = 7
+/** Follow height range (meters) */
+const FOLLOW_HEIGHT_FAR = 5
+const FOLLOW_HEIGHT_NEAR = 2.5
 
 export class GPSScene {
   private renderer: THREE.WebGLRenderer
@@ -204,10 +206,14 @@ export class GPSScene {
 
     // Camera position follow — lerp toward ideal chase position
     if (this.followTightness > 0) {
-      // Ideal position: behind + above the model along flight direction
+      // Chase distance/height shrink as tightness increases
+      const t = this.followTightness
+      const dist = FOLLOW_DIST_FAR + (FOLLOW_DIST_NEAR - FOLLOW_DIST_FAR) * t
+      const height = FOLLOW_HEIGHT_FAR + (FOLLOW_HEIGHT_NEAR - FOLLOW_HEIGHT_FAR) * t
+
       const idealPos = pos.clone()
-        .sub(this.flightDir.clone().multiplyScalar(FOLLOW_DIST))
-        .add(new THREE.Vector3(0, FOLLOW_HEIGHT, 0))
+        .sub(this.flightDir.clone().multiplyScalar(dist))
+        .add(new THREE.Vector3(0, height, 0))
 
       // Lerp strength scales with tightness: 0 = no pull, 1 = aggressive
       // Use exponential scaling so low values are gentle, high values snap
