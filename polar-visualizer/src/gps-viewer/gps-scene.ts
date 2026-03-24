@@ -152,13 +152,19 @@ export class GPSScene {
     }
   }
 
-  setIndex(index: number) {
+  setIndex(index: number, fraction = 0) {
     this.currentIndex = Math.max(0, Math.min(index, this.data.length - 1))
 
     if (!this.model || this.data.length === 0) return
 
     const pt = this.data[this.currentIndex]
     const pos = this.nedToScene(pt)
+
+    // Interpolate position between current and next sample
+    if (fraction > 0 && this.currentIndex < this.data.length - 1) {
+      const next = this.nedToScene(this.data[this.currentIndex + 1])
+      pos.lerp(next, fraction)
+    }
 
     // Update flight direction from velocity between frames
     const delta = pos.clone().sub(this.prevModelPos)

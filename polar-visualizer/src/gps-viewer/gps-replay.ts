@@ -7,7 +7,7 @@
 
 import type { GPSPipelinePoint } from '../gps/types'
 
-export type ReplayCallback = (index: number, time: number) => void
+export type ReplayCallback = (index: number, time: number, fraction: number) => void
 
 export class GPSReplay {
   private data: GPSPipelinePoint[]
@@ -84,14 +84,25 @@ export class GPSReplay {
       this.currentIndex++
     }
 
+    // Compute interpolation fraction between currentIndex and next sample
+    let fraction = 0
+    if (this.currentIndex < this.data.length - 1) {
+      const t0 = this.data[this.currentIndex].processed.t
+      const t1 = this.data[this.currentIndex + 1].processed.t
+      const dt = t1 - t0
+      if (dt > 1e-6) {
+        fraction = Math.max(0, Math.min(1, (this.playbackTime - t0) / dt))
+      }
+    }
+
     // Callback
-    this.callback(this.currentIndex, this.playbackTime)
+    this.callback(this.currentIndex, this.playbackTime, fraction)
 
     // Stop at end
     if (this.currentIndex >= this.data.length - 1) {
       this._playing = false
       // Fire one last callback at the end position
-      this.callback(this.currentIndex, this.data[this.currentIndex].processed.t)
+      this.callback(this.currentIndex, this.data[this.currentIndex].processed.t, 0)
       return
     }
 

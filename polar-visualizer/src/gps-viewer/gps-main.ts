@@ -111,9 +111,9 @@ async function loadFile(file: File) {
 
   // Initialize replay
   if (!replay) {
-    replay = new GPSReplay(result.points, (index, t) => {
+    replay = new GPSReplay(result.points, (index, t, fraction) => {
       charts?.setCursor(index)
-      scene?.setIndex(index)
+      scene?.setIndex(index, fraction)
       updateReadout(index)
       updateTransport(t, dur)
     })
