@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1400" />
+  <title>GPS Flight Viewer — Polar Visualizer</title>
+  <link rel="stylesheet" href="/src/gps-viewer/gps-style.css" />
+</head>
+<body>
+  <div id="gps-app">
+    <!-- Drop zone (shown before file load) -->
+    <div id="drop-zone">
+      <div class="drop-content">
+        <div class="drop-icon">📡</div>
+        <h1>GPS Flight Viewer</h1>
+        <p>Drop a FlySight TRACK.CSV file here</p>
+        <p class="drop-hint">Or click to browse</p>
+        <input type="file" id="file-input" accept=".csv,.CSV" />
+      </div>
+    </div>
+
+    <!-- Main viewer (shown after file load) -->
+    <div id="viewer-layout" class="hidden">
+      <!-- Left: 3D scene -->
+      <div id="scene-panel">
+        <canvas id="three-canvas"></canvas>
+        <!-- Transport bar -->
+        <div id="transport">
+          <button id="btn-play" title="Play/Pause">▶</button>
+          <input type="range" id="scrubber" min="0" max="1000" value="0" />
+          <span id="time-display">0:00.0 / 0:00.0</span>
+          <select id="speed-select">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+          <button id="btn-load-new" title="Load new file">📂</button>
+        </div>
+      </div>
+
+      <!-- Right: charts + readout -->
+      <div id="charts-panel">
+        <div id="flight-info"></div>
+
+        <div class="chart-row">
+          <div class="chart-container">
+            <div class="chart-header">
+              <select id="chart1-select">
+                <option value="polar">Polar Curve (CL vs CD)</option>
+                <option value="speed">Speed Polar (Vxs vs Vys)</option>
+                <option value="ld">L/D vs Airspeed</option>
+              </select>
+            </div>
+            <canvas id="chart1"></canvas>
+          </div>
+          <div class="chart-container">
+            <div class="chart-header">
+              <select id="chart2-select">
+                <option value="altitude">Altitude</option>
+                <option value="airspeed">Airspeed</option>
+                <option value="aoa">Angle of Attack</option>
+                <option value="gamma">Flight Path Angle</option>
+                <option value="klkd">kL / kD</option>
+                <option value="clcd">CL / CD</option>
+                <option value="roll">Bank Angle</option>
+              </select>
+            </div>
+            <canvas id="chart2"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <div class="chart-container">
+            <div class="chart-header">
+              <select id="chart3-select">
+                <option value="position">Ground Track (N vs E)</option>
+                <option value="profile">Profile (distance vs altitude)</option>
+              </select>
+            </div>
+            <canvas id="chart3"></canvas>
+          </div>
+          <div class="chart-container" id="readout-panel">
+            <div class="chart-header"><span>Flight Data</span></div>
+            <div id="readout"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/gps-viewer/gps-main.ts"></script>
+</body>
+</html>
