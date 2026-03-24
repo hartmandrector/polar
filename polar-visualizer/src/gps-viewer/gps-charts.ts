@@ -25,7 +25,7 @@ const R2D = 180 / Math.PI
 // ─── Chart View Types ───────────────────────────────────────────────────────
 
 type Chart1View = 'polar' | 'speed' | 'ld'
-type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'theta' | 'psi' | 'klkd' | 'clcd' | 'roll' | 'mode' | 'bodyrates' | 'eulerrates'
+type Chart2View = 'altitude' | 'airspeed' | 'aoa' | 'gamma' | 'theta' | 'psi' | 'klkd' | 'clcd' | 'roll' | 'mode' | 'bodyrates' | 'eulerrates' | 'angaccel'
 type Chart3View = 'position' | 'profile'
 
 // ─── Color Constants ────────────────────────────────────────────────────────
@@ -223,6 +223,12 @@ export class GPSCharts {
         y2Data = pts.map(p => p.bodyRates?.q ?? 0)
         y3Data = pts.map(p => p.bodyRates?.r ?? 0)
         yLabel = 'Body Rates (°/s)  p=blue q=orange r=green'
+        break
+      case 'angaccel':
+        yData = pts.map(p => p.bodyRates?.pDot ?? 0)
+        y2Data = pts.map(p => p.bodyRates?.qDot ?? 0)
+        y3Data = pts.map(p => p.bodyRates?.rDot ?? 0)
+        yLabel = 'Angular Accel (°/s²)  ṗ=blue q̇=orange ṙ=green'
         break
       case 'eulerrates': {
         // Euler rates: φ̇, θ̇, ψ̇ via finite differences on aero angles

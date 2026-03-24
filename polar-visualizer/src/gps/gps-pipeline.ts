@@ -200,6 +200,34 @@ export function processGNSSData(
     results[i].bodyRates = bodyRates[i];
   }
 
+  // ---- Step 7: SG-smooth body rates, then LS angular acceleration ----
+  // Smooth rates first to avoid amplifying noise through differentiation
+  const rawP = bodyRates.map(r => r.p);
+  const rawQ = bodyRates.map(r => r.q);
+  const rawR = bodyRates.map(r => r.r);
+  const smoothP = applySGFilterMultiPass(rawP, config.smoothingWindows, v => v);
+  const smoothQ = applySGFilterMultiPass(rawQ, config.smoothingWindows, v => v);
+  const smoothR = applySGFilterMultiPass(rawR, config.smoothingWindows, v => v);
+
+  // Build timed array for LS derivative
+  const timedRates = results.map((r, i) => ({
+    t: r.processed.t,
+    p: smoothP[i],
+    q: smoothQ[i],
+    r: smoothR[i],
+  }));
+  const pDots = calculateDerivative(timedRates, config.accelWindowSize, d => d.t, d => d.p);
+  const qDots = calculateDerivative(timedRates, config.accelWindowSize, d => d.t, d => d.q);
+  const rDots = calculateDerivative(timedRates, config.accelWindowSize, d => d.t, d => d.r);
+
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].bodyRates) {
+      results[i].bodyRates!.pDot = pDots[i];
+      results[i].bodyRates!.qDot = qDots[i];
+      results[i].bodyRates!.rDot = rDots[i];
+    }
+  }
+
   return results;
 }
 

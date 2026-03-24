@@ -145,6 +145,10 @@ export interface BodyRates {
   p: number;               // deg/s roll rate
   q: number;               // deg/s pitch rate
   r: number;               // deg/s yaw rate
+  /** Angular accelerations via LS linear fit on smoothed rates [deg/s²] */
+  pDot?: number;
+  qDot?: number;
+  rDot?: number;
 }
 
 // ============================================================================
