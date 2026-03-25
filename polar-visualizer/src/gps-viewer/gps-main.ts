@@ -12,6 +12,7 @@ import { GPSScene } from './gps-scene'
 import { a5segmentsContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
+import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ let charts: GPSCharts | null = null
 let replay: GPSReplay | null = null
 let scene: GPSScene | null = null
 let result: PipelineResult | null = null
+let ekfResult: EKFRunnerResult | null = null
 
 // ─── Drop Zone ──────────────────────────────────────────────────────────────
 
@@ -149,6 +151,23 @@ async function loadFile(file: File) {
     }
   }
   console.log(`Control inversion: ${convergeCount}/${result.points.length} converged`)
+
+  // Run orientation EKF over pipeline output
+  const ekfT0 = performance.now()
+  ekfResult = runOrientationEKF(result.points, {
+    aero: {
+      segments: polar.aeroSegments ?? [],
+      cgMeters,
+      height: massRef,
+      inertia,
+      rho: 1.225,
+    },
+  })
+  const ekfElapsed = ((performance.now() - ekfT0) / 1000).toFixed(3)
+  console.log(`Orientation EKF: ${ekfResult.estimates.length} points in ${ekfElapsed}s`)
+
+  // Wire EKF into 3D scene for physics-interpolated orientation
+  scene.setEKF(ekfResult.ekf)
 
   // Initialize replay
   if (!replay) {

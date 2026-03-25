@@ -13,6 +13,7 @@ import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { MomentInset } from './moment-inset'
 import type { GPSPipelinePoint } from '../gps/types'
+import type { OrientationEKF } from '../kalman/orientation-ekf'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
 // GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
@@ -50,6 +51,9 @@ export class GPSScene {
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
   private momentInset: MomentInset
+
+  // Orientation EKF (optional — when set, drives model orientation via predictAt)
+  private ekf: OrientationEKF | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -138,6 +142,11 @@ export class GPSScene {
     this.buildTrail()
   }
 
+  /** Set orientation EKF for physics-based rotation interpolation */
+  setEKF(ekf: OrientationEKF) {
+    this.ekf = ekf
+  }
+
   private nedToScene(p: GPSPipelinePoint): THREE.Vector3 {
     return new THREE.Vector3(
       -p.processed.posE,
@@ -196,6 +205,8 @@ export class GPSScene {
 
     // Model position + orientation
     this.model.position.copy(pos)
+
+    // Orientation: SG pipeline angles (EKF available via this.ekf for future use)
     const phi = pt.aero.roll
     const theta = pt.aero.theta
     const psi = pt.aero.psi
