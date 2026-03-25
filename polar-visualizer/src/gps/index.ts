@@ -25,7 +25,8 @@ export { geodeticToNED, nedToGeodetic } from './geo-utils';
 // WSE aero extraction
 export {
   extractAero, calculateWingsuitParameters, calculateSustainedSpeeds, coeffToSustainedSpeeds,
-  matchAOAFromTable, computeBodyRates, applyInverseDKE,
+  matchAOAFromTable, matchAOABinarySearch, computeBodyRates, applyInverseDKE,
+  type PolarEvaluator,
 } from './wse';
 export type { SystemPolarPoint } from './wse';
 

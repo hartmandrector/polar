@@ -103,10 +103,112 @@ export interface SystemPolarPoint {
 }
 
 /**
- * Find the AOA that best matches observed CL/CD against the system polar table.
- * 
- * Uses exhaustive search with parabolic interpolation for sub-step resolution.
- * CL is weighted more heavily since it's more sensitive to α than CD.
+ * Callback that evaluates the segment model at a given α (degrees)
+ * and returns { cl, cd }. Used by binary search AOA matcher.
+ * Built externally from the segment model — keeps wse.ts free of polar imports.
+ */
+export type PolarEvaluator = (alpha_deg: number) => { cl: number; cd: number };
+
+/**
+ * Find AOA via binary search with on-demand segment model evaluation.
+ *
+ * Bisects on CL error (more sensitive to α than CD). Falls back to
+ * golden section when CL is non-monotonic near stall.
+ *
+ * @param observedCL  Target CL from acceleration decomposition
+ * @param observedCD  Target CD (used for residual, not search)
+ * @param evaluate    Segment model evaluator (called ~12-15 times)
+ * @param alphaMin    Search range lower bound (degrees, default -5)
+ * @param alphaMax    Search range upper bound (degrees, default 30)
+ * @param tol         Convergence tolerance in degrees (default 0.03)
+ * @param maxIter     Maximum bisection iterations (default 20)
+ */
+export function matchAOABinarySearch(
+  observedCL: number,
+  observedCD: number,
+  evaluate: PolarEvaluator,
+  alphaMin = -5,
+  alphaMax = 30,
+  tol = 0.03,
+  maxIter = 20,
+): { alpha_deg: number; residual: number } {
+  // Evaluate endpoints
+  let lo = alphaMin;
+  let hi = alphaMax;
+  let evalLo = evaluate(lo);
+  let evalHi = evaluate(hi);
+
+  // CL error at endpoints
+  let errLo = evalLo.cl - observedCL;
+  let errHi = evalHi.cl - observedCL;
+
+  // If CL is monotonic and brackets the target, bisect on CL
+  if (errLo * errHi < 0) {
+    for (let iter = 0; iter < maxIter; iter++) {
+      if (hi - lo < tol) break;
+
+      const mid = (lo + hi) / 2;
+      const evalMid = evaluate(mid);
+      const errMid = evalMid.cl - observedCL;
+
+      if (errMid * errLo < 0) {
+        hi = mid;
+        evalHi = evalMid;
+        errHi = errMid;
+      } else {
+        lo = mid;
+        evalLo = evalMid;
+        errLo = errMid;
+      }
+    }
+
+    const alpha = (lo + hi) / 2;
+    const evalFinal = evaluate(alpha);
+    const dCL = observedCL - evalFinal.cl;
+    const dCD = observedCD - evalFinal.cd;
+    return { alpha_deg: alpha, residual: Math.sqrt(dCL * dCL + 0.25 * dCD * dCD) };
+  }
+
+  // Non-monotonic or doesn't bracket: fall back to golden section search
+  // minimizing weighted CL+CD distance
+  const PHI = (Math.sqrt(5) - 1) / 2; // 0.618...
+  let a = alphaMin, b = alphaMax;
+  let c = b - PHI * (b - a);
+  let d = a + PHI * (b - a);
+
+  const cost = (alpha: number) => {
+    const e = evaluate(alpha);
+    const dCL = observedCL - e.cl;
+    const dCD = observedCD - e.cd;
+    return dCL * dCL + 0.25 * dCD * dCD;
+  };
+
+  let fc = cost(c), fd = cost(d);
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    if (b - a < tol) break;
+
+    if (fc < fd) {
+      b = d; d = c; fd = fc;
+      c = b - PHI * (b - a);
+      fc = cost(c);
+    } else {
+      a = c; c = d; fc = fd;
+      d = a + PHI * (b - a);
+      fd = cost(d);
+    }
+  }
+
+  const alpha = (a + b) / 2;
+  const evalFinal = evaluate(alpha);
+  const dCL = observedCL - evalFinal.cl;
+  const dCD = observedCD - evalFinal.cd;
+  return { alpha_deg: alpha, residual: Math.sqrt(dCL * dCL + 0.25 * dCD * dCD) };
+}
+
+/**
+ * Legacy table-based AOA matching (exhaustive scan, nearest point).
+ * Used as fallback when no PolarEvaluator is available.
  */
 export function matchAOAFromTable(
   observedCL: number,
@@ -114,43 +216,15 @@ export function matchAOAFromTable(
   table: SystemPolarPoint[],
 ): { alpha_deg: number; residual: number } {
   if (table.length === 0) return { alpha_deg: 0, residual: Infinity };
-
   let bestIdx = 0;
   let bestDist = Infinity;
-
   for (let i = 0; i < table.length; i++) {
     const dCL = observedCL - table[i].cl;
     const dCD = observedCD - table[i].cd;
-    // Weight: CL error matters more than CD for α identification
     const dist = dCL * dCL + 0.25 * dCD * dCD;
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
-    }
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
   }
-
-  // Parabolic interpolation between neighbors for sub-step resolution
-  const p = table[bestIdx];
-  if (bestIdx > 0 && bestIdx < table.length - 1) {
-    const prev = table[bestIdx - 1];
-    const next = table[bestIdx + 1];
-
-    const dPrev = observedCL - prev.cl;
-    const dCur = observedCL - p.cl;
-    const dNext = observedCL - next.cl;
-
-    const denom = 2 * (dPrev - 2 * dCur + dNext);
-    if (Math.abs(denom) > 1e-10) {
-      const offset = (dPrev - dNext) / denom;
-      const clamped = Math.max(-0.5, Math.min(0.5, offset));
-      return {
-        alpha_deg: p.alpha_deg + clamped * (next.alpha_deg - prev.alpha_deg) / 2,
-        residual: Math.sqrt(bestDist),
-      };
-    }
-  }
-
-  return { alpha_deg: p.alpha_deg, residual: Math.sqrt(bestDist) };
+  return { alpha_deg: table[bestIdx].alpha_deg, residual: Math.sqrt(bestDist) };
 }
 
 // ============================================================================
@@ -159,11 +233,12 @@ export function matchAOAFromTable(
 
 /**
  * Full aero extraction at one GPS timestep:
- *   velocity + acceleration → kl/kd/roll → CL/CD → AOA via polar table match
+ *   velocity + acceleration → kl/kd/roll → CL/CD → AOA via segment model binary search
  * 
  * @param sRef  System reference area (m²)
  * @param mRef  Pilot mass (kg)
- * @param polarTable  Pre-built system polar table (from segment model sweep)
+ * @param polarEvaluator  On-demand segment model evaluator (preferred — binary search)
+ * @param polarTable  Pre-built system polar table (fallback — exhaustive search)
  */
 export function extractAero(
   vN: number, vE: number, vD: number,
@@ -171,6 +246,7 @@ export function extractAero(
   rho: number,
   sRef: number,
   mRef: number,
+  polarEvaluator?: PolarEvaluator,
   polarTable?: SystemPolarPoint[],
   prevKl = 0.01, prevKd = 0.01, prevRoll = 0,
 ): AeroExtraction {
@@ -186,7 +262,12 @@ export function extractAero(
   let aoa = 0;
   let residual = Infinity;
 
-  if (polarTable && polarTable.length > 0) {
+  if (polarEvaluator) {
+    const match = matchAOABinarySearch(cl, cd, polarEvaluator);
+    aoa = match.alpha_deg * Math.PI / 180;
+    residual = match.residual;
+  } else if (polarTable && polarTable.length > 0) {
+    // Fallback: table-based exhaustive search (legacy)
     const match = matchAOAFromTable(cl, cd, polarTable);
     aoa = match.alpha_deg * Math.PI / 180;
     residual = match.residual;

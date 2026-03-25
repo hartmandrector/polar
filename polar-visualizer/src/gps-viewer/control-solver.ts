@@ -66,6 +66,7 @@ const D2R = Math.PI / 180
 export function solveControlInputs(
   pt: GPSPipelinePoint,
   config: ControlInversionConfig,
+  prevControls?: [number, number, number],
 ): ControlInversionResult {
   const rho = config.rho ?? 1.225
 
@@ -110,8 +111,8 @@ export function solveControlInputs(
     return result.system.moment
   }
 
-  // Newton-Raphson iteration
-  let u = [0, 0, 0]  // [pitchThrottle, rollThrottle, yawThrottle]
+  // Newton-Raphson iteration — seed from previous timestep if available
+  let u = prevControls ? [...prevControls] : [0, 0, 0]
   let converged = false
   let iter = 0
 

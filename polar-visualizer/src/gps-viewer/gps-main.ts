@@ -5,7 +5,7 @@
  */
 
 import { processGPSFile, type PipelineResult } from '../gps/gps-pipeline'
-import { buildSystemPolarTable } from './gps-polar-table'
+import { buildSystemPolarTable, buildPolarEvaluator } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
@@ -77,13 +77,13 @@ async function loadFile(file: File) {
 
   const text = await file.text()
 
-  // Build polar table for AOA matching (a5segments model)
-  const polarTable = buildSystemPolarTable()
+  // Build polar evaluator for binary search AOA matching
+  const polarEvaluator = buildPolarEvaluator()
 
   // Run pipeline
   const t0 = performance.now()
   result = processGPSFile(text, {
-    polarTable,
+    polarEvaluator,
     pilotMass: 77.5,
     sRef: 2.0,
   })
@@ -138,9 +138,11 @@ async function loadFile(file: File) {
     rho: 1.225,
   }
   let convergeCount = 0
+  let prevU: [number, number, number] | undefined
   for (const pt of result.points) {
     if (pt.bodyRates?.pDot !== undefined) {
-      const sol = solveControlInputs(pt, solverCfg)
+      const sol = solveControlInputs(pt, solverCfg, prevU)
+      prevU = [sol.pitchThrottle, sol.rollThrottle, sol.yawThrottle]
       pt.solvedControls = {
         pitchThrottle: sol.pitchThrottle,
         rollThrottle: sol.rollThrottle,

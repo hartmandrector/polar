@@ -16,7 +16,7 @@ import { calculateDerivative } from './math-utils';
 import { unwrapAngles } from './math-utils';
 import { getRho, dynamicPressure } from './atmosphere';
 import { geodeticToNED } from './geo-utils';
-import { extractAero, SystemPolarPoint, applyInverseDKE } from './wse';
+import { extractAero, SystemPolarPoint, applyInverseDKE, type PolarEvaluator } from './wse';
 import { zeroWind, applyWindCorrection } from './wind-model';
 import { FlightComputer } from './flight-computer';
 import type { FlightComputerInput } from './flight-computer';
@@ -42,8 +42,10 @@ export interface PipelineConfig {
   temperatureOffset: number;
   /** Wind vector (meteorological "from" convention, NED). Default: zero wind */
   wind: WindVector;
-  /** Pre-built system polar table for AOA estimation (from buildSystemPolarTable) */
+  /** Pre-built system polar table for AOA estimation (fallback) */
   polarTable?: SystemPolarPoint[];
+  /** On-demand segment model evaluator for binary search AOA (preferred) */
+  polarEvaluator?: PolarEvaluator;
   /** Pilot mass (kg) — for kl/kd → CL/CD conversion */
   pilotMass: number;
   /** System reference area (m²) — for kl/kd → CL/CD conversion */
@@ -161,6 +163,7 @@ export function processGNSSData(
       rho,
       config.sRef,
       config.pilotMass,
+      config.polarEvaluator,
       config.polarTable,
       prevKl, prevKd, prevRoll,
     );
@@ -187,6 +190,21 @@ export function processGNSSData(
   const modes = fc.processAll(fcInputs);
   for (let i = 0; i < results.length; i++) {
     results[i].flightMode = modes[i];
+  }
+
+  // ---- Step 5.5: SG-smooth AOA, recompose θ and ψ ----
+  // AOA from table matching is stair-stepped; smooth it, then recompose
+  // θ = γ + α·cos(φ) and ψ = ψ_air + α·sin(φ)/cos(θ) from the smoothed α
+  const rawAoa = results.map(r => r.aero.aoa);
+  const smoothAoa = applySGFilterMultiPass(rawAoa, config.smoothingWindows, v => v);
+  for (let i = 0; i < results.length; i++) {
+    const a = results[i].aero;
+    const aoaOld = a.aoa;
+    a.aoa = smoothAoa[i];
+    // Recompose θ and ψ with smoothed α (same formulas as extractAero)
+    const dAlpha = smoothAoa[i] - aoaOld;
+    a.theta += dAlpha * Math.cos(a.roll);
+    a.psi   += a.roll !== 0 ? dAlpha * Math.sin(a.roll) / Math.cos(a.theta) : 0;
   }
 
   // ---- Step 6: SG-smooth Euler angles, LS differentiate, inverse DKE → body rates ----
@@ -216,8 +234,14 @@ export function processGNSSData(
 
   // Inverse DKE: (φ̇, θ̇, ψ̇) + (φ, θ) → (p, q, r)
   const bodyRates = applyInverseDKE(smoothPhi, smoothTheta, phiDots, thetaDots, psiDots);
+  const R2D = 180 / Math.PI;
   for (let i = 0; i < results.length; i++) {
-    results[i].bodyRates = bodyRates[i];
+    results[i].bodyRates = {
+      ...bodyRates[i],
+      phiDot: phiDots[i] * R2D,
+      thetaDot: thetaDots[i] * R2D,
+      psiDot: psiDots[i] * R2D,
+    };
   }
 
   // ---- Step 7: LS angular acceleration from body rates (no additional smoothing) ----

@@ -151,6 +151,10 @@ export interface BodyRates {
   pDot?: number;
   qDot?: number;
   rDot?: number;
+  /** Euler rates from SG-smoothed angles → LS derivative [deg/s] */
+  phiDot?: number;
+  thetaDot?: number;
+  psiDot?: number;
 }
 
 /** Solved pilot control inputs from control inversion */

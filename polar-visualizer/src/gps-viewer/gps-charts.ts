@@ -62,6 +62,11 @@ export class GPSCharts {
   private chart2View: Chart2View = 'altitude'
   private chart3View: Chart3View = 'position'
 
+  // ─── X-axis zoom state for chart2 (time series) ────────────────────────
+
+  /** Current visible x-range [min, max] in seconds. null = auto (full range) */
+  private chart2XRange: [number, number] | null = null
+
   constructor() {
     // Wire dropdown selects
     const s1 = document.getElementById('chart1-select') as HTMLSelectElement
@@ -237,33 +242,9 @@ export class GPSCharts {
         yLabel = 'Control Inputs (%)  pitch=blue roll=orange yaw=green'
         break
       case 'eulerrates': {
-        // Euler rates: φ̇, θ̇, ψ̇ via finite differences on aero angles
-        const dt = (i: number) => {
-          if (i === 0) return pts[1].processed.t - pts[0].processed.t
-          if (i === pts.length - 1) return pts[i].processed.t - pts[i - 1].processed.t
-          return (pts[i + 1].processed.t - pts[i - 1].processed.t)
-        }
-        const diffPhi = (i: number) => {
-          if (i === 0) return (pts[1].aero.roll - pts[0].aero.roll)
-          if (i === pts.length - 1) return (pts[i].aero.roll - pts[i - 1].aero.roll)
-          return (pts[i + 1].aero.roll - pts[i - 1].aero.roll)
-        }
-        const diffTheta = (i: number) => {
-          if (i === 0) return (pts[1].aero.theta - pts[0].aero.theta)
-          if (i === pts.length - 1) return (pts[i].aero.theta - pts[i - 1].aero.theta)
-          return (pts[i + 1].aero.theta - pts[i - 1].aero.theta)
-        }
-        const unwrap = (a: number, b: number) => {
-          let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d
-        }
-        const diffPsi = (i: number) => {
-          if (i === 0) return unwrap(pts[1].aero.psi, pts[0].aero.psi)
-          if (i === pts.length - 1) return unwrap(pts[i].aero.psi, pts[i - 1].aero.psi)
-          return unwrap(pts[i + 1].aero.psi, pts[i - 1].aero.psi)
-        }
-        yData = pts.map((_, i) => dt(i) > 1e-6 ? (diffPhi(i) / dt(i)) * R2D : 0)
-        y2Data = pts.map((_, i) => dt(i) > 1e-6 ? (diffTheta(i) / dt(i)) * R2D : 0)
-        y3Data = pts.map((_, i) => dt(i) > 1e-6 ? (diffPsi(i) / dt(i)) * R2D : 0)
+        yData = pts.map(p => p.bodyRates?.phiDot ?? 0)
+        y2Data = pts.map(p => p.bodyRates?.thetaDot ?? 0)
+        y3Data = pts.map(p => p.bodyRates?.psiDot ?? 0)
         yLabel = 'Euler Rates (°/s)  φ̇=blue θ̇=orange ψ̇=green'
         break
       }
@@ -319,11 +300,18 @@ export class GPSCharts {
       options: {
         ...CHART_OPTS,
         scales: {
-          x: { ...CHART_OPTS.scales.x, title: { display: true, text: 'Time (s)', color: COL_TICK } },
+          x: {
+            ...CHART_OPTS.scales.x,
+            title: { display: true, text: 'Time (s)', color: COL_TICK },
+            ...(this.chart2XRange ? { min: this.chart2XRange[0], max: this.chart2XRange[1] } : {}),
+          },
           y: { ...CHART_OPTS.scales.y, title: { display: true, text: yLabel, color: COL_TICK } },
         },
       },
     })
+
+    // Attach scroll-zoom on x-axis
+    this.attachChart2Zoom(canvas)
   }
 
   private rebuildChart3() {
@@ -376,6 +364,69 @@ export class GPSCharts {
         },
       },
     })
+  }
+
+  // ─── Chart2 scroll-zoom on x-axis ───────────────────────────────────────
+
+  private chart2ZoomHandler: ((e: WheelEvent) => void) | null = null
+
+  private attachChart2Zoom(canvas: HTMLCanvasElement) {
+    // Remove previous handler if chart was rebuilt
+    if (this.chart2ZoomHandler) {
+      canvas.removeEventListener('wheel', this.chart2ZoomHandler)
+    }
+
+    this.chart2ZoomHandler = (e: WheelEvent) => {
+      e.preventDefault()
+      if (!this.chart2 || this.data.length < 2) return
+
+      const tMin = this.data[0].processed.t
+      const tMax = this.data[this.data.length - 1].processed.t
+      const fullRange = tMax - tMin
+
+      // Current range
+      let [lo, hi] = this.chart2XRange ?? [tMin, tMax]
+      const span = hi - lo
+
+      // Mouse position as fraction of canvas width → time
+      const rect = canvas.getBoundingClientRect()
+      const frac = (e.clientX - rect.left) / rect.width
+      const tMouse = lo + frac * span
+
+      // Zoom factor: scroll up = zoom in, scroll down = zoom out
+      const zoomFactor = e.deltaY > 0 ? 1.25 : 0.8
+      const newSpan = Math.max(1, Math.min(fullRange, span * zoomFactor))
+
+      // Keep mouse position anchored
+      let newLo = tMouse - frac * newSpan
+      let newHi = tMouse + (1 - frac) * newSpan
+
+      // Clamp to data range
+      if (newLo < tMin) { newLo = tMin; newHi = tMin + newSpan }
+      if (newHi > tMax) { newHi = tMax; newLo = tMax - newSpan }
+      newLo = Math.max(tMin, newLo)
+      newHi = Math.min(tMax, newHi)
+
+      // If zoomed out to full range, clear explicit range
+      if (newHi - newLo >= fullRange * 0.99) {
+        this.chart2XRange = null
+      } else {
+        this.chart2XRange = [newLo, newHi]
+      }
+
+      // Apply to chart without full rebuild
+      const xScale = this.chart2.options.scales!.x as any
+      if (this.chart2XRange) {
+        xScale.min = this.chart2XRange[0]
+        xScale.max = this.chart2XRange[1]
+      } else {
+        delete xScale.min
+        delete xScale.max
+      }
+      this.chart2.update('none')
+    }
+
+    canvas.addEventListener('wheel', this.chart2ZoomHandler, { passive: false })
   }
 
   // ─── Cursor update (lightweight — just move the cursor point) ───────────
