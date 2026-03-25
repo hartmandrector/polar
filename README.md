@@ -65,6 +65,8 @@ The entire system is built on two foundational pillars and a real-time simulatio
 
 ![Orbit camera during wingsuit sim flight](polar-visualizer/docs/gifs/sim-orbit-camera.gif)
 
+<p align="center"><img src="polar-visualizer/docs/gifs/bridal-body-frame.gif" width="720" alt="Bridle chain simulation in vehicle body frame" /></p>
+
 ---
 
 ## Project Structure
