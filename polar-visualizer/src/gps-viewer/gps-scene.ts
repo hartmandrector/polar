@@ -14,8 +14,10 @@ import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { MomentInset } from './moment-inset'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
+import type { CanopyState } from './canopy-estimator'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
+const CANOPY_PATH = '/models/cp2.gltf'
 // GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
 const MODEL_SCALE = 1.875 / 3.55  // ≈ 0.528
 
@@ -32,6 +34,8 @@ export class GPSScene {
   private camera: THREE.PerspectiveCamera
   private controls: OrbitControls
   private model: THREE.Group | null = null
+  private canopyModel: THREE.Group | null = null
+  private canopyStates: CanopyState[] = []
   private canvas: HTMLCanvasElement
 
   // Trail
@@ -122,6 +126,20 @@ export class GPSScene {
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
+
+    // Load canopy model
+    try {
+      const gltf = await loader.loadAsync(CANOPY_PATH)
+      this.canopyModel = gltf.scene as THREE.Group
+      // cp2.gltf: maxDim 6.266 GLB units, real canopy span ~10m
+      // Scale so 1 GLB unit ≈ real meters. Canopy span = 6.266 * scale
+      // Ibex UL span ≈ 8.7m → scale = 8.7 / 6.266 ≈ 1.39
+      this.canopyModel.scale.setScalar(1.39)
+      this.canopyModel.visible = false
+      this.scene.add(this.canopyModel)
+    } catch (e) {
+      console.error('Failed to load canopy model:', e)
+    }
   }
 
   /** Set follow tightness: 0 = static camera, 1 = tight follow */
@@ -145,6 +163,11 @@ export class GPSScene {
   /** Set orientation EKF for physics-based rotation interpolation */
   setEKF(ekf: OrientationEKF) {
     this.ekf = ekf
+  }
+
+  /** Set canopy state estimates (aligned 1:1 with data points) */
+  setCanopyStates(states: CanopyState[]) {
+    this.canopyStates = states
   }
 
   private nedToScene(p: GPSPipelinePoint): THREE.Vector3 {
@@ -211,6 +234,25 @@ export class GPSScene {
     const theta = pt.aero.theta
     const psi = pt.aero.psi
     this.model.quaternion.copy(bodyToInertialQuat(phi, theta, psi))
+
+    // ── Canopy model positioning ──
+    if (this.canopyModel) {
+      const cs = this.canopyStates[this.currentIndex]
+      // Show canopy only during deploy/canopy/landing phases (modes 5, 6, 7)
+      const mode = pt.flightMode?.mode ?? 0
+      const canopyPhase = mode >= 5 && mode <= 7
+      if (cs && cs.valid && canopyPhase) {
+        this.canopyModel.visible = true
+
+        // Canopy model origin = riser convergence point → position at pilot
+        this.canopyModel.position.copy(pos)
+
+        // Canopy orientation from CN-derived Euler angles
+        this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+      } else {
+        this.canopyModel.visible = false
+      }
+    }
 
     // Camera target always tracks the model (with slight smoothing)
     this.controls.target.lerp(pos, 0.15)

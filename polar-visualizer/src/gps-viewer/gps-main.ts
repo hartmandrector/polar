@@ -13,6 +13,7 @@ import { a5segmentsContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
+import { estimateCanopyBatch } from './canopy-estimator'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -170,6 +171,12 @@ async function loadFile(file: File) {
 
   // Wire EKF into 3D scene for physics-interpolated orientation
   scene.setEKF(ekfResult.ekf)
+
+  // ── Canopy estimation ──
+  const canopyStates = estimateCanopyBatch(result.points)
+  const validCount = canopyStates.filter(s => s.valid).length
+  console.log(`Canopy estimator: ${validCount}/${canopyStates.length} valid states`)
+  scene.setCanopyStates(canopyStates)
 
   // Initialize replay
   if (!replay) {
