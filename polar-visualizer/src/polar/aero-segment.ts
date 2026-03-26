@@ -29,6 +29,8 @@ export interface SegmentForceResult {
   drag: number     // [N] drag force magnitude (always ≥ 0)
   side: number     // [N] side force magnitude (can be negative)
   moment: number   // [N·m] segment's own pitching moment (from CM, about its AC)
+  yawMoment: number   // [N·m] direct yaw moment from Cn_β
+  rollMoment: number  // [N·m] direct roll moment from Cl_β
   cp: number       // chord fraction where total aero force acts
   cellPitchRad: number  // geometric cell pitch from riser [rad] — rotates force vector
 }
@@ -179,12 +181,14 @@ export function computeSegmentForce(
   airspeed: number,
 ): SegmentForceResult {
   const q = 0.5 * rho * airspeed * airspeed
-  const { cl, cd, cy, cm, cp, cellPitchRad } = seg.getCoeffs(alpha_deg, beta_deg, controls)
+  const { cl, cd, cy, cm, cn, cl_roll, cp, cellPitchRad } = seg.getCoeffs(alpha_deg, beta_deg, controls)
   return {
     lift:   q * seg.S * cl,
     drag:   q * seg.S * cd,
     side:   q * seg.S * cy,
     moment: q * seg.S * seg.chord * cm,
+    yawMoment:  q * seg.S * seg.chord * cn,
+    rollMoment: q * seg.S * seg.chord * cl_roll,
     cp,
     cellPitchRad: cellPitchRad ?? 0,
   }
@@ -317,6 +321,11 @@ export function sumAllSegments(
     // Moment contribution 2: segment's own pitching moment (CM-based, about AC)
     // Acts around the pitch axis (y in NED = starboard)
     totalMy += f.moment
+
+    // Moment contribution 3: direct yaw and roll moments from Cn_β and Cl_β
+    // These are intrinsic moment coefficients (like CM) — not from force × lever arm
+    totalMx += f.rollMoment   // roll moment (Mx in NED = forward/north)
+    totalMz += f.yawMoment    // yaw moment (Mz in NED = down)
   }
 
   return {
@@ -459,6 +468,10 @@ export function evaluateAeroForcesDetailed(
 
     // Moment contribution 2: intrinsic pitching moment (CM-based)
     totalMy += f.moment
+
+    // Moment contribution 3: direct yaw and roll moments from Cn_β and Cl_β
+    totalMx += f.rollMoment
+    totalMz += f.yawMoment
 
     // Collect per-segment result
     perSegment.push({

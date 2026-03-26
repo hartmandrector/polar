@@ -1497,7 +1497,7 @@ const A5_CENTER_POLAR: ContinuousPolar = {
   s1_fwd: 3.7,
   alpha_stall_back: -34.5,
   s1_back: 7,
-  cy_beta: -0.3,
+  cy_beta: -0.9,
   cn_beta: 0.08,
   cl_beta: -0.04,            // body only — less dihedral effect than system
   cm_0: 0.055,

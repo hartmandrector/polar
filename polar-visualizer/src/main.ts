@@ -440,7 +440,7 @@ function updateVisualization(state: FlightState): void {
           if (ov.has('cd_0')) {
             const cd = ov.get('cd_0')!
             // Rebuild getCoeffs with the new CD
-            seg.getCoeffs = () => ({ cl: 0, cd, cy: 0, cm: 0, cp: 0.25 })
+            seg.getCoeffs = () => ({ cl: 0, cd, cy: 0, cm: 0, cn: 0, cl_roll: 0, cp: 0.25 })
           }
         }
       }

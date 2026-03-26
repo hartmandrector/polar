@@ -255,6 +255,8 @@ export interface AeroSegment {
     cd: number    // drag coefficient
     cy: number    // side force coefficient
     cm: number    // pitching moment coefficient (about segment AC)
+    cn: number    // yaw moment coefficient from sideslip (Cn_β · sin β · cos β)
+    cl_roll: number // roll moment coefficient from sideslip (Cl_β · sin β · cos β)
     cp: number    // center of pressure (chord fraction, for force application)
     cellPitchRad?: number  // geometric cell pitch from riser input [rad] — rotates force vector in body x-z plane
   }

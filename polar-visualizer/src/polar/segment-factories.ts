@@ -262,7 +262,7 @@ export function makeCanopyCellSegment(
                     + rearRiser * ctrl.REAR_RISER_CM * riserSensitivity
                     + weightShiftCM
 
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm + riserCM, cp: c.cp, cellPitchRad }
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm + riserCM, cn: c.cn, cl_roll: c.cl_roll, cp: c.cp, cellPitchRad }
     },
   }
 }
@@ -374,7 +374,7 @@ export function makeLiftingBodySegment(
       // Transform freestream α to the segment's local frame.
       const localAlpha = alpha_deg - effectivePitchOffset
       const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, polar, controls.dirty)
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp: c.cp }
     },
   }
 }
@@ -484,7 +484,7 @@ export function makeUnzippablePilotSegment(
 
       const localAlpha = alpha_deg - effectivePitchOffset
       const c = getAllCoefficients(localAlpha, beta_deg, controls.delta, blended, controls.dirty)
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp: c.cp }
     },
   }
 }
@@ -633,7 +633,7 @@ export function makeBrakeFlapSegment(
       // If no brake input, return zeroes (S=0 means zero force anyway)
       if (effectiveBrake < 0.001) {
         this.orientation = { roll_deg: rollDeg }
-        return { cl: 0, cd: 0, cy: 0, cm: 0, cp: 0.25, cellPitchRad }
+        return { cl: 0, cd: 0, cy: 0, cm: 0, cn: 0, cl_roll: 0, cp: 0.25, cellPitchRad }
       }
 
       // ── Dynamic roll angle ──
@@ -689,7 +689,7 @@ export function makeBrakeFlapSegment(
       const cl = c.cl * cosT
       const cy = c.cy + c.cl * sinT
 
-      return { cl, cd: c.cd, cy, cm: c.cm, cp: c.cp, cellPitchRad }
+      return { cl, cd: c.cd, cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp: c.cp, cellPitchRad }
     },
   }
 }
@@ -728,7 +728,7 @@ export function makeParasiticSegment(
     chord,
 
     getCoeffs(_alpha_deg: number, _beta_deg: number, _controls: SegmentControls) {
-      return { cl, cd, cy, cm: 0, cp: 0.25 }
+      return { cl, cd, cy, cm: 0, cn: 0, cl_roll: 0, cp: 0.25 }
     },
   }
 }
@@ -847,7 +847,7 @@ export function makeWingsuitHeadSegment(
       const beta_rad = beta_deg * DEG2RAD
       const cy = -0.5 * Math.sin(beta_rad)  // sphere side force ~ sin(β)
 
-      return { cl: 0, cd: cdEff, cy, cm: 0, cp: 0.5 }
+      return { cl: 0, cd: cdEff, cy, cm: 0, cn: 0, cl_roll: 0, cp: 0.5 }
     },
   }
 }
@@ -957,7 +957,7 @@ export function makeWingsuitLiftingSegment(
       const cl = c.cl * cosT
       const cy = c.cy + c.cl * sinT
 
-      return { cl, cd: c.cd, cy, cm: c.cm, cp }
+      return { cl, cd: c.cd, cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp }
     },
   }
 }

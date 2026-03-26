@@ -38,7 +38,7 @@ function makeLumpedSegment(polar: typeof ibexulContinuous): AeroSegment {
     polar: polar,
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
       const c = getAllCoefficients(alpha_deg, beta_deg, controls.delta, polar, controls.dirty)
-      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cp: c.cp }
+      return { cl: c.cl, cd: c.cd, cy: c.cy, cm: c.cm, cn: c.cn ?? 0, cl_roll: c.cl_roll ?? 0, cp: c.cp }
     },
   }
 }
@@ -165,7 +165,7 @@ describe('sumAllSegments', () => {
       S: polar.s / 2,
       getCoeffs(a, b, c) {
         const coeffs = getAllCoefficients(a, b, c.delta, polar, c.dirty)
-        return { cl: coeffs.cl, cd: coeffs.cd, cy: coeffs.cy, cm: coeffs.cm, cp: coeffs.cp }
+        return { cl: coeffs.cl, cd: coeffs.cd, cy: coeffs.cy, cm: coeffs.cm, cn: coeffs.cn ?? 0, cl_roll: coeffs.cl_roll ?? 0, cp: coeffs.cp }
       },
     }
 
