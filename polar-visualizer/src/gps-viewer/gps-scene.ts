@@ -54,6 +54,7 @@ export class GPSScene {
 
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
+  private canopyAeroOverlay: GPSAeroOverlay
   private momentInset: MomentInset
 
   // Orientation EKF (optional — when set, drives model orientation via predictAt)
@@ -100,6 +101,7 @@ export class GPSScene {
 
     // Aero overlay
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
+    this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
 
     // Moment breakdown inset (bottom-left of scene panel)
     const scenePanel = canvas.parentElement!
@@ -150,6 +152,11 @@ export class GPSScene {
   /** Set the aero model config for force vector overlay */
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
+  }
+
+  /** Set the canopy aero model config for canopy force vector overlay */
+  setCanopyAeroConfig(config: AeroOverlayConfig) {
+    this.canopyAeroOverlay.setConfig(config)
   }
 
   setData(points: GPSPipelinePoint[]) {
@@ -229,18 +236,32 @@ export class GPSScene {
     // Model position + orientation
     this.model.position.copy(pos)
 
-    // Orientation: SG pipeline angles (EKF available via this.ekf for future use)
-    const phi = pt.aero.roll
-    const theta = pt.aero.theta
-    const psi = pt.aero.psi
-    this.model.quaternion.copy(bodyToInertialQuat(phi, theta, psi))
+    // Orientation: use canopy orientation during canopy phase, wingsuit otherwise
+    const mode = pt.flightMode?.mode ?? 0
+    const canopyPhase = mode >= 5 && mode <= 7
+    const cs = this.canopyStates[this.currentIndex]
+
+    if (canopyPhase && cs && cs.valid) {
+      // Under canopy: pilot hangs vertically beneath the canopy.
+      // Start from canopy orientation, then pitch ~90° nose-up so the
+      // wingsuit model hangs down instead of flying horizontal.
+      const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+      // Pitch up 80° (not full 90° — pilot leans slightly forward under canopy)
+      const hangPitch = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
+      )
+      canopyQuat.multiply(hangPitch)
+      this.model.quaternion.copy(canopyQuat)
+    } else {
+      // Wingsuit/freefall: SG pipeline angles
+      const phi = pt.aero.roll
+      const theta = pt.aero.theta
+      const psi = pt.aero.psi
+      this.model.quaternion.copy(bodyToInertialQuat(phi, theta, psi))
+    }
 
     // ── Canopy model positioning ──
     if (this.canopyModel) {
-      const cs = this.canopyStates[this.currentIndex]
-      // Show canopy only during deploy/canopy/landing phases (modes 5, 6, 7)
-      const mode = pt.flightMode?.mode ?? 0
-      const canopyPhase = mode >= 5 && mode <= 7
       if (cs && cs.valid && canopyPhase) {
         this.canopyModel.visible = true
 
@@ -274,15 +295,34 @@ export class GPSScene {
       this.camera.position.lerp(idealPos, lerpFactor)
     }
 
-    // Aero overlay — evaluate segment model at this flight condition
-    this.aeroOverlay.update(pt, pos)
-
-    // Update moment breakdown inset
-    this.momentInset.update(
-      this.aeroOverlay.lastMoments,
-      this.aeroOverlay.lastControls,
-      this.aeroOverlay.lastConverged,
-    )
+    // Aero overlay — wingsuit during freefall, canopy during canopy phase
+    if (!canopyPhase) {
+      this.aeroOverlay.update(pt, pos)
+      this.canopyAeroOverlay.hide()
+      this.momentInset.update(
+        this.aeroOverlay.lastMoments,
+        this.aeroOverlay.lastControls,
+        this.aeroOverlay.lastConverged,
+      )
+    } else if (cs && cs.valid) {
+      this.aeroOverlay.hide()
+      // Canopy overlay uses canopy orientation + AOA
+      this.canopyAeroOverlay.aeroOverrides = {
+        aoa: cs.aoa,
+        roll: cs.phi,
+        theta: cs.theta,
+        psi: cs.psi,
+      }
+      this.canopyAeroOverlay.update(pt, pos)
+      this.momentInset.update(
+        this.canopyAeroOverlay.lastMoments,
+        this.canopyAeroOverlay.lastControls,
+        this.canopyAeroOverlay.lastConverged,
+      )
+    } else {
+      this.aeroOverlay.hide()
+      this.canopyAeroOverlay.hide()
+    }
   }
 
   private handleResize() {

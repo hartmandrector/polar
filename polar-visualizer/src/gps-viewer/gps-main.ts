@@ -9,7 +9,7 @@ import { buildSystemPolarTable, buildPolarEvaluator } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
-import { a5segmentsContinuous } from '../polar/polar-data'
+import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
@@ -127,6 +127,24 @@ async function loadFile(file: File) {
     mass: polar.m,
     rho: 1.225,
     inertia,
+  })
+
+  // Canopy aero config (ibexul)
+  const canopyPolar = ibexulContinuous
+  const canopyMassRef = canopyPolar.referenceLength ?? 1.875
+  const canopyCg = canopyPolar.massSegments?.length
+    ? computeCenterOfMass(canopyPolar.massSegments, canopyMassRef, canopyPolar.m)
+    : { x: 0, y: 0, z: 0 }
+  const canopyInertia = canopyPolar.massSegments
+    ? computeInertia(canopyPolar.inertiaMassSegments ?? canopyPolar.massSegments, canopyMassRef, canopyPolar.m)
+    : { Ixx: 1, Iyy: 1, Izz: 1, Ixz: 0, Ixy: 0, Iyz: 0 }
+  scene.setCanopyAeroConfig({
+    segments: canopyPolar.aeroSegments ?? [],
+    cgMeters: canopyCg,
+    height: canopyMassRef,
+    mass: canopyPolar.m,
+    rho: 1.225,
+    inertia: canopyInertia,
   })
 
   // Batch-solve control inputs for all points (Pass 2)

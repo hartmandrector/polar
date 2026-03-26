@@ -146,6 +146,9 @@ export class GPSAeroOverlay {
     }
   }
 
+  /** Optional aero angle overrides (e.g. canopy estimator provides its own AOA/orientation) */
+  aeroOverrides?: { aoa: number; roll: number; theta: number; psi: number }
+
   /**
    * Update the overlay for a GPS data point.
    * Evaluates segment model at the measured flight condition.
@@ -162,7 +165,8 @@ export class GPSAeroOverlay {
     // Build body velocity from GPS airspeed + orientation
     // u = V·cos(α)·cos(β), v = V·sin(β), w = V·sin(α)·cos(β)
     const V = pt.processed.airspeed
-    const alpha = pt.aero.aoa       // radians
+    const ov = this.aeroOverrides
+    const alpha = ov?.aoa ?? pt.aero.aoa       // radians
     const beta = 0                   // TODO: sideslip from pipeline when available
     const cosA = Math.cos(alpha), sinA = Math.sin(alpha)
     const cosB = Math.cos(beta),  sinB = Math.sin(beta)
@@ -187,7 +191,11 @@ export class GPSAeroOverlay {
     )
 
     // Body-to-world quaternion for rotating vectors into scene frame
-    const bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
+    const bodyQuat = bodyToInertialQuat(
+      ov?.roll ?? pt.aero.roll,
+      ov?.theta ?? pt.aero.theta,
+      ov?.psi ?? pt.aero.psi,
+    )
 
     // Wind frame directions in body NED
     // Body airflow: V_hat = (cos(α), 0, sin(α)) in xz plane
@@ -354,6 +362,10 @@ export class GPSAeroOverlay {
       this.lastControls = { pitch: 0, roll: 0, yaw: 0 }
       this.lastConverged = true
     }
+  }
+
+  hide() {
+    this.hideAll()
   }
 
   private hideAll() {
