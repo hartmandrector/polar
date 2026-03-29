@@ -87,6 +87,16 @@ async function loadFile(file: File) {
 
   const text = await file.text()
 
+  // Extract flight date from CSV (first ISO timestamp in data)
+  let flightDateStr = ''
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/m)
+  if (isoMatch) {
+    flightDateStr = isoMatch[1].replace(/[:.]/g, '-')
+  } else {
+    // Fallback: use file name or folder hints
+    flightDateStr = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-]/g, '_')
+  }
+
   // Build polar evaluator for binary search AOA matching
   const polarEvaluator = buildPolarEvaluator()
 
@@ -339,7 +349,7 @@ async function loadFile(file: File) {
       captureHandler?.startCapture()
     })
   }
-  captureHandler.setData(result.points)
+  captureHandler.setData(result.points, flightDateStr)
 }
 
 // ─── Transport Controls ─────────────────────────────────────────────────────

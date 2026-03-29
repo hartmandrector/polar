@@ -28,14 +28,15 @@ export class CaptureHandler {
   private active = false
   private statusEl: HTMLElement | null = null
   private frameCountEl: HTMLElement | null = null
+  private flightDate: string = ''
 
   constructor(private callbacks: CaptureCallbacks) {
     window.addEventListener('message', this.onMessage)
   }
 
-  setData(points: GPSPipelinePoint[]) {
+  setData(points: GPSPipelinePoint[], flightDate?: string) {
     this.points = points
-    // Expose data-loaded flag for playwright to detect
+    if (flightDate) this.flightDate = flightDate
     ;(window as any).__dataLoaded = true
   }
 
@@ -152,6 +153,9 @@ export class CaptureHandler {
     this.updateStatus('Waiting for playwright...')
     this.updateFrameCount(0)
 
+    // Build flight metadata for folder naming
+    const dateStr = this.flightDate || new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+
     // POST to playwright-capture server to start the capture
     fetch('http://localhost:3333/capture-polar', {
       method: 'POST',
@@ -161,6 +165,7 @@ export class CaptureHandler {
         frameRate: this.frameRate,
         startTime: this.startTime,
         endTime: this.endTime,
+        flightDate: dateStr,
         url: window.location.href,
       }),
     }).then(r => {
