@@ -87,6 +87,9 @@ export class GPSAeroOverlay {
   private config: AeroOverlayConfig | null = null
   private controls: SegmentControls = defaultControls()
 
+  /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
+  bodyFrame = false
+
   /** Last computed moment breakdown (for external consumers like MomentInset) */
   lastMoments: AxisMoments = {
     pitch: { aero: 0, pilot: 0, gyro: 0, net: 0 },
@@ -257,11 +260,14 @@ export class GPSAeroOverlay {
     }
 
     // Body-to-world quaternion for rotating vectors into scene frame
-    const bodyQuat = bodyToInertialQuat(
-      ov?.roll ?? pt.aero.roll,
-      ov?.theta ?? pt.aero.theta,
-      ov?.psi ?? pt.aero.psi,
-    )
+    // In body frame mode, use identity (vectors stay in body frame)
+    const bodyQuat = this.bodyFrame
+      ? new THREE.Quaternion()
+      : bodyToInertialQuat(
+          ov?.roll ?? pt.aero.roll,
+          ov?.theta ?? pt.aero.theta,
+          ov?.psi ?? pt.aero.psi,
+        )
 
     // Wind frame directions in body NED
     // Body airflow: V_hat = (cos(α), 0, sin(α)) in xz plane

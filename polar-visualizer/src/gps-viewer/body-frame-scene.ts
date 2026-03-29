@@ -82,7 +82,9 @@ export class BodyFrameScene {
 
     // Aero overlay (body frame — vectors stay in native frame)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
+    this.aeroOverlay.bodyFrame = true
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
+    this.canopyAeroOverlay.bodyFrame = true
 
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
