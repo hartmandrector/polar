@@ -109,8 +109,8 @@ export class EulerAxisHelper {
     this.psiLabel.position.copy(yawDir.clone().multiplyScalar(LABEL_OFFSET))
     this.group.add(this.psiLabel)
 
-    // Position offset so it doesn't overlap the vehicle
-    this.group.position.set(2.5, 2.0, 0)
+    // Position directly below the vehicle
+    this.group.position.set(0, -5, 0)
   }
 }
 
@@ -151,7 +151,7 @@ export class BodyRateAxisHelper {
     this.rLabel.position.copy(yawDir.clone().multiplyScalar(LABEL_OFFSET))
     this.group.add(this.rLabel)
 
-    // Position offset
-    this.group.position.set(2.5, 2.0, 0)
+    // Position directly below the vehicle
+    this.group.position.set(0, -5, 0)
   }
 }

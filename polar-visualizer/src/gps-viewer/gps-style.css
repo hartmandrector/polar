@@ -142,13 +142,13 @@ html, body {
   z-index: 1;
   pointer-events: none;
   font-family: 'Consolas', 'SF Mono', 'Fira Code', monospace;
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.4;
 }
 
 .legend-section {
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
