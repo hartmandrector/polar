@@ -20,6 +20,7 @@ import {
 import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
+import { CurvedArrow } from '../viewer/curved-arrow'
 import type { AxisMoments } from './moment-inset'
 import { solveControlInputs, type ControlInversionConfig, type ControlInversionResult } from './control-solver'
 import type { InertiaComponents } from '../polar/inertia'
@@ -30,8 +31,10 @@ import type { InertiaComponents } from '../polar/inertia'
 const FORCE_SCALE = 0.003
 /** Velocity arrow scale: m/s → scene meters */
 const VEL_SCALE = 0.08
-/** Moment arc scale: N·m → arc radius */
-const MOMENT_SCALE = 0.005
+/** Moment arc scale: N·m → radians of arc sweep (matches main viewer) */
+const TORQUE_SCALE = 0.002
+/** Body rate arc scale: rad/s → arc sweep radians (matches main viewer) */
+const RATE_SCALE = 0.6
 /** Minimum arrow length to render (avoids clutter) */
 const MIN_ARROW = 0.02
 
@@ -43,6 +46,10 @@ const COL_VEL   = 0x44aaff
 const COL_MX    = 0xff6644  // roll moment
 const COL_MY    = 0x44ff66  // pitch moment
 const COL_MZ    = 0x6644ff  // yaw moment
+// Rate arc colors — paler versions of moment colors (matches main viewer)
+const COL_RATE_P = 0xffbb88  // pitch rate (pale orange)
+const COL_RATE_Y = 0x88ffbb  // yaw rate (pale green)
+const COL_RATE_R = 0xbb88ff  // roll rate (pale purple)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,11 +58,6 @@ interface SegmentArrows {
   drag: THREE.ArrowHelper
   side: THREE.ArrowHelper
   vel: THREE.ArrowHelper
-}
-
-interface MomentArc {
-  line: THREE.Line
-  color: number
 }
 
 export interface AeroOverlayConfig {
@@ -72,8 +74,16 @@ export interface AeroOverlayConfig {
 export class GPSAeroOverlay {
   private group: THREE.Group
   private segArrows: SegmentArrows[] = []
-  private momentArcs: MomentArc[] = []
+  private momentGroup: THREE.Group  // sub-group for body-frame rotation
+  private rollArc: CurvedArrow
+  private pitchArc: CurvedArrow
+  private yawArc: CurvedArrow
+  // Body rate arcs (angular velocity — what the wingsuit is actually doing)
+  private pitchRateArc: CurvedArrow
+  private yawRateArc: CurvedArrow
+  private rollRateArc: CurvedArrow
   private netForceArrow: THREE.ArrowHelper
+  private accelBall: THREE.Mesh
   private config: AeroOverlayConfig | null = null
   private controls: SegmentControls = defaultControls()
 
@@ -96,22 +106,39 @@ export class GPSAeroOverlay {
     this.group.name = 'aero-overlay'
     scene.add(this.group)
 
-    // Net force arrow (white, from CG)
+    // Net force arrow (white, from CG) — hidden, replaced by accel ball
     this.netForceArrow = new THREE.ArrowHelper(
       new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 1, 0xffffff, 0.08, 0.04,
     )
     this.netForceArrow.visible = false
     this.group.add(this.netForceArrow)
 
-    // Create moment arc geometry placeholders (3 axes)
-    for (const color of [COL_MX, COL_MY, COL_MZ]) {
-      const geo = new THREE.BufferGeometry()
-      const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 })
-      const line = new THREE.Line(geo, mat)
-      line.visible = false
-      this.group.add(line)
-      this.momentArcs.push({ line, color })
-    }
+    // Acceleration ball — white sphere scaled by total 3D acceleration magnitude
+    const accelGeo = new THREE.SphereGeometry(1, 16, 12)
+    const accelMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+    this.accelBall = new THREE.Mesh(accelGeo, accelMat)
+    this.accelBall.visible = false
+    this.group.add(this.accelBall)
+
+    // Moment arcs — CurvedArrow with TubeGeometry + arrowheads
+    // Axes match main viewer convention: pitch='x', yaw='y', roll='z' (Three.js body frame)
+    this.momentGroup = new THREE.Group()
+    this.momentGroup.name = 'moment-arcs'
+    this.group.add(this.momentGroup)
+
+    this.pitchArc = new CurvedArrow('x', COL_MY, 'gps-pitch-moment', { radius: 1.2 })
+    this.yawArc   = new CurvedArrow('y', COL_MZ, 'gps-yaw-moment',   { radius: 1.2 })
+    this.rollArc  = new CurvedArrow('z', COL_MX, 'gps-roll-moment',  { radius: 1.2 })
+
+    // Rate arcs — pale colours, slightly larger radius so they don't overlap moment arcs
+    this.pitchRateArc = new CurvedArrow('x', COL_RATE_P, 'gps-pitch-rate', { radius: 1.4 })
+    this.yawRateArc   = new CurvedArrow('y', COL_RATE_Y, 'gps-yaw-rate',   { radius: 1.4 })
+    this.rollRateArc  = new CurvedArrow('z', COL_RATE_R, 'gps-roll-rate',  { radius: 1.4 })
+
+    this.momentGroup.add(
+      this.pitchArc, this.yawArc, this.rollArc,
+      this.pitchRateArc, this.yawRateArc, this.rollRateArc,
+    )
   }
 
   /** Set the aero model configuration (segments, CG, etc.) */
@@ -184,11 +211,50 @@ export class GPSAeroOverlay {
       r: (pt.bodyRates?.r ?? 0) * D2R,
     }
 
-    // Evaluate segment model
+    // Evaluate segment model with neutral controls (arrows show baseline aero)
+    this.controls = defaultControls()
     const result = evaluateAeroForcesDetailed(
       cfg.segments, cfg.cgMeters, cfg.height,
       bodyVel, omega, this.controls, rho,
     )
+
+    // ── Control solver (for readout/moments only, does not affect arrows) ──
+    // The solver calls evaluateAeroForcesDetailed many times with the SAME
+    // segment objects.  getCoeffs() mutates seg.position.y and seg.orientation
+    // based on control inputs.  With CONTROL_CLAMP up to 2000, yaw shifts can
+    // push position.y tens of meters off, and those mutations persist on the
+    // segment objects.  evaluateAeroForcesDetailed reads seg.position BEFORE
+    // calling getCoeffs, so the NEXT frame's neutral eval would pick up the
+    // solver's stale mutations → arrows fly away.
+    // Fix: snapshot segment state before the solver and restore it after.
+    let solverActive = false
+    if (this.enableControlSolver && cfg.inertia && pt.bodyRates?.pDot !== undefined) {
+      // Save mutable segment state
+      const savedState = cfg.segments.map(s => ({
+        posY: s.position.y,
+        orientation: s.orientation ? { ...s.orientation } : undefined,
+      }))
+
+      const solverCfg: ControlInversionConfig = {
+        segments: cfg.segments,
+        cgMeters: cfg.cgMeters,
+        height: cfg.height,
+        mass: cfg.mass,
+        inertia: cfg.inertia,
+        rho,
+      }
+      const sol = solveControlInputs(pt, solverCfg)
+      this.lastMoments = sol.moments
+      this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
+      this.lastConverged = sol.converged
+      solverActive = true
+
+      // Restore segment state so next frame's neutral eval reads clean positions
+      cfg.segments.forEach((s, i) => {
+        s.position.y = savedState[i].posY
+        if (savedState[i].orientation) s.orientation = savedState[i].orientation
+      })
+    }
 
     // Body-to-world quaternion for rotating vectors into scene frame
     const bodyQuat = bodyToInertialQuat(
@@ -273,84 +339,67 @@ export class GPSAeroOverlay {
       }
     }
 
-    // Net force arrow from CG
+    // CG position in world space
     const cgWorld = nedToThreeJS(cfg.cgMeters).applyQuaternion(bodyQuat).add(modelPos)
-    const netForceNED = result.system.force
-    const netForceThree = nedToThreeJS(netForceNED).applyQuaternion(bodyQuat)
-    const netLen = netForceThree.length() * FORCE_SCALE
-    if (netLen > MIN_ARROW) {
-      this.netForceArrow.setDirection(netForceThree.normalize())
-      this.netForceArrow.setLength(netLen, 0.08, 0.04)
-      this.netForceArrow.position.copy(cgWorld)
-      this.netForceArrow.visible = true
+
+    // Net force arrow — hidden (replaced by accel ball)
+    this.netForceArrow.visible = false
+
+    // Acceleration ball — fixed radius, position offset from CG by acceleration vector
+    const ACCEL_BALL_RADIUS = 0.1    // fixed scene-meters radius
+    const ACCEL_POS_SCALE  = 0.08   // m/s² → scene meters offset
+    const accelNED: Vec3NED = {
+      x: pt.processed.accelN,
+      y: pt.processed.accelE,
+      z: pt.processed.accelD,
+    }
+    const accelThree = nedToThreeJS(accelNED)
+    const offsetLen = accelThree.length() * ACCEL_POS_SCALE
+    if (offsetLen > 0.005) {
+      this.accelBall.scale.setScalar(ACCEL_BALL_RADIUS)
+      this.accelBall.position.copy(cgWorld).add(accelThree.normalize().multiplyScalar(offsetLen))
+      this.accelBall.visible = true
     } else {
-      this.netForceArrow.visible = false
+      this.accelBall.visible = false
     }
 
-    // Moment arcs (roll, pitch, yaw) rendered as curved lines at CG
-    const moments = [result.system.moment.x, result.system.moment.y, result.system.moment.z]
-    const axes = [
-      new THREE.Vector3(0, 0, 1),   // roll → body x → Three.js z
-      new THREE.Vector3(-1, 0, 0),  // pitch → body y → Three.js -x
-      new THREE.Vector3(0, -1, 0),  // yaw → body z → Three.js -y
-    ]
-    for (let i = 0; i < 3; i++) {
-      const mag = moments[i]
-      const arcRadius = Math.min(3, Math.abs(mag) * MOMENT_SCALE + 0.3)
-      const arcAngle = Math.min(Math.PI, Math.abs(mag) * MOMENT_SCALE * 2)
+    // Moment arcs (roll, pitch, yaw) — CurvedArrow at CG, rotated into body frame
+    // Sign conventions match main viewer (vectors.ts): pitch/yaw negated, roll positive
+    const sysMoment = result.system.moment
+    const pitchArcVal = -sysMoment.y * TORQUE_SCALE
+    const yawArcVal   = -sysMoment.z * TORQUE_SCALE
+    const rollArcVal  =  sysMoment.x * TORQUE_SCALE
 
-      if (arcAngle < 0.05) {
-        this.momentArcs[i].line.visible = false
-        continue
-      }
+    this.pitchArc.setAngle(pitchArcVal)
+    this.pitchArc.visible = Math.abs(pitchArcVal) > 0.005
 
-      // Build arc points in local plane perpendicular to the axis
-      const axis = axes[i].clone().applyQuaternion(bodyQuat).normalize()
-      const perp = new THREE.Vector3()
-      if (Math.abs(axis.y) < 0.9) perp.crossVectors(axis, new THREE.Vector3(0, 1, 0)).normalize()
-      else perp.crossVectors(axis, new THREE.Vector3(1, 0, 0)).normalize()
+    this.yawArc.setAngle(yawArcVal)
+    this.yawArc.visible = Math.abs(yawArcVal) > 0.005
 
-      const nPts = 16
-      const pts: THREE.Vector3[] = []
-      const sign = mag >= 0 ? 1 : -1
-      for (let j = 0; j <= nPts; j++) {
-        const a = (j / nPts) * arcAngle * sign
-        const p = perp.clone()
-          .multiplyScalar(Math.cos(a))
-          .add(new THREE.Vector3().crossVectors(axis, perp).multiplyScalar(Math.sin(a)))
-          .multiplyScalar(arcRadius)
-          .add(cgWorld)
-        pts.push(p)
-      }
+    this.rollArc.setAngle(rollArcVal)
+    this.rollArc.visible = Math.abs(rollArcVal) > 0.005
 
-      this.momentArcs[i].line.geometry.dispose()
-      this.momentArcs[i].line.geometry = new THREE.BufferGeometry().setFromPoints(pts)
-      this.momentArcs[i].line.visible = true
-    }
+    // Body rate arcs (angular velocity — what the wingsuit is actually doing)
+    // Sign conventions match main viewer (vectors.ts): pitch/yaw negated, roll positive
+    const pArc =  omega.p * RATE_SCALE
+    const qArc = -omega.q * RATE_SCALE
+    const rArc = -omega.r * RATE_SCALE
 
-    // Populate moment breakdown for MomentInset
-    if (this.enableControlSolver && cfg.inertia && pt.bodyRates?.pDot !== undefined) {
-      // Pass 2: Full control inversion
-      const solverCfg: ControlInversionConfig = {
-        segments: cfg.segments,
-        cgMeters: cfg.cgMeters,
-        height: cfg.height,
-        mass: cfg.mass,
-        inertia: cfg.inertia,
-        rho,
-      }
-      const sol = solveControlInputs(pt, solverCfg)
-      this.lastMoments = sol.moments
-      this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
-      this.lastConverged = sol.converged
+    this.pitchRateArc.setAngle(qArc)
+    this.pitchRateArc.visible = Math.abs(qArc) > 0.01
 
-      // Update force vectors with solved controls (re-evaluate)
-      this.controls = defaultControls()
-      this.controls.pitchThrottle = sol.pitchThrottle
-      this.controls.rollThrottle = sol.rollThrottle
-      this.controls.yawThrottle = sol.yawThrottle
-    } else {
-      // Pass 1: Neutral controls only
+    this.yawRateArc.setAngle(rArc)
+    this.yawRateArc.visible = Math.abs(rArc) > 0.01
+
+    this.rollRateArc.setAngle(pArc)
+    this.rollRateArc.visible = Math.abs(pArc) > 0.01
+
+    // Position moment group at CG and rotate to body orientation
+    this.momentGroup.position.copy(cgWorld)
+    this.momentGroup.quaternion.copy(bodyQuat)
+
+    // Populate moment breakdown for non-solver path
+    if (!solverActive) {
       const mx = result.system.moment.x
       const my = result.system.moment.y
       const mz = result.system.moment.z
@@ -370,12 +419,16 @@ export class GPSAeroOverlay {
 
   private hideAll() {
     this.netForceArrow.visible = false
+    this.accelBall.visible = false
     for (const sa of this.segArrows) {
       sa.lift.visible = sa.drag.visible = sa.side.visible = sa.vel.visible = false
     }
-    for (const ma of this.momentArcs) {
-      ma.line.visible = false
-    }
+    this.pitchArc.visible = false
+    this.yawArc.visible = false
+    this.rollArc.visible = false
+    this.pitchRateArc.visible = false
+    this.yawRateArc.visible = false
+    this.rollRateArc.visible = false
   }
 
   /** Show/hide entire overlay */

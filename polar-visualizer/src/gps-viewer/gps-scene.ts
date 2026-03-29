@@ -136,7 +136,7 @@ export class GPSScene {
       // cp2.gltf: maxDim 6.266 GLB units, real canopy span ~10m
       // Scale so 1 GLB unit ≈ real meters. Canopy span = 6.266 * scale
       // Ibex UL span ≈ 8.7m → scale = 8.7 / 6.266 ≈ 1.39
-      this.canopyModel.scale.setScalar(1.39)
+      this.canopyModel.scale.setScalar(1.39 * 0.7)
       this.canopyModel.visible = false
       this.scene.add(this.canopyModel)
     } catch (e) {

@@ -213,11 +213,13 @@ export function processGNSSData(
   const rawTheta = results.map(r => r.aero.theta);
   const rawPsi   = results.map(r => r.aero.psi);
 
-  // Unwrap heading to handle ±π wraparound before smoothing
+  // Unwrap heading and roll to handle ±π wraparound before smoothing
+  // Heading wraps during turns; roll wraps during corkscrew/barrel-roll maneuvers
   const unwrappedPsi = unwrapAngles(rawPsi);
+  const unwrappedPhi = unwrapAngles(rawPhi);
 
   // SG multi-pass smooth (same windows as velocity)
-  const smoothPhi   = applySGFilterMultiPass(rawPhi, config.smoothingWindows, v => v);
+  const smoothPhi   = applySGFilterMultiPass(unwrappedPhi, config.smoothingWindows, v => v);
   const smoothTheta = applySGFilterMultiPass(rawTheta, config.smoothingWindows, v => v);
   const smoothPsi   = applySGFilterMultiPass(unwrappedPsi, config.smoothingWindows, v => v);
 

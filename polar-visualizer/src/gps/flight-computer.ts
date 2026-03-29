@@ -145,6 +145,11 @@ export class FlightComputer {
   private deployDetected = false;
   private wingsuitEstablished = false;
 
+  // Direct canopy fallback (when deploy detection fails)
+  private canopyConfidence = 0;
+  private canopyFallback = false;
+  private _canopyFallbackLogged = false;
+
   // Landing detection
   private landingConfidence = 0;
   private landingDetected = false;
@@ -168,6 +173,9 @@ export class FlightComputer {
     this.deployConfidence = 0;
     this.deployDetected = false;
     this.wingsuitEstablished = false;
+    this.canopyConfidence = 0;
+    this.canopyFallback = false;
+    this._canopyFallbackLogged = false;
     this.landingConfidence = 0;
     this.landingDetected = false;
     this.altMin = NaN;
@@ -238,6 +246,9 @@ export class FlightComputer {
 
     if (this.currentMode === FlightMode.WINGSUIT) {
       if (vxs > this.cfg.deployVxsThreshold) {
+        if (!this.wingsuitEstablished) {
+          console.log(`[FC] t=${t.toFixed(1)}s wingsuitEstablished=true (vxs=${vxs.toFixed(1)} > ${this.cfg.deployVxsThreshold})`);
+        }
         this.wingsuitEstablished = true;
       }
       if (this.wingsuitEstablished && vxs < this.cfg.deployVxsThreshold && vxs > 0) {
@@ -246,6 +257,11 @@ export class FlightComputer {
         this.deployConfidence *= (1 - this.cfg.deployAlpha);
       }
       this.deployDetected = this.deployConfidence > this.cfg.deployThreshold;
+
+      // Log every ~2s while in wingsuit
+      if (Math.abs(t % 2) < 0.15) {
+        console.log(`[FC] t=${t.toFixed(1)}s WINGSUIT: gs=${groundSpeed.toFixed(1)} climb=${climb.toFixed(1)} vxs=${vxs.toFixed(1)} wsEstab=${this.wingsuitEstablished} deployConf=${this.deployConfidence.toFixed(2)} canopyConf=${this.canopyConfidence.toFixed(2)} fastMode=${flightModeString(this.fastMode)}`);
+      }
 
     } else if (this.currentMode === FlightMode.FREEFALL) {
       if (vys > this.cfg.deployVysThreshold && vys < 0) {
@@ -259,6 +275,32 @@ export class FlightComputer {
       this.deployConfidence = 0;
       this.deployDetected = false;
       this.wingsuitEstablished = false;
+    }
+
+    // ── Cross-mode canopy fallback (works from WINGSUIT, DEPLOY, PLANE, UNKNOWN) ──
+    // Tracks whether speed/climb have entered the canopy-like regime
+    // even if getBasicMode doesn't return CANOPY (its zone is narrow).
+    // Uses broader criteria: gs < 25, -12 < climb < 0, NOT in freefall zone.
+    const canopyLike = groundSpeed < 25 && climb > -12 && climb < 0
+      && this.fastMode !== FlightMode.FREEFALL && this.fastMode !== FlightMode.GROUND;
+    const postWingsuit = this.wingsuitEstablished
+      && (this.currentMode === FlightMode.WINGSUIT
+        || this.currentMode === FlightMode.DEPLOY
+        || this.currentMode === FlightMode.PLANE
+        || this.currentMode === FlightMode.UNKNOWN);
+
+    if (postWingsuit && (this.fastMode === FlightMode.CANOPY || canopyLike)) {
+      this.canopyConfidence += (1 - this.canopyConfidence) * 0.3;
+    } else if (postWingsuit) {
+      this.canopyConfidence *= 0.85;
+    } else {
+      this.canopyConfidence = 0;
+    }
+    this.canopyFallback = this.canopyConfidence > 0.6;
+
+    if (this.canopyFallback && !this._canopyFallbackLogged) {
+      console.log(`[FC] t=${t.toFixed(1)}s canopyFallback triggered (canopyConf=${this.canopyConfidence.toFixed(2)}, gs=${groundSpeed.toFixed(1)}, climb=${climb.toFixed(1)}, mode=${flightModeString(this.currentMode)}, fastMode=${flightModeString(this.fastMode)})`);
+      this._canopyFallbackLogged = true;
     }
   }
 
@@ -315,14 +357,26 @@ export class FlightComputer {
         return FlightMode.GROUND;
 
       case FlightMode.PLANE:
+        if (this.canopyFallback) {
+          console.log(`[FC] PLANE → CANOPY (canopy fallback, canopyConf=${this.canopyConfidence.toFixed(2)})`);
+          return FlightMode.CANOPY;
+        }
         if (this.fastMode === FlightMode.WINGSUIT) return FlightMode.WINGSUIT;
         if (this.fastMode === FlightMode.FREEFALL) return FlightMode.FREEFALL;
         if (this.fastMode === FlightMode.GROUND) return FlightMode.GROUND;
         return FlightMode.PLANE;
 
       case FlightMode.WINGSUIT:
-        if (this.deployDetected) return FlightMode.DEPLOY;
-        if (this.fastMode === FlightMode.PLANE) return FlightMode.PLANE; // error recovery
+        if (this.deployDetected) {
+          console.log(`[FC] WINGSUIT → DEPLOY (deployConf=${this.deployConfidence.toFixed(2)})`);
+          return FlightMode.DEPLOY;
+        }
+        if (this.canopyFallback) {
+          console.log(`[FC] WINGSUIT → CANOPY (direct fallback, canopyConf=${this.canopyConfidence.toFixed(2)})`);
+          return FlightMode.CANOPY;
+        }
+        // Only allow WINGSUIT→PLANE if wingsuit wasn't established (prevents deploy flare from escaping)
+        if (this.fastMode === FlightMode.PLANE && !this.wingsuitEstablished) return FlightMode.PLANE;
         return FlightMode.WINGSUIT;
 
       case FlightMode.FREEFALL:
@@ -331,7 +385,11 @@ export class FlightComputer {
         return FlightMode.FREEFALL;
 
       case FlightMode.DEPLOY:
-        if (this.fastMode === FlightMode.CANOPY) return FlightMode.CANOPY;
+        if (this.fastMode === FlightMode.CANOPY || this.canopyFallback) {
+          console.log(`[FC] DEPLOY → CANOPY`);
+          return FlightMode.CANOPY;
+        }
+        console.log(`[FC] DEPLOY: waiting for CANOPY fastMode, got ${flightModeString(this.fastMode)} gs=${groundSpeed.toFixed(1)} climb=${climb.toFixed(1)}`);
         return FlightMode.DEPLOY;
 
       case FlightMode.CANOPY:
@@ -369,6 +427,9 @@ export class FlightComputer {
     this.deployConfidence = 0;
     this.deployDetected = false;
     this.wingsuitEstablished = false;
+    this.canopyConfidence = 0;
+    this.canopyFallback = false;
+    this._canopyFallbackLogged = false;
     this.landingConfidence = 0;
     this.landingDetected = false;
     this.slowModeConfidence = 0;

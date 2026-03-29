@@ -44,6 +44,8 @@ export interface ControlInversionResult {
   converged: boolean
   /** Number of iterations */
   iterations: number
+  /** Final residual norm (N·m) */
+  residual: number
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ export interface ControlInversionResult {
 const MAX_ITER = 8
 const CONVERGE_THRESHOLD = 0.5  // N·m residual norm
 const PERTURBATION = 0.01       // control perturbation for Jacobian
-const CONTROL_CLAMP = 1.0       // max control magnitude
+const CONTROL_CLAMP = 2000.0      // unconstrained for GPS inversion (not a gamepad limit)
 const D2R = Math.PI / 180
 
 // ─── Solver ─────────────────────────────────────────────────────────────────
@@ -156,6 +158,8 @@ export function solveControlInputs(
 
   // Final evaluation with solved controls
   const Mfinal = evalMoments(u[0], u[1], u[2])
+  const finalRes = [Mfinal.x - Lreq, Mfinal.y - Mreq, Mfinal.z - Nreq]
+  const finalNorm = Math.sqrt(finalRes[0] * finalRes[0] + finalRes[1] * finalRes[1] + finalRes[2] * finalRes[2])
 
   // Gyroscopic terms (ω × Iω)
   const gyroL = (Izz - Iyy) * omega.q * omega.r + Ixz * omega.p * omega.q
@@ -178,6 +182,7 @@ export function solveControlInputs(
     },
     converged,
     iterations: iter,
+    residual: finalNorm,
   }
 }
 

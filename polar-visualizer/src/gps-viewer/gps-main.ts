@@ -117,13 +117,14 @@ async function loadFile(file: File) {
 
   // Set aero overlay config from A5 segments model
   const polar = a5segmentsContinuous
-  const massRef = 1.875  // pilot height
+  const massRef = 1.875  // pilot height (for CG/inertia)
+  const aeroRef = polar.referenceLength ?? massRef  // aero reference length (1.93 for A5)
   const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
   const inertia = computeInertia(polar.massSegments ?? [], massRef, polar.m)
   scene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
     cgMeters,
-    height: massRef,
+    height: aeroRef,
     mass: polar.m,
     rho: 1.225,
     inertia,
@@ -151,17 +152,23 @@ async function loadFile(file: File) {
   const solverCfg: ControlInversionConfig = {
     segments: polar.aeroSegments ?? [],
     cgMeters,
-    height: massRef,
+    height: aeroRef,
     mass: polar.m,
     inertia,
     rho: 1.225,
   }
   let convergeCount = 0
+  let wingsuitCount = 0
+  let wingsuitConverged = 0
   let prevU: [number, number, number] | undefined
+  let sampleLogged = false
+  let pointIdx = 0
+  const totalPoints = result.points.length
   for (const pt of result.points) {
     if (pt.bodyRates?.pDot !== undefined) {
       const sol = solveControlInputs(pt, solverCfg, prevU)
-      prevU = [sol.pitchThrottle, sol.rollThrottle, sol.yawThrottle]
+      // Only warm-start from converged solutions; reset to neutral otherwise
+      prevU = sol.converged ? [sol.pitchThrottle, sol.rollThrottle, sol.yawThrottle] : undefined
       pt.solvedControls = {
         pitchThrottle: sol.pitchThrottle,
         rollThrottle: sol.rollThrottle,
@@ -169,9 +176,34 @@ async function loadFile(file: File) {
         converged: sol.converged,
       }
       if (sol.converged) convergeCount++
+
+      // Track wingsuit-mode stats and log one stable wingsuit sample
+      const isWingsuit = pt.flightMode?.mode === 3  // FlightMode.WINGSUIT
+      if (isWingsuit) {
+        wingsuitCount++
+        if (sol.converged) wingsuitConverged++
+      }
+      if (!sampleLogged && isWingsuit && pt.processed.airspeed > 10 && sol.converged) {
+        sampleLogged = true
+        const br = pt.bodyRates!
+        console.log(`Control solver [CONVERGED] pt ${pointIdx}/${totalPoints}:`, {
+          converged: sol.converged,
+          iterations: sol.iterations,
+          residual_Nm: sol.residual.toFixed(2),
+          controls: [sol.pitchThrottle.toFixed(3), sol.rollThrottle.toFixed(3), sol.yawThrottle.toFixed(3)],
+          airspeed_ms: pt.processed.airspeed.toFixed(1),
+          qbar_Pa: pt.processed.qbar.toFixed(0),
+          flightMode: pt.flightMode?.modeString,
+          bodyRates_dps: { p: br.p.toFixed(1), q: br.q.toFixed(1), r: br.r.toFixed(1) },
+          angAccel_dps2: { pDot: br.pDot?.toFixed(1), qDot: br.qDot?.toFixed(1), rDot: br.rDot?.toFixed(1) },
+          Mreq: `L=${(inertia.Ixx * (br.pDot ?? 0) * Math.PI / 180).toFixed(1)} M=${(inertia.Iyy * (br.qDot ?? 0) * Math.PI / 180).toFixed(1)} N=${(inertia.Izz * (br.rDot ?? 0) * Math.PI / 180).toFixed(1)}`,
+          Maero_neutral: sol.moments,
+        })
+      }
     }
+    pointIdx++
   }
-  console.log(`Control inversion: ${convergeCount}/${result.points.length} converged`)
+  console.log(`Control inversion: ${convergeCount}/${totalPoints} total, ${wingsuitConverged}/${wingsuitCount} wingsuit converged`)
 
   // Run orientation EKF over pipeline output
   const ekfT0 = performance.now()
@@ -325,5 +357,10 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">q̄</span><span class="value">${g.qbar.toFixed(0)} Pa</span></div>
     <div class="row"><span class="label">ρ</span><span class="value">${g.rho.toFixed(4)} kg/m³</span></div>
     <div class="row"><span class="label">AOA residual</span><span class="value">${a.aoaResidual.toFixed(4)}</span></div>
+    <div class="section">Control Solver</div>
+    <div class="row"><span class="label">Converged</span><span class="value" style="color:${p.solvedControls?.converged ? '#44ff66' : '#ff4444'}">${p.solvedControls?.converged ? 'Yes' : 'No'}</span></div>
+    <div class="row"><span class="label">Pitch</span><span class="value">${(p.solvedControls?.pitchThrottle ?? 0).toFixed(3)}</span></div>
+    <div class="row"><span class="label">Roll</span><span class="value">${(p.solvedControls?.rollThrottle ?? 0).toFixed(3)}</span></div>
+    <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>
   `
 }
