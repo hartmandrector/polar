@@ -82,6 +82,12 @@ export class BodyFrameScene {
     this.controls.dampingFactor = 0.1
     this.controls.target.set(0, 0, 0)
 
+    // Log camera state after user stops dragging (for playwright capture presets)
+    this.controls.addEventListener('end', () => {
+      const p = this.camera.position
+      console.log(`[Body Camera] position: [${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}], zoom: ${this.camera.zoom.toFixed(2)}`)
+    })
+
     // Aero overlay (body frame — vectors stay in native frame)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.aeroOverlay.bodyFrame = true
