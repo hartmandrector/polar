@@ -12,6 +12,7 @@ import { GPSScene } from './gps-scene'
 import { BodyFrameScene } from './body-frame-scene'
 import { MomentInset } from './moment-inset'
 import { InertialLegend, BodyFrameLegend } from './scene-legend'
+import { CaptureHandler } from './capture-handler'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
@@ -40,6 +41,7 @@ let bodyScene: BodyFrameScene | null = null
 let momentInset: MomentInset | null = null
 let inertialLegend: InertialLegend | null = null
 let bodyLegend: BodyFrameLegend | null = null
+let captureHandler: CaptureHandler | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 
@@ -297,6 +299,47 @@ async function loadFile(file: File) {
   bodyScene.setIndex(0)
   updateReadout(0)
   updateTransport(0, dur)
+
+  // ── Capture Handler ──
+  if (!captureHandler) {
+    captureHandler = new CaptureHandler({
+      renderFrame: (index, fraction) => {
+        scene?.setIndex(index, fraction)
+        bodyScene?.setIndex(index, fraction)
+        updateReadout(index)
+        updateMomentInset()
+        updateLegends(index)
+      },
+      getFlightBounds: () => {
+        if (!result) return { startTime: 0, endTime: 0 }
+        const pts = result.points
+        // Find first freefall/wingsuit frame and last landing frame
+        let startTime = pts[0]?.processed.t ?? 0
+        let endTime = pts[pts.length - 1]?.processed.t ?? 0
+        for (const p of pts) {
+          if (p.flightMode && p.flightMode.mode >= 3) { // WINGSUIT or later
+            startTime = p.processed.t
+            break
+          }
+        }
+        for (let i = pts.length - 1; i >= 0; i--) {
+          if (pts[i].flightMode && pts[i].flightMode!.mode <= 7) {
+            endTime = pts[i].processed.t
+            break
+          }
+        }
+        return { startTime, endTime }
+      },
+    })
+    captureHandler.bindUI(
+      document.getElementById('capture-status')!,
+      document.getElementById('capture-frame')!,
+    )
+    document.getElementById('capture-btn')!.addEventListener('click', () => {
+      captureHandler?.startCapture()
+    })
+  }
+  captureHandler.setData(result.points)
 }
 
 // ─── Transport Controls ─────────────────────────────────────────────────────
