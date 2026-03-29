@@ -70,22 +70,22 @@ export class InertialLegend {
 
     this.el.innerHTML = [
       section('Flight Mode'),
-      row('Mode', fm?.modeString ?? 'N/A', C.dim, C.mode),
+      row('Mode', fm?.modeString ?? 'N/A', C.mode, C.mode),
 
       section('Position'),
-      row('Altitude', `${(-p.posD).toFixed(0)} m (${(-p.posD * 3.281).toFixed(0)} ft)`),
-      row('N / E', `${p.posN.toFixed(0)} / ${p.posE.toFixed(0)} m`),
+      row('Altitude', `${(-p.posD).toFixed(0)} m (${(-p.posD * 3.281).toFixed(0)} ft)`, C.white, C.white),
+      row('N / E', `${p.posN.toFixed(0)} / ${p.posE.toFixed(0)} m`, C.white, C.white),
 
       section('Velocity'),
-      row('Airspeed', `${p.airspeed.toFixed(1)} m/s (${(p.airspeed * ms2mph).toFixed(0)} mph)`, C.dim, C.vel),
-      row('Ground', `${p.groundSpeed.toFixed(1)} m/s`, C.dim, C.vel),
-      row('Vert', `${(-p.velD).toFixed(1)} m/s`, C.dim, C.vel),
+      row('Airspeed', `${p.airspeed.toFixed(1)} m/s (${(p.airspeed * ms2mph).toFixed(0)} mph)`, C.vel, C.vel),
+      row('Ground', `${p.groundSpeed.toFixed(1)} m/s`, C.vel, C.vel),
+      row('Vert', `${(-p.velD).toFixed(1)} m/s`, C.vel, C.vel),
 
       section('Orientation'),
-      row('φ (Bank)', `${(a.roll * r2d).toFixed(1)}°`, C.dim, C.rollM),
-      row('θ (Pitch)', `${(a.theta * r2d).toFixed(1)}°`, C.dim, C.pitchM),
-      row('ψ (Heading)', `${psiDeg.toFixed(1)}°`, C.dim, C.yawM),
-      row('γ (FPA)', `${(a.gamma * r2d).toFixed(1)}°`),
+      row('φ (Bank)', `${(a.roll * r2d).toFixed(1)}°`, C.rollM, C.rollM),
+      row('θ (Pitch)', `${(a.theta * r2d).toFixed(1)}°`, C.pitchM, C.pitchM),
+      row('ψ (Heading)', `${psiDeg.toFixed(1)}°`, C.yawM, C.yawM),
+      row('γ (FPA)', `${(a.gamma * r2d).toFixed(1)}°`, C.white, C.white),
     ].join('')
   }
 }
@@ -119,21 +119,21 @@ export class BodyFrameLegend {
 
     this.el.innerHTML = [
       section('Body Rates'),
-      row('p (roll)', `${(br?.p ?? 0).toFixed(1)} °/s`, C.dim, C.rollR),
-      row('q (pitch)', `${(br?.q ?? 0).toFixed(1)} °/s`, C.dim, C.pitchR),
-      row('r (yaw)', `${(br?.r ?? 0).toFixed(1)} °/s`, C.dim, C.yawR),
+      row('p (roll)', `${(br?.p ?? 0).toFixed(1)} °/s`, C.rollR, C.rollR),
+      row('q (pitch)', `${(br?.q ?? 0).toFixed(1)} °/s`, C.pitchR, C.pitchR),
+      row('r (yaw)', `${(br?.r ?? 0).toFixed(1)} °/s`, C.yawR, C.yawR),
 
       section('Aerodynamics'),
-      row('α (AOA)', `${(a.aoa * r2d).toFixed(1)}°`),
-      row('CL', a.cl.toFixed(3), C.dim, C.lift),
-      row('CD', a.cd.toFixed(3), C.dim, C.drag),
-      row('L/D', ld.toFixed(2)),
+      row('α (AOA)', `${(a.aoa * r2d).toFixed(1)}°`, C.white, C.white),
+      row('CL', a.cl.toFixed(3), C.lift, C.lift),
+      row('CD', a.cd.toFixed(3), C.drag, C.drag),
+      row('L/D', ld.toFixed(2), C.white, C.white),
 
       section('Control Solver'),
-      row('Converged', d.converged ? 'Yes' : 'No', C.dim, convColor),
-      row('Pitch', `${(d.controlPitch * 100).toFixed(0)}%`, C.dim, C.pitchM),
-      row('Roll', `${(d.controlRoll * 100).toFixed(0)}%`, C.dim, C.rollM),
-      row('Yaw', `${(d.controlYaw * 100).toFixed(0)}%`, C.dim, C.yawM),
+      row('Converged', d.converged ? 'Yes' : 'No', convColor, convColor),
+      row('Pitch', `${(d.controlPitch * 100).toFixed(0)}%`, C.pitchM, C.pitchM),
+      row('Roll', `${(d.controlRoll * 100).toFixed(0)}%`, C.rollM, C.rollM),
+      row('Yaw', `${(d.controlYaw * 100).toFixed(0)}%`, C.yawM, C.yawM),
     ].join('')
   }
 }
