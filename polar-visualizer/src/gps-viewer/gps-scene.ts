@@ -13,7 +13,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
-import { MomentInset } from './moment-inset'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -47,7 +46,18 @@ export class GPSScene {
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
-  private momentInset: MomentInset
+
+  /** Exposed for external moment inset to read */
+  get lastOverlayState() {
+    return {
+      moments: this.aeroOverlay.lastMoments,
+      controls: this.aeroOverlay.lastControls,
+      converged: this.aeroOverlay.lastConverged,
+      canopyMoments: this.canopyAeroOverlay.lastMoments,
+      canopyControls: this.canopyAeroOverlay.lastControls,
+      canopyConverged: this.canopyAeroOverlay.lastConverged,
+    }
+  }
 
   // Orientation EKF (optional)
   private ekf: OrientationEKF | null = null
@@ -90,10 +100,6 @@ export class GPSScene {
     // Aero overlay (attached to scene root, not worldGroup — stays at vehicle)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
-
-    // Moment breakdown inset
-    const scenePanel = canvas.parentElement!
-    this.momentInset = new MomentInset(scenePanel)
 
     // Resize handling
     this.handleResize()
@@ -248,11 +254,6 @@ export class GPSScene {
     if (!canopyPhase) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
-      this.momentInset.update(
-        this.aeroOverlay.lastMoments,
-        this.aeroOverlay.lastControls,
-        this.aeroOverlay.lastConverged,
-      )
     } else if (cs && cs.valid) {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.aeroOverrides = {
@@ -262,11 +263,6 @@ export class GPSScene {
         psi: cs.psi,
       }
       this.canopyAeroOverlay.update(pt, origin)
-      this.momentInset.update(
-        this.canopyAeroOverlay.lastMoments,
-        this.canopyAeroOverlay.lastControls,
-        this.canopyAeroOverlay.lastConverged,
-      )
     } else {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.hide()

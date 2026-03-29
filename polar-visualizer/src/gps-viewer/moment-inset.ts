@@ -144,16 +144,25 @@ export class MomentInset {
   // Axis labels (static meshes)
   private labels: THREE.Sprite[] = []
 
-  constructor(parentEl: HTMLElement) {
+  constructor(parentEl: HTMLElement, embedded = false) {
     // Container
     this.container = document.createElement('div')
     this.container.id = 'moment-inset'
-    this.container.style.cssText = `
-      position: absolute; top: 8px; left: 8px;
-      width: 480px; height: 380px;
-      pointer-events: none; z-index: 10;
-    `
-    parentEl.style.position = 'relative'
+    if (embedded) {
+      // Flow layout — fits inside a sidebar panel
+      this.container.style.cssText = `
+        width: 100%; aspect-ratio: 480 / 380;
+        pointer-events: none;
+      `
+    } else {
+      // Absolute overlay on a scene panel
+      this.container.style.cssText = `
+        position: absolute; top: 8px; left: 8px;
+        width: 480px; height: 380px;
+        pointer-events: none; z-index: 10;
+      `
+      parentEl.style.position = 'relative'
+    }
     parentEl.appendChild(this.container)
 
     // Canvas

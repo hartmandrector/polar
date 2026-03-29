@@ -12,7 +12,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
-import { MomentInset } from './moment-inset'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -45,7 +44,6 @@ export class BodyFrameScene {
   // Aero overlay (in body frame — no rotation needed)
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
-  private momentInset: MomentInset
 
   private ekf: OrientationEKF | null = null
 
@@ -85,10 +83,6 @@ export class BodyFrameScene {
     // Aero overlay (body frame — vectors stay in native frame)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
-
-    // Moment inset
-    const scenePanel = canvas.parentElement!
-    this.momentInset = new MomentInset(scenePanel)
 
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
@@ -235,11 +229,6 @@ export class BodyFrameScene {
     if (!canopyPhase) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
-      this.momentInset.update(
-        this.aeroOverlay.lastMoments,
-        this.aeroOverlay.lastControls,
-        this.aeroOverlay.lastConverged,
-      )
     } else if (cs && cs.valid) {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.aeroOverrides = {
@@ -249,11 +238,6 @@ export class BodyFrameScene {
         psi: cs.psi,
       }
       this.canopyAeroOverlay.update(pt, origin)
-      this.momentInset.update(
-        this.canopyAeroOverlay.lastMoments,
-        this.canopyAeroOverlay.lastControls,
-        this.canopyAeroOverlay.lastConverged,
-      )
     } else {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.hide()

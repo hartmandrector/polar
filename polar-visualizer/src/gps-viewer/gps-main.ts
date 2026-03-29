@@ -10,6 +10,7 @@ import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
 import { BodyFrameScene } from './body-frame-scene'
+import { MomentInset } from './moment-inset'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
@@ -35,6 +36,7 @@ let charts: GPSCharts | null = null
 let replay: GPSReplay | null = null
 let scene: GPSScene | null = null
 let bodyScene: BodyFrameScene | null = null
+let momentInset: MomentInset | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 
@@ -121,6 +123,12 @@ async function loadFile(file: File) {
   }
   scene.setData(result.points)
   bodyScene.setData(result.points)
+
+  // Moment inset in sidebar
+  if (!momentInset) {
+    const momentContainer = document.getElementById('moment-container')!
+    momentInset = new MomentInset(momentContainer, true)
+  }
 
   // Set aero overlay config from A5 segments model
   const polar = a5segmentsContinuous
@@ -260,6 +268,7 @@ async function loadFile(file: File) {
       scene?.setIndex(index, fraction)
       bodyScene?.setIndex(index, fraction)
       updateReadout(index)
+      updateMomentInset()
       updateTransport(t, dur)
     })
   } else {
@@ -298,6 +307,8 @@ scrubber.addEventListener('input', () => {
   charts?.setCursor(idx)
   scene?.setIndex(idx)
   bodyScene?.setIndex(idx)
+  updateReadout(idx)
+  updateMomentInset()
   updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
@@ -338,6 +349,21 @@ function findTimeIndex(t: number): number {
     else hi = mid
   }
   return lo
+}
+
+// ─── Readout ────────────────────────────────────────────────────────────────
+
+// ─── Moment Inset Update ────────────────────────────────────────────────────
+
+function updateMomentInset() {
+  if (!momentInset || !scene) return
+  const s = scene.lastOverlayState
+  // Use wingsuit overlay by default; canopy when wingsuit moments are empty
+  if (s.moments) {
+    momentInset.update(s.moments, s.controls, s.converged)
+  } else if (s.canopyMoments) {
+    momentInset.update(s.canopyMoments, s.canopyControls, s.canopyConverged)
+  }
 }
 
 // ─── Readout ────────────────────────────────────────────────────────────────
