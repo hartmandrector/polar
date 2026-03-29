@@ -12,6 +12,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
+import { BodyRateAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -44,6 +45,7 @@ export class BodyFrameScene {
   // Aero overlay (in body frame — no rotation needed)
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
+  private bodyRateAxis: BodyRateAxisHelper
 
   private ekf: OrientationEKF | null = null
 
@@ -85,6 +87,10 @@ export class BodyFrameScene {
     this.aeroOverlay.bodyFrame = true
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay.bodyFrame = true
+
+    // Body rate axis helper (p/q/r)
+    this.bodyRateAxis = new BodyRateAxisHelper()
+    this.scene.add(this.bodyRateAxis.group)
 
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())

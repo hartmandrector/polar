@@ -26,24 +26,27 @@ const C = {
   dim:     '#8090a0',
   heading: '#ffcc44',
   mode:    '#ff8844',
+  section: '#e94560',
 }
 
-/** Create a bubble-font span: colored text with dark outline for readability */
-function bubble(text: string, color: string): string {
-  const shadow = [
-    '-1px -1px 0 #000', '1px -1px 0 #000',
-    '-1px 1px 0 #000', '1px 1px 0 #000',
-    '0 0 4px rgba(0,0,0,0.8)',
-  ].join(',')
-  return `<span style="color:${color};text-shadow:${shadow}">${text}</span>`
+const r2d = 180 / Math.PI
+
+/** Dark outline shadow for all bubble text */
+const SHADOW = [
+  '-1px -1px 0 #000', '1px -1px 0 #000',
+  '-1px 1px 0 #000', '1px 1px 0 #000',
+  '0 0 6px rgba(0,0,0,0.9)', '0 0 12px rgba(0,0,0,0.5)',
+].join(',')
+
+function section(title: string): string {
+  return `<div class="legend-section" style="color:${C.section};text-shadow:${SHADOW}">${title}</div>`
 }
 
-function fmt(v: number, decimals = 1): string {
-  return v.toFixed(decimals)
-}
-
-function fmtDeg(v: number, decimals = 1): string {
-  return `${(v * 180 / Math.PI).toFixed(decimals)}°`
+function row(label: string, value: string, labelColor = C.dim, valueColor = C.white): string {
+  return `<div class="legend-row">` +
+    `<span class="legend-label" style="color:${labelColor};text-shadow:${SHADOW}">${label}</span>` +
+    `<span class="legend-value" style="color:${valueColor};text-shadow:${SHADOW}">${value}</span>` +
+    `</div>`
 }
 
 // ─── Inertial Frame Legend ──────────────────────────────────────────────────
@@ -59,18 +62,30 @@ export class InertialLegend {
 
   update(pt: GPSPipelinePoint) {
     const p = pt.processed
-    const mode = pt.flightMode?.modeString ?? 'Unknown'
-    const alt = p.posD ? (-p.posD).toFixed(0) : '—'
-    const altFt = p.posD ? (-p.posD * 3.281).toFixed(0) : '—'
-    const gs = Math.sqrt(p.velN * p.velN + p.velE * p.velE + p.velD * p.velD)
-    const hs = p.groundSpeed
-    const vs = -p.velD
+    const a = pt.aero
+    const fm = pt.flightMode
+    const ms2mph = 2.237
+
+    const psiDeg = ((a.psi * r2d) % 360 + 360) % 360
 
     this.el.innerHTML = [
-      `<div class="legend-row">${bubble(mode, C.mode)}</div>`,
-      `<div class="legend-row">${bubble(`${alt}m`, C.white)} ${bubble(`(${altFt}ft)`, C.dim)}</div>`,
-      `<div class="legend-row">${bubble(`GS ${fmt(gs)}`, C.vel)} ${bubble(`H ${fmt(hs)}`, C.vel)} ${bubble(`V ${fmt(vs)}`, C.vel)} ${bubble('m/s', C.dim)}</div>`,
-      `<div class="legend-row">${bubble(`φ ${fmtDeg(pt.aero.roll)}`, C.rollM)} ${bubble(`θ ${fmtDeg(pt.aero.theta)}`, C.pitchM)} ${bubble(`ψ ${fmtDeg(pt.aero.psi)}`, C.yawM)}</div>`,
+      section('Flight Mode'),
+      row('Mode', fm?.modeString ?? 'N/A', C.dim, C.mode),
+
+      section('Position'),
+      row('Altitude', `${(-p.posD).toFixed(0)} m (${(-p.posD * 3.281).toFixed(0)} ft)`),
+      row('N / E', `${p.posN.toFixed(0)} / ${p.posE.toFixed(0)} m`),
+
+      section('Velocity'),
+      row('Airspeed', `${p.airspeed.toFixed(1)} m/s (${(p.airspeed * ms2mph).toFixed(0)} mph)`, C.dim, C.vel),
+      row('Ground', `${p.groundSpeed.toFixed(1)} m/s`, C.dim, C.vel),
+      row('Vert', `${(-p.velD).toFixed(1)} m/s`, C.dim, C.vel),
+
+      section('Orientation'),
+      row('φ (Bank)', `${(a.roll * r2d).toFixed(1)}°`, C.dim, C.rollM),
+      row('θ (Pitch)', `${(a.theta * r2d).toFixed(1)}°`, C.dim, C.pitchM),
+      row('ψ (Heading)', `${psiDeg.toFixed(1)}°`, C.dim, C.yawM),
+      row('γ (FPA)', `${(a.gamma * r2d).toFixed(1)}°`),
     ].join('')
   }
 }
@@ -97,21 +112,28 @@ export class BodyFrameLegend {
   update(d: BodyLegendData) {
     const pt = d.pt
     const a = pt.aero
+    const br = pt.bodyRates
 
-    // Body rates (deg/s from pipeline)
-    const p_rate = pt.bodyRates?.p ?? 0
-    const q_rate = pt.bodyRates?.q ?? 0
-    const r_rate = pt.bodyRates?.r ?? 0
-
-    const convColor = d.converged ? '#00ff88' : '#ff4444'
+    const convColor = d.converged ? '#44ff66' : '#ff4444'
+    const ld = a.cl / Math.max(a.cd, 0.001)
 
     this.el.innerHTML = [
-      // Body rates
-      `<div class="legend-row">${bubble(`p ${fmt(p_rate)}`, C.rollR)} ${bubble(`q ${fmt(q_rate)}`, C.pitchR)} ${bubble(`r ${fmt(r_rate)}°/s`, C.yawR)}</div>`,
-      // Aero
-      `<div class="legend-row">${bubble(`α ${fmtDeg(a.aoa)}`, C.white)} ${bubble(`CL ${fmt(a.cl, 3)}`, C.lift)} ${bubble(`CD ${fmt(a.cd, 3)}`, C.drag)} ${bubble(`L/D ${fmt(a.cl / Math.max(a.cd, 0.001), 1)}`, C.dim)}</div>`,
-      // Controls
-      `<div class="legend-row">${bubble(`Ctrl`, convColor)} ${bubble(`P ${fmt(d.controlPitch * 100, 0)}%`, C.pitchM)} ${bubble(`R ${fmt(d.controlRoll * 100, 0)}%`, C.rollM)} ${bubble(`Y ${fmt(d.controlYaw * 100, 0)}%`, C.yawM)}</div>`,
+      section('Body Rates'),
+      row('p (roll)', `${(br?.p ?? 0).toFixed(1)} °/s`, C.dim, C.rollR),
+      row('q (pitch)', `${(br?.q ?? 0).toFixed(1)} °/s`, C.dim, C.pitchR),
+      row('r (yaw)', `${(br?.r ?? 0).toFixed(1)} °/s`, C.dim, C.yawR),
+
+      section('Aerodynamics'),
+      row('α (AOA)', `${(a.aoa * r2d).toFixed(1)}°`),
+      row('CL', a.cl.toFixed(3), C.dim, C.lift),
+      row('CD', a.cd.toFixed(3), C.dim, C.drag),
+      row('L/D', ld.toFixed(2)),
+
+      section('Control Solver'),
+      row('Converged', d.converged ? 'Yes' : 'No', C.dim, convColor),
+      row('Pitch', `${(d.controlPitch * 100).toFixed(0)}%`, C.dim, C.pitchM),
+      row('Roll', `${(d.controlRoll * 100).toFixed(0)}%`, C.dim, C.rollM),
+      row('Yaw', `${(d.controlYaw * 100).toFixed(0)}%`, C.dim, C.yawM),
     ].join('')
   }
 }

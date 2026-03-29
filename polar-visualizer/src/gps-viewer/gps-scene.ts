@@ -13,6 +13,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
+import { EulerAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -46,6 +47,7 @@ export class GPSScene {
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
+  private eulerAxis: EulerAxisHelper
 
   /** Exposed for external moment inset to read */
   get lastOverlayState() {
@@ -100,6 +102,10 @@ export class GPSScene {
     // Aero overlay (attached to scene root, not worldGroup — stays at vehicle)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
+
+    // Euler angle axis helper (φ/θ/ψ)
+    this.eulerAxis = new EulerAxisHelper()
+    this.scene.add(this.eulerAxis.group)
 
     // Resize handling
     this.handleResize()
