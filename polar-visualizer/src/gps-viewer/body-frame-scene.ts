@@ -214,9 +214,17 @@ export class BodyFrameScene {
     translatedPos.applyQuaternion(inverseBodyQuat)
     this.worldGroup.position.copy(translatedPos)
 
-    // Vehicle at origin, identity rotation
+    // Vehicle at origin, identity rotation (or hang pitch under canopy)
     this.model.position.set(0, 0, 0)
-    this.model.quaternion.identity()
+    if (canopyPhase) {
+      // Pilot hangs ~80° pitched up under canopy
+      const hangPitch = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
+      )
+      this.model.quaternion.copy(hangPitch)
+    } else {
+      this.model.quaternion.identity()
+    }
 
     // Canopy in body frame (no inertial rotation)
     if (this.canopyModel) {
