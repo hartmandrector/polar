@@ -11,6 +11,7 @@ import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
 import { BodyFrameScene } from './body-frame-scene'
 import { MomentInset } from './moment-inset'
+import { InertialLegend, BodyFrameLegend } from './scene-legend'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
@@ -37,6 +38,8 @@ let replay: GPSReplay | null = null
 let scene: GPSScene | null = null
 let bodyScene: BodyFrameScene | null = null
 let momentInset: MomentInset | null = null
+let inertialLegend: InertialLegend | null = null
+let bodyLegend: BodyFrameLegend | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 
@@ -128,6 +131,14 @@ async function loadFile(file: File) {
   if (!momentInset) {
     const momentContainer = document.getElementById('moment-container')!
     momentInset = new MomentInset(momentContainer, true)
+  }
+
+  // Scene legends
+  if (!inertialLegend) {
+    inertialLegend = new InertialLegend(document.getElementById('inertial-box')!)
+  }
+  if (!bodyLegend) {
+    bodyLegend = new BodyFrameLegend(document.getElementById('body-box')!)
   }
 
   // Set aero overlay config from A5 segments model
@@ -269,6 +280,7 @@ async function loadFile(file: File) {
       bodyScene?.setIndex(index, fraction)
       updateReadout(index)
       updateMomentInset()
+      updateLegends(index)
       updateTransport(t, dur)
     })
   } else {
@@ -309,6 +321,7 @@ scrubber.addEventListener('input', () => {
   bodyScene?.setIndex(idx)
   updateReadout(idx)
   updateMomentInset()
+  updateLegends(idx)
   updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
@@ -363,6 +376,25 @@ function updateMomentInset() {
     momentInset.update(s.moments, s.controls, s.converged)
   } else if (s.canopyMoments) {
     momentInset.update(s.canopyMoments, s.canopyControls, s.canopyConverged)
+  }
+}
+
+function updateLegends(index: number) {
+  if (!result) return
+  const pt = result.points[index]
+  if (!pt) return
+
+  inertialLegend?.update(pt)
+
+  if (bodyLegend && scene) {
+    const s = scene.lastOverlayState
+    bodyLegend.update({
+      pt,
+      converged: s.converged,
+      controlPitch: s.controls.pitch,
+      controlRoll: s.controls.roll,
+      controlYaw: s.controls.yaw,
+    })
   }
 }
 

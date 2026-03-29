@@ -52,7 +52,7 @@ export class BodyFrameScene {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setClearColor(0x0a0a1a)
+    this.renderer.setClearColor(0x000000, 0)  // transparent for PNG export
 
     this.scene = new THREE.Scene()
 
