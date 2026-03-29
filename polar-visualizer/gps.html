@@ -21,9 +21,18 @@
 
     <!-- Main viewer (shown after file load) -->
     <div id="viewer-layout" class="hidden">
-      <!-- Left: 3D scene -->
+      <!-- Left: dual 3D scenes (side by side) -->
       <div id="scene-panel">
-        <canvas id="three-canvas"></canvas>
+        <div id="dual-scene-container">
+          <div class="scene-box" id="inertial-box">
+            <div class="scene-label">Inertial Frame</div>
+            <canvas id="inertial-canvas"></canvas>
+          </div>
+          <div class="scene-box" id="body-box">
+            <div class="scene-label">Body Frame</div>
+            <canvas id="body-canvas"></canvas>
+          </div>
+        </div>
         <!-- Transport bar -->
         <div id="transport">
           <button id="btn-play" title="Play/Pause">▶</button>
@@ -37,8 +46,6 @@
             <option value="4">4×</option>
           </select>
           <button id="btn-load-new" title="Load new file">📂</button>
-          <span style="margin-left: 8px; font-size: 11px; opacity: 0.6;">🎥</span>
-          <input type="range" id="follow-slider" min="0" max="100" value="30" style="width: 80px;" title="Camera follow tightness (0=static, 100=tight)" />
         </div>
       </div>
 

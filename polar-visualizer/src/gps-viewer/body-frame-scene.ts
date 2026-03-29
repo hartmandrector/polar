@@ -1,11 +1,10 @@
 /**
- * GPS Flight Viewer — 3D Scene
+ * GPS Flight Viewer — Body Frame Scene
  * 
- * Vehicle-at-origin architecture:
- *   - Vehicle model always at (0,0,0)
- *   - World group (trail, etc.) translated so vehicle appears stationary
- *   - OrbitControls around origin for free camera inspection
- *   - Inertial frame: vehicle rotated by body-to-inertial quat
+ * Vehicle-at-origin, identity rotation.
+ * World group rotated by inverse body quaternion so everything
+ * appears in the vehicle's body frame.
+ * Force vectors and moment arcs are naturally in body frame.
  */
 
 import * as THREE from 'three'
@@ -20,10 +19,9 @@ import type { CanopyState } from './canopy-estimator'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
-// GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
-const MODEL_SCALE = 1.875 / 3.55  // ≈ 0.528
+const MODEL_SCALE = 1.875 / 3.55
 
-export class GPSScene {
+export class BodyFrameScene {
   private renderer: THREE.WebGLRenderer
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
@@ -33,7 +31,7 @@ export class GPSScene {
   private canopyStates: CanopyState[] = []
   private canvas: HTMLCanvasElement
 
-  // World group — everything that moves relative to the vehicle
+  // World group — rotated by inverse body quat
   private worldGroup: THREE.Group
 
   // Trail (child of worldGroup)
@@ -44,26 +42,23 @@ export class GPSScene {
   private data: GPSPipelinePoint[] = []
   private currentIndex = 0
 
-  // Aero overlay
+  // Aero overlay (in body frame — no rotation needed)
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
   private momentInset: MomentInset
 
-  // Orientation EKF (optional)
   private ekf: OrientationEKF | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
 
-    // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
     this.renderer.setClearColor(0x0a0a1a)
 
-    // Scene
     this.scene = new THREE.Scene()
 
-    // World group — holds trail and any world-frame objects
+    // World group — holds trail, gets inverse body rotation
     this.worldGroup = new THREE.Group()
     this.scene.add(this.worldGroup)
 
@@ -77,32 +72,28 @@ export class GPSScene {
     fillLight.position.set(-3, -2, -5)
     this.scene.add(fillLight)
 
-    // Camera — starts behind and above
+    // Camera — start from the side for body frame inspection
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 50000)
-    this.camera.position.set(0, 5, -12)
+    this.camera.position.set(8, 3, 0)
 
-    // OrbitControls around origin (where vehicle always is)
+    // OrbitControls around origin
     this.controls = new OrbitControls(this.camera, canvas)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.1
     this.controls.target.set(0, 0, 0)
 
-    // Aero overlay (attached to scene root, not worldGroup — stays at vehicle)
+    // Aero overlay (body frame — vectors stay in native frame)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
 
-    // Moment breakdown inset
+    // Moment inset
     const scenePanel = canvas.parentElement!
     this.momentInset = new MomentInset(scenePanel)
 
-    // Resize handling
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
 
-    // Load models
     this.loadModel()
-
-    // Render loop
     this.animate()
   }
 
@@ -112,14 +103,12 @@ export class GPSScene {
       const gltf = await loader.loadAsync(MODEL_PATH)
       this.model = gltf.scene as THREE.Group
       this.model.scale.setScalar(MODEL_SCALE)
-      // Model at origin (always)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
 
-    // Load canopy model
     try {
       const gltf = await loader.loadAsync(CANOPY_PATH)
       this.canopyModel = gltf.scene as THREE.Group
@@ -131,12 +120,10 @@ export class GPSScene {
     }
   }
 
-  /** Set the aero model config for force vector overlay */
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
   }
 
-  /** Set the canopy aero model config */
   setCanopyAeroConfig(config: AeroOverlayConfig) {
     this.canopyAeroOverlay.setConfig(config)
   }
@@ -146,24 +133,20 @@ export class GPSScene {
     this.currentIndex = 0
     this.buildTrail()
 
-    // Set initial camera position behind the flight direction
     if (points.length > 0) {
-      this.camera.position.set(0, 5, -12)
+      this.camera.position.set(8, 3, 0)
       this.controls.update()
     }
   }
 
-  /** Set orientation EKF for physics-based rotation interpolation */
   setEKF(ekf: OrientationEKF) {
     this.ekf = ekf
   }
 
-  /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
   }
 
-  /** Convert NED point to Three.js scene coordinates */
   private nedToScene(p: GPSPipelinePoint): THREE.Vector3 {
     return new THREE.Vector3(
       -p.processed.posE,
@@ -173,7 +156,6 @@ export class GPSScene {
   }
 
   private buildTrail() {
-    // Remove old trail
     if (this.trail) {
       this.worldGroup.remove(this.trail)
       this.trail.geometry.dispose()
@@ -181,11 +163,10 @@ export class GPSScene {
 
     if (this.data.length < 2) return
 
-    // Trail in absolute scene coordinates (worldGroup translation handles centering)
     this.trailPositions = this.data.map(p => this.nedToScene(p))
 
     const geometry = new THREE.BufferGeometry().setFromPoints(this.trailPositions)
-    const material = new THREE.LineBasicMaterial({ color: 0x3060a0, opacity: 0.4, transparent: true })
+    const material = new THREE.LineBasicMaterial({ color: 0x3060a0, opacity: 0.3, transparent: true })
     this.trail = new THREE.Line(geometry, material)
     this.worldGroup.add(this.trail)
   }
@@ -199,51 +180,57 @@ export class GPSScene {
 
     // Vehicle scene position (absolute)
     const vehicleScenePos = this.nedToScene(pt)
-
-    // Interpolate between current and next for smooth 60fps
     if (fraction > 0 && this.currentIndex < this.data.length - 1) {
       const next = this.nedToScene(this.data[this.currentIndex + 1])
       vehicleScenePos.lerp(next, fraction)
     }
 
-    // ── Vehicle-at-origin: translate world group so vehicle appears at (0,0,0) ──
+    // ── Body frame: vehicle at origin with identity rotation ──
+    // World group: translate + rotate by inverse body quat
     this.worldGroup.position.copy(vehicleScenePos.clone().negate())
 
-    // Model stays at origin
-    this.model.position.set(0, 0, 0)
-
-    // ── Orientation ──
     const mode = pt.flightMode?.mode ?? 0
     const canopyPhase = mode >= 5 && mode <= 7
     const cs = this.canopyStates[this.currentIndex]
 
+    // Get the body-to-inertial quaternion
+    let bodyQuat: THREE.Quaternion
     if (canopyPhase && cs && cs.valid) {
-      // Under canopy: pilot hangs vertically
-      const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
-      const hangPitch = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
-      )
-      canopyQuat.multiply(hangPitch)
-      this.model.quaternion.copy(canopyQuat)
+      bodyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
     } else {
-      // Wingsuit/freefall: SG pipeline angles
-      this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
+      bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
     }
 
-    // ── Canopy model ──
+    // Body frame: rotate world by INVERSE body quat
+    // This makes the world rotate around the stationary vehicle
+    const inverseBodyQuat = bodyQuat.clone().invert()
+    this.worldGroup.quaternion.copy(inverseBodyQuat)
+
+    // Also need to rotate the translation by the inverse quat
+    // so position offset is in body frame coordinates
+    const translatedPos = vehicleScenePos.clone().negate()
+    translatedPos.applyQuaternion(inverseBodyQuat)
+    this.worldGroup.position.copy(translatedPos)
+
+    // Vehicle at origin, identity rotation
+    this.model.position.set(0, 0, 0)
+    this.model.quaternion.identity()
+
+    // Canopy in body frame (no inertial rotation)
     if (this.canopyModel) {
       if (cs && cs.valid && canopyPhase) {
         this.canopyModel.visible = true
-        // Canopy at origin (same as vehicle — riser convergence)
         this.canopyModel.position.set(0, 0, 0)
-        this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+        // Canopy relative to body: invert body quat, apply canopy quat
+        const canopyInertialQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+        const canopyRelBody = inverseBodyQuat.clone().multiply(canopyInertialQuat)
+        this.canopyModel.quaternion.copy(canopyRelBody)
       } else {
         this.canopyModel.visible = false
       }
     }
 
-    // ── Aero overlay ──
-    // Pass origin (0,0,0) as position since vehicle is at origin
+    // Aero overlay at origin (body frame — vectors are native)
     const origin = new THREE.Vector3(0, 0, 0)
     if (!canopyPhase) {
       this.aeroOverlay.update(pt, origin)

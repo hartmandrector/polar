@@ -9,6 +9,7 @@ import { buildSystemPolarTable, buildPolarEvaluator } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
+import { BodyFrameScene } from './body-frame-scene'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
@@ -26,13 +27,14 @@ const scrubber = document.getElementById('scrubber') as HTMLInputElement
 const timeDisplay = document.getElementById('time-display')!
 const speedSelect = document.getElementById('speed-select') as HTMLSelectElement
 const btnLoadNew = document.getElementById('btn-load-new')!
-const followSlider = document.getElementById('follow-slider') as HTMLInputElement
+const followSlider = document.getElementById('follow-slider') as HTMLInputElement | null
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let charts: GPSCharts | null = null
 let replay: GPSReplay | null = null
 let scene: GPSScene | null = null
+let bodyScene: BodyFrameScene | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 
@@ -110,10 +112,15 @@ async function loadFile(file: File) {
 
   // Initialize 3D scene
   if (!scene) {
-    const canvas = document.getElementById('three-canvas') as HTMLCanvasElement
-    scene = new GPSScene(canvas)
+    const inertialCanvas = document.getElementById('inertial-canvas') as HTMLCanvasElement
+    scene = new GPSScene(inertialCanvas)
+  }
+  if (!bodyScene) {
+    const bodyCanvas = document.getElementById('body-canvas') as HTMLCanvasElement
+    bodyScene = new BodyFrameScene(bodyCanvas)
   }
   scene.setData(result.points)
+  bodyScene.setData(result.points)
 
   // Set aero overlay config from A5 segments model
   const polar = a5segmentsContinuous
@@ -122,6 +129,14 @@ async function loadFile(file: File) {
   const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
   const inertia = computeInertia(polar.massSegments ?? [], massRef, polar.m)
   scene.setAeroConfig({
+    segments: polar.aeroSegments ?? [],
+    cgMeters,
+    height: aeroRef,
+    mass: polar.m,
+    rho: 1.225,
+    inertia,
+  })
+  bodyScene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
     cgMeters,
     height: aeroRef,
@@ -140,6 +155,14 @@ async function loadFile(file: File) {
     ? computeInertia(canopyPolar.inertiaMassSegments ?? canopyPolar.massSegments, canopyMassRef, canopyPolar.m)
     : { Ixx: 1, Iyy: 1, Izz: 1, Ixz: 0, Ixy: 0, Iyz: 0 }
   scene.setCanopyAeroConfig({
+    segments: canopyPolar.aeroSegments ?? [],
+    cgMeters: canopyCg,
+    height: canopyMassRef,
+    mass: canopyPolar.m,
+    rho: 1.225,
+    inertia: canopyInertia,
+  })
+  bodyScene.setCanopyAeroConfig({
     segments: canopyPolar.aeroSegments ?? [],
     cgMeters: canopyCg,
     height: canopyMassRef,
@@ -219,20 +242,23 @@ async function loadFile(file: File) {
   const ekfElapsed = ((performance.now() - ekfT0) / 1000).toFixed(3)
   console.log(`Orientation EKF: ${ekfResult.estimates.length} points in ${ekfElapsed}s`)
 
-  // Wire EKF into 3D scene for physics-interpolated orientation
+  // Wire EKF into 3D scenes for physics-interpolated orientation
   scene.setEKF(ekfResult.ekf)
+  bodyScene.setEKF(ekfResult.ekf)
 
   // ── Canopy estimation ──
   const canopyStates = estimateCanopyBatch(result.points)
   const validCount = canopyStates.filter(s => s.valid).length
   console.log(`Canopy estimator: ${validCount}/${canopyStates.length} valid states`)
   scene.setCanopyStates(canopyStates)
+  bodyScene.setCanopyStates(canopyStates)
 
   // Initialize replay
   if (!replay) {
     replay = new GPSReplay(result.points, (index, t, fraction) => {
       charts?.setCursor(index)
       scene?.setIndex(index, fraction)
+      bodyScene?.setIndex(index, fraction)
       updateReadout(index)
       updateTransport(t, dur)
     })
@@ -247,6 +273,7 @@ async function loadFile(file: File) {
   // Go to first frame
   charts.setCursor(0)
   scene.setIndex(0)
+  bodyScene.setIndex(0)
   updateReadout(0)
   updateTransport(0, dur)
 }
@@ -270,6 +297,7 @@ scrubber.addEventListener('input', () => {
   replay.seekIndex(idx)
   charts?.setCursor(idx)
   scene?.setIndex(idx)
+  bodyScene?.setIndex(idx)
   updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
@@ -279,9 +307,11 @@ speedSelect.addEventListener('change', () => {
   if (replay) replay.speed = parseFloat(speedSelect.value)
 })
 
-followSlider.addEventListener('input', () => {
-  scene?.setFollowTightness(parseInt(followSlider.value) / 100)
-})
+if (followSlider) {
+  followSlider.addEventListener('input', () => {
+    // Legacy — follow cam removed in vehicle-at-origin refactor
+  })
+}
 
 function updateTransport(t: number, duration: number) {
   const fmt = (s: number) => {
