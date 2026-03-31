@@ -17,6 +17,8 @@ import { EulerAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
+import { HeadModelRenderer } from './head-renderer'
+import type { HeadSensorPoint } from './head-sensor'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -32,6 +34,7 @@ export class GPSScene {
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
   private canvas: HTMLCanvasElement
+  private headRenderer: HeadModelRenderer | null = null
 
   // World group — everything that moves relative to the vehicle
   private worldGroup: THREE.Group
@@ -133,6 +136,8 @@ export class GPSScene {
       // Model at origin (always)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
+      // Create head renderer (attached to wingsuit model)
+      this.headRenderer = new HeadModelRenderer(this.model)
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -179,6 +184,13 @@ export class GPSScene {
   /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
+    if (this.headRenderer) {
+      this.headRenderer.setSensorData(data)
+      this.headRenderer.setTimeOffset(timeOffset)
+    }
   }
 
   /** Convert NED point to Three.js scene coordinates */
@@ -246,6 +258,11 @@ export class GPSScene {
     } else {
       // Wingsuit/freefall: SG pipeline angles
       this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
+    }
+
+    // ── Head model ──
+    if (this.headRenderer) {
+      this.headRenderer.update(pt.processed.t, this.model.quaternion)
     }
 
     // ── Canopy model ──

@@ -130,6 +130,24 @@
             </div>
           </div>
         </div>
+
+        <div class="chart-row">
+          <div class="chart-container" id="head-sensor-panel">
+            <div class="chart-header"><span>Head Sensor</span></div>
+            <div id="head-sensor-controls" style="padding: 8px 12px;">
+              <button id="head-sensor-btn" style="width:100%;padding:6px 12px;background:#2196f3;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Load Fused CSV</button>
+              <input type="file" id="head-sensor-input" accept=".csv" style="display:none">
+              <div style="margin-top:6px;font-size:11px;color:#8090a0;">
+                <span id="head-sensor-status">No data</span>
+              </div>
+              <div style="margin-top:4px;">
+                <label style="font-size:11px;color:#8090a0;">
+                  Time offset (s): <input id="head-time-offset" type="number" value="0" step="0.1" style="width:60px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;">
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

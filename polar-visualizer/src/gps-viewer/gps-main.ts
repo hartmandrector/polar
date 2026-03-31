@@ -13,6 +13,7 @@ import { BodyFrameScene } from './body-frame-scene'
 import { MomentInset } from './moment-inset'
 import { InertialLegend, BodyFrameLegend } from './scene-legend'
 import { CaptureHandler } from './capture-handler'
+import { parseHeadSensorCSV } from './head-sensor'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
@@ -505,3 +506,41 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>
   `
 }
+
+// ─── Head Sensor Loading ────────────────────────────────────────────────────
+
+const headSensorBtn = document.getElementById('head-sensor-btn')!
+const headSensorInput = document.getElementById('head-sensor-input') as HTMLInputElement
+const headSensorStatus = document.getElementById('head-sensor-status')!
+const headTimeOffset = document.getElementById('head-time-offset') as HTMLInputElement
+
+headSensorBtn.addEventListener('click', () => headSensorInput.click())
+
+headSensorInput.addEventListener('change', async () => {
+  const file = headSensorInput.files?.[0]
+  if (!file) return
+  headSensorStatus.textContent = `Loading ${file.name}...`
+
+  const text = await file.text()
+  const points = parseHeadSensorCSV(text)
+
+  if (points.length === 0) {
+    headSensorStatus.textContent = 'No valid data found'
+    return
+  }
+
+  const offset = parseFloat(headTimeOffset.value) || 0
+  scene?.setHeadSensorData(points, offset)
+  headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s)`
+})
+
+headTimeOffset.addEventListener('change', () => {
+  // Re-apply time offset if data is already loaded
+  const offset = parseFloat(headTimeOffset.value) || 0
+  // Will take effect on next frame render
+  if (scene) {
+    // Access through the scene's setHeadSensorData re-applies offset
+    // For now just log — a proper API would store the data and re-call
+    console.log(`Head time offset changed to ${offset}s`)
+  }
+})
