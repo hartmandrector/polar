@@ -23,16 +23,16 @@ import type { HeadSensorPoint } from './head-sensor'
 import { findHeadIndex } from './head-sensor'
 import { HeadSensorOverlay } from './head-sensor-overlay'
 
-const HEAD_MODEL_PATH = '/models/fullhead.gltf'
+const HEAD_MODEL_PATH = '/models/headfs.glb'
 
 // Neck attachment point in model-local coordinates
 // wingsuit GLB: Z-forward, Y-up in Three.js model space
 // Head needs to sit at the neck stump of the wingsuit
-const NECK_OFFSET = new THREE.Vector3(0, -0.16, 0.678)  // (right, up, forward) in model space
+const NECK_OFFSET = new THREE.Vector3(0, 0.16, 0.62)  // (right, up, forward) in model space
 const HEAD_SCALE = 0.1       // fullhead.gltf scale
 // Rotation to align head model's forward with wingsuit's forward
 // Head model likely faces +Y or -Z — rotate to face +Z (wingsuit forward)
-const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 2, 0, 0)  // 90° pitch to face forward
+const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 5, 0, Math.PI)  // 90° pitch + 180° roll to face forward right-side up
 
 export class HeadModelRenderer {
   private headGroup: THREE.Group

@@ -39,6 +39,10 @@ export interface HeadSensorPoint {
   linearAccelX: number
   linearAccelY: number
   linearAccelZ: number
+  // Magnetometer (body frame, optional — not in all exports)
+  magX: number    // NaN if not available
+  magY: number
+  magZ: number
   // GPS time sync (NaN when no GPS fix)
   gpsLat: number
   gpsLon: number
@@ -104,6 +108,9 @@ export function parseHeadSensorCSV(text: string): HeadSensorPoint[] {
       linearAccelX: get('linear_accel_x'),
       linearAccelY: get('linear_accel_y'),
       linearAccelZ: get('linear_accel_z'),
+      magX: get('mag_x'),
+      magY: get('mag_y'),
+      magZ: get('mag_z'),
       gpsLat: get('gps_lat'),
       gpsLon: get('gps_lon'),
       gpsHMSL: get('gps_hMSL'),
