@@ -20,7 +20,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import type { HeadSensorPoint } from './head-sensor'
-import { findHeadIndex } from './head-sensor'
+import { findHeadIndex, lerpSensorPoints } from './head-sensor'
 import { HeadSensorOverlay } from './head-sensor-overlay'
 
 const HEAD_MODEL_PATH = '/models/headfs.glb'
@@ -32,8 +32,7 @@ const NECK_OFFSET = new THREE.Vector3(0, 0.16, 0.62)  // (right, up, forward) in
 const HEAD_SCALE = 0.1       // fullhead.gltf scale
 // Rotation to align head model's forward with wingsuit's forward
 // Head model likely faces +Y or -Z — rotate to face +Z (wingsuit forward)
-const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 5, 0, Math.PI)  // 90° pitch + 180° roll to face forward right-side up
-
+const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 5, 0, Math.PI)  
 export class HeadModelRenderer {
   private headGroup: THREE.Group
   private headModel: THREE.Group | null = null
@@ -41,6 +40,7 @@ export class HeadModelRenderer {
   private sensorData: HeadSensorPoint[] = []
   private visible = true
   private sensorOverlay: HeadSensorOverlay | null = null
+  private lastRelativeQuat: THREE.Quaternion | null = null
 
   // Time offset: sensor t=0 vs GPS t=0 (seconds to add to GPS time to get sensor time)
   private timeOffset = 0
@@ -65,7 +65,9 @@ export class HeadModelRenderer {
       // Create sensor vector overlay in headGroup (moves with head)
       this.sensorOverlay = new HeadSensorOverlay(this.headGroup)
       this.loaded = true
-      console.log('Head model loaded')
+      // Hide head until sensor data is loaded
+      this.headGroup.visible = false
+      console.log('Head model loaded (hidden until sensor data loaded)')
     } catch (e) {
       console.error('Failed to load head model:', e)
     }
@@ -73,6 +75,8 @@ export class HeadModelRenderer {
 
   setSensorData(data: HeadSensorPoint[]) {
     this.sensorData = data
+    // Show head model now that we have data
+    this.headGroup.visible = data.length > 0
     console.log(`Head sensor data: ${data.length} points, ${data[0]?.t.toFixed(1)}s → ${data[data.length - 1]?.t.toFixed(1)}s`)
   }
 
@@ -82,6 +86,31 @@ export class HeadModelRenderer {
    */
   setTimeOffset(offset: number) {
     this.timeOffset = offset
+  }
+
+  /** Returns true if fused sensor CSV data has been loaded */
+  get hasSensorData(): boolean {
+    return this.sensorData.length > 0
+  }
+
+  /**
+   * Get the head sensor yaw (heading) in NED radians at a given GPS time.
+   * Returns null if no sensor data or time is out of range.
+   */
+  getHeadingAtTime(gpsTime: number): number | null {
+    if (this.sensorData.length === 0) return null
+    const sensorTime = gpsTime + this.timeOffset
+    const { index, fraction } = findHeadIndex(this.sensorData, sensorTime)
+    const pt = this.sensorData[index]
+    const d2r = Math.PI / 180
+
+    let yawNwu = pt.yaw
+    if (fraction > 0 && index < this.sensorData.length - 1) {
+      const pt2 = this.sensorData[index + 1]
+      yawNwu = yawNwu + (pt2.yaw - yawNwu) * fraction
+    }
+    // NWU→NED yaw: negate
+    return -yawNwu * d2r
   }
 
   setVisible(v: boolean) {
@@ -125,6 +154,8 @@ export class HeadModelRenderer {
       const pt2 = this.sensorData[index + 1]
       const q1 = bodyToInertialQuat(roll_ned, pitch_ned, yaw_ned)
       const q2 = bodyToInertialQuat(pt2.roll * d2r, pt2.pitch * d2r, -pt2.yaw * d2r)
+      // Fix quaternion double-cover: if q1·q2 < 0, negate q2 to take the short path
+      if (q1.dot(q2) < 0) q2.set(-q2.x, -q2.y, -q2.z, -q2.w)
       headInertialQuat = q1.slerp(q2, fraction)
     } else {
       headInertialQuat = bodyToInertialQuat(roll_ned, pitch_ned, yaw_ned)
@@ -134,11 +165,22 @@ export class HeadModelRenderer {
     const wingsuitInv = wingsuitQuat.clone().invert()
     const relativeQuat = wingsuitInv.multiply(headInertialQuat)
 
+    // Ensure relative quaternion stays in consistent hemisphere frame-to-frame
+    if (this.lastRelativeQuat && this.lastRelativeQuat.dot(relativeQuat) < 0) {
+      relativeQuat.set(-relativeQuat.x, -relativeQuat.y, -relativeQuat.z, -relativeQuat.w)
+    }
+    this.lastRelativeQuat = relativeQuat.clone()
+
     this.headGroup.quaternion.copy(relativeQuat)
 
-    // Update sensor vectors
+    // Update sensor vectors (interpolated between samples for smooth 60fps)
     if (this.sensorOverlay) {
-      this.sensorOverlay.update(pt)
+      if (fraction > 0 && index < this.sensorData.length - 1) {
+        const pt2 = this.sensorData[index + 1]
+        this.sensorOverlay.update(lerpSensorPoints(pt, pt2, fraction))
+      } else {
+        this.sensorOverlay.update(pt)
+      }
     }
   }
 

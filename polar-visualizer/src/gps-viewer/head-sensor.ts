@@ -140,3 +140,39 @@ export function findHeadIndex(points: HeadSensorPoint[], t: number): { index: nu
   const fraction = dt > 0 ? Math.min(1, (t - points[lo].t) / dt) : 0
   return { index: lo, fraction }
 }
+
+/**
+ * Linearly interpolate between two HeadSensorPoints.
+ * Used to smooth sensor vectors from ~13Hz to 60fps rendering.
+ */
+export function lerpSensorPoints(a: HeadSensorPoint, b: HeadSensorPoint, f: number): HeadSensorPoint {
+  const l = (va: number, vb: number) => va + (vb - va) * f
+  return {
+    t: l(a.t, b.t),
+    roll: l(a.roll, b.roll),
+    pitch: l(a.pitch, b.pitch),
+    yaw: l(a.yaw, b.yaw),
+    qw: l(a.qw, b.qw),
+    qx: l(a.qx, b.qx),
+    qy: l(a.qy, b.qy),
+    qz: l(a.qz, b.qz),
+    accelBodyX: l(a.accelBodyX, b.accelBodyX),
+    accelBodyY: l(a.accelBodyY, b.accelBodyY),
+    accelBodyZ: l(a.accelBodyZ, b.accelBodyZ),
+    gyroX: l(a.gyroX, b.gyroX),
+    gyroY: l(a.gyroY, b.gyroY),
+    gyroZ: l(a.gyroZ, b.gyroZ),
+    gravBodyX: l(a.gravBodyX, b.gravBodyX),
+    gravBodyY: l(a.gravBodyY, b.gravBodyY),
+    gravBodyZ: l(a.gravBodyZ, b.gravBodyZ),
+    linearAccelX: l(a.linearAccelX, b.linearAccelX),
+    linearAccelY: l(a.linearAccelY, b.linearAccelY),
+    linearAccelZ: l(a.linearAccelZ, b.linearAccelZ),
+    magX: l(a.magX, b.magX),
+    magY: l(a.magY, b.magY),
+    magZ: l(a.magZ, b.magZ),
+    gpsLat: l(a.gpsLat, b.gpsLat),
+    gpsLon: l(a.gpsLon, b.gpsLon),
+    gpsHMSL: l(a.gpsHMSL, b.gpsHMSL),
+  }
+}

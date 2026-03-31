@@ -244,10 +244,17 @@ export class GPSScene {
 
     // ── Orientation ──
     const mode = pt.flightMode?.mode ?? 0
+    const isGround = mode === 1  // FlightMode.GROUND
     const canopyPhase = mode >= 5 && mode <= 7
     const cs = this.canopyStates[this.currentIndex]
+    const hasSensor = this.headRenderer?.hasSensorData ?? false
 
-    if (canopyPhase && cs && cs.valid) {
+    if (isGround && hasSensor) {
+      // Ground mode with sensor data: stand upright, heading from head sensor
+      const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
+      const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
+      this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
+    } else if (canopyPhase && cs && cs.valid) {
       // Under canopy: pilot hangs vertically
       const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
@@ -260,8 +267,8 @@ export class GPSScene {
       this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
     }
 
-    // ── Head model ──
-    if (this.headRenderer) {
+    // ── Head model (only when sensor data loaded) ──
+    if (this.headRenderer && hasSensor) {
       this.headRenderer.update(pt.processed.t, this.model.quaternion)
     }
 

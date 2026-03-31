@@ -16,15 +16,18 @@ import * as THREE from 'three'
 import { ShadedArrow } from '../viewer/shaded-arrow'
 import { CurvedArrow } from '../viewer/curved-arrow'
 import type { HeadSensorPoint } from './head-sensor'
+import { PI } from 'three/webgpu'
 
 // Sensor position relative to headGroup origin (top of head, FlySight mount)
 const SENSOR_OFFSET = new THREE.Vector3(0, -0.12, -0.33)
 
 // Vector scales
 const ACCEL_SCALE = 0.12     // 1g → 0.12m arrow length
-const MAG_SCALE = 0.003      // µT → scene meters (Earth field ~30-60 µT)
-const GYRO_SCALE = 0.002
-const GYRO_ARC_RADIUS = 0.04
+const MAG_SCALE = 0.008      // µT → scene meters (tune to match accel arrow size)
+// Gyro: sensor fusion viewer uses gyroScale=0.5 with rad/s input and radius=0.9
+// Our input is deg/s, head model is ~10× smaller. Scale to match visual proportions.
+const GYRO_SCALE = 0.5       // matches sensor fusion viewer (applied after deg→rad)
+const GYRO_ARC_RADIUS = 0.08
 
 // Colors
 const ACCEL_COLOR = 0xffcc00   // yellow
@@ -39,7 +42,7 @@ const GYRO_R_COLOR = 0x4488ff  // blue (yaw / z)
 //
 // Accel/gyro share the LSM6DSO frame.
 // Mag uses LIS2MDL frame which has X and Z negated relative to LSM6DSO.
-const ACCEL_ROTATION = new THREE.Euler(0, 0, 0, 'XYZ')
+const ACCEL_ROTATION = new THREE.Euler(0, -Math.PI, 0, 'XYZ')
 const MAG_ROTATION = new THREE.Euler(0, 0, 0, 'XYZ')
 
 // Pre-computed quaternions from Euler offsets
