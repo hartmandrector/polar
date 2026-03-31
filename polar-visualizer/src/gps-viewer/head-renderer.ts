@@ -21,14 +21,18 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import type { HeadSensorPoint } from './head-sensor'
 import { findHeadIndex } from './head-sensor'
+import { HeadSensorOverlay } from './head-sensor-overlay'
 
 const HEAD_MODEL_PATH = '/models/fullhead.gltf'
 
-// Neck attachment point in model space (tuned to wingsuit model)
-// wingsuit GLB is ~3.55 units tall, scaled by MODEL_SCALE ≈ 0.528
-// Head sits at top of model — Y-up in Three.js
-const NECK_OFFSET_Y = 0.85   // meters above model origin (approx shoulder level)
-const HEAD_SCALE = 0.01      // fullhead.gltf is likely large — scale to meters
+// Neck attachment point in model-local coordinates
+// wingsuit GLB: Z-forward, Y-up in Three.js model space
+// Head needs to sit at the neck stump of the wingsuit
+const NECK_OFFSET = new THREE.Vector3(0, -0.16, 0.678)  // (right, up, forward) in model space
+const HEAD_SCALE = 0.1       // fullhead.gltf scale
+// Rotation to align head model's forward with wingsuit's forward
+// Head model likely faces +Y or -Z — rotate to face +Z (wingsuit forward)
+const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 2, 0, 0)  // 90° pitch to face forward
 
 export class HeadModelRenderer {
   private headGroup: THREE.Group
@@ -36,6 +40,7 @@ export class HeadModelRenderer {
   private loaded = false
   private sensorData: HeadSensorPoint[] = []
   private visible = true
+  private sensorOverlay: HeadSensorOverlay | null = null
 
   // Time offset: sensor t=0 vs GPS t=0 (seconds to add to GPS time to get sensor time)
   private timeOffset = 0
@@ -43,7 +48,7 @@ export class HeadModelRenderer {
   constructor(private parentModel: THREE.Group) {
     // Create head group as child of wingsuit model
     this.headGroup = new THREE.Group()
-    this.headGroup.position.set(0, NECK_OFFSET_Y, 0)
+    this.headGroup.position.copy(NECK_OFFSET)
     this.parentModel.add(this.headGroup)
 
     this.loadModel()
@@ -55,7 +60,10 @@ export class HeadModelRenderer {
       const gltf = await loader.loadAsync(HEAD_MODEL_PATH)
       this.headModel = gltf.scene as THREE.Group
       this.headModel.scale.setScalar(HEAD_SCALE)
+      this.headModel.rotation.copy(HEAD_MODEL_ROTATION)
       this.headGroup.add(this.headModel)
+      // Create sensor vector overlay in headGroup (moves with head)
+      this.sensorOverlay = new HeadSensorOverlay(this.headGroup)
       this.loaded = true
       console.log('Head model loaded')
     } catch (e) {
@@ -108,7 +116,7 @@ export class HeadModelRenderer {
     //   pitch (about Y): NWU Y=West, NED Y=East — pitch sign flips
     //   yaw (about Z): NWU Z=Up, NED Z=Down — yaw sign flips
     const roll_ned = pt.roll * d2r
-    const pitch_ned = -pt.pitch * d2r
+    const pitch_ned = pt.pitch * d2r      // was negated, try same sign
     const yaw_ned = -pt.yaw * d2r
 
     let headInertialQuat: THREE.Quaternion
@@ -116,7 +124,7 @@ export class HeadModelRenderer {
     if (fraction > 0 && index < this.sensorData.length - 1) {
       const pt2 = this.sensorData[index + 1]
       const q1 = bodyToInertialQuat(roll_ned, pitch_ned, yaw_ned)
-      const q2 = bodyToInertialQuat(pt2.roll * d2r, -pt2.pitch * d2r, -pt2.yaw * d2r)
+      const q2 = bodyToInertialQuat(pt2.roll * d2r, pt2.pitch * d2r, -pt2.yaw * d2r)
       headInertialQuat = q1.slerp(q2, fraction)
     } else {
       headInertialQuat = bodyToInertialQuat(roll_ned, pitch_ned, yaw_ned)
@@ -127,6 +135,11 @@ export class HeadModelRenderer {
     const relativeQuat = wingsuitInv.multiply(headInertialQuat)
 
     this.headGroup.quaternion.copy(relativeQuat)
+
+    // Update sensor vectors
+    if (this.sensorOverlay) {
+      this.sensorOverlay.update(pt)
+    }
   }
 
   dispose() {

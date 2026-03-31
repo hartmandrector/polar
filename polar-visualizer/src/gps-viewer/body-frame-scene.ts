@@ -16,6 +16,8 @@ import { BodyRateAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
+import { HeadModelRenderer } from './head-renderer'
+import type { HeadSensorPoint } from './head-sensor'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -30,6 +32,7 @@ export class BodyFrameScene {
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
   private canvas: HTMLCanvasElement
+  private headRenderer: HeadModelRenderer | null = null
 
   // World group — rotated by inverse body quat
   private worldGroup: THREE.Group
@@ -113,6 +116,7 @@ export class BodyFrameScene {
       this.model.scale.setScalar(MODEL_SCALE)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
+      this.headRenderer = new HeadModelRenderer(this.model)
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -153,6 +157,13 @@ export class BodyFrameScene {
 
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
+    if (this.headRenderer) {
+      this.headRenderer.setSensorData(data)
+      this.headRenderer.setTimeOffset(timeOffset)
+    }
   }
 
   private nedToScene(p: GPSPipelinePoint): THREE.Vector3 {
@@ -230,6 +241,11 @@ export class BodyFrameScene {
       this.model.quaternion.copy(hangPitch)
     } else {
       this.model.quaternion.identity()
+    }
+
+    // Head model — use bodyQuat for relative rotation computation
+    if (this.headRenderer) {
+      this.headRenderer.update(pt.processed.t, bodyQuat)
     }
 
     // Canopy in body frame (no inertial rotation)

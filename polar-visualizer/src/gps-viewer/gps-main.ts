@@ -531,6 +531,7 @@ headSensorInput.addEventListener('change', async () => {
 
   const offset = parseFloat(headTimeOffset.value) || 0
   scene?.setHeadSensorData(points, offset)
+  bodyScene?.setHeadSensorData(points, offset)
   headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s)`
 })
 

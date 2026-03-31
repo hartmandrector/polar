@@ -31,6 +31,14 @@ export interface HeadSensorPoint {
   gyroX: number        // deg/s
   gyroY: number
   gyroZ: number
+  // Gravity estimate in body frame (g units)
+  gravBodyX: number
+  gravBodyY: number
+  gravBodyZ: number
+  // Linear acceleration in body frame (gravity removed, g units)
+  linearAccelX: number
+  linearAccelY: number
+  linearAccelZ: number
   // GPS time sync (NaN when no GPS fix)
   gpsLat: number
   gpsLon: number
@@ -90,6 +98,12 @@ export function parseHeadSensorCSV(text: string): HeadSensorPoint[] {
       gyroX: get('gyro_x'),
       gyroY: get('gyro_y'),
       gyroZ: get('gyro_z'),
+      gravBodyX: get('gravity_body_x'),
+      gravBodyY: get('gravity_body_y'),
+      gravBodyZ: get('gravity_body_z'),
+      linearAccelX: get('linear_accel_x'),
+      linearAccelY: get('linear_accel_y'),
+      linearAccelZ: get('linear_accel_z'),
       gpsLat: get('gps_lat'),
       gpsLon: get('gps_lon'),
       gpsHMSL: get('gps_hMSL'),
