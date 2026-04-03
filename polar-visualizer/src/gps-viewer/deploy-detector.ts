@@ -29,7 +29,7 @@ export interface DeployDetectorConfig {
 }
 
 export const DEFAULT_DEPLOY_DETECTOR_CONFIG: DeployDetectorConfig = {
-  minShockAccel: 15,         // ~1.5g deceleration above gravity
+  minShockAccel: 8,          // ~0.8g decel above gravity (GPS limited to 2g)
   searchWindow: 10,          // ±10s around deploy transition
   airspeedStableRate: 1.0,   // <1 m/s² airspeed change rate = stable
   stableSampleCount: 10,     // ~0.5s at 20Hz
@@ -134,7 +134,40 @@ export function detectDeployment(
   }
 
   if (peakDecel < config.minShockAccel) {
-    // No clear opening shock — low confidence estimate
+    // Accel clipped or soft opening — try airspeed rate instead.
+    // Find the point of maximum airspeed deceleration (most negative rate).
+    let peakAirspeedRate = 0
+    let peakAsIdx = deployTransitionIdx
+    for (let i = searchStart; i <= searchEnd; i++) {
+      const rate = airspeedRate(points, i)  // negative = decelerating
+      if (rate < peakAirspeedRate) {
+        peakAirspeedRate = rate
+        peakAsIdx = i
+      }
+    }
+    // If we found significant airspeed deceleration (>5 m/s²), use it
+    if (Math.abs(peakAirspeedRate) > 5) {
+      // Walk backward from peak airspeed decel to find onset
+      let lsIdx = peakAsIdx
+      for (let j = peakAsIdx - 1; j >= searchStart; j--) {
+        if (airspeedRate(points, j) > -2) {  // baseline: mild decel
+          lsIdx = j + 1
+          break
+        }
+      }
+      return {
+        lineStretchIndex: lsIdx,
+        lineStretchTime: points[lsIdx].processed.t,
+        peakDecel: Math.abs(peakAirspeedRate),
+        peakDecelIndex: peakAsIdx,
+        fullInflationIndex: null,
+        fullInflationTime: null,
+        inflationDuration: null,
+        confidence: 0.4,
+      }
+    }
+
+    // No clear signal at all
     return {
       lineStretchIndex: deployTransitionIdx,
       lineStretchTime: points[deployTransitionIdx].processed.t,
@@ -143,7 +176,7 @@ export function detectDeployment(
       fullInflationIndex: null,
       fullInflationTime: null,
       inflationDuration: null,
-      confidence: 0.2,
+      confidence: 0.15,
     }
   }
 

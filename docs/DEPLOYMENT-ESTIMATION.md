@@ -91,18 +91,20 @@ line stretch → max AoA → snivel → surge → full flight
 ## Deployment Phase Timeline (typical wingsuit BASE)
 
 ```
-t=0.0s  PC toss (pilot throws PC from BOC)
-t=0.3s  PC catches air, bridle tension begins
-t=0.8s  Bridle fully extended, tension building
-t=1.0s  Pin release, canopy bag extracted
-t=1.5s  Canopy bag clears container
-t=2.0s  LINE STRETCH — suspension lines taut, opening shock
-t=2.0-2.6s  Snivel — slider stretching, cells pressurizing
-t=2.6-4.0s  Slider descent — progressive inflation
-t=4.0-5.0s  Full inflation — flying at trim speed
+t=0.0s  Reach + grab PC from BOC
+t=1.0s  PC toss (hand extends, PC catches air)
+t=1.3s  Bridle fully extended, tension building
+t=1.5s  Pin release, canopy bag extracted
+t=1.8s  LINE STRETCH — suspension lines taut, opening shock
+t=1.8-2.5s  Max AoA — canopy forces become dominant, estimator trustworthy
+t=2.5-3.0s  Snivel — slider stretching, cells pressurizing
+t=3.0-4.5s  Surge — AoA dropping rapidly toward trim
+t=4.5-6.0s  Full flight — AoA at trim, airspeed stable
 ```
 
-Total: ~4-5 seconds from PC toss to flying canopy. At 20Hz that's 80-100 GPS samples — workable but tight for the fast events.
+Total: ~5-6 seconds from PC toss to full flight (AoA at trim). At 20Hz that's 100-120 GPS samples.
+
+**Important:** PC toss to line stretch is fast — typically ~1 second total. The reach + grab + throw takes about a second itself before that. The GPS accelerometer is limited to ±2g, so opening shock (which can be 2-3g) may be clipped. Detection must rely on airspeed deceleration, not just acceleration magnitude.
 
 ## Integration with Existing Deploy Sim
 

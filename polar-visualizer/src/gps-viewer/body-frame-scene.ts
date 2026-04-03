@@ -16,6 +16,7 @@ import { BodyRateAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
+import type { DeployReplayTimeline } from './deploy-replay'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 
@@ -31,6 +32,7 @@ export class BodyFrameScene {
   private model: THREE.Group | null = null
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
+  private deployTimeline: DeployReplayTimeline | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
 
@@ -157,6 +159,10 @@ export class BodyFrameScene {
 
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  setDeployTimeline(timeline: DeployReplayTimeline) {
+    this.deployTimeline = timeline
   }
 
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {

@@ -19,6 +19,8 @@ import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 import { estimateCanopyBatch } from './canopy-estimator'
+import { detectDeployment } from './deploy-detector'
+import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -45,6 +47,7 @@ let bodyLegend: BodyFrameLegend | null = null
 let captureHandler: CaptureHandler | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
+let currentDeployTimeline: DeployReplayTimeline | null = null
 
 // ─── Drop Zone ──────────────────────────────────────────────────────────────
 
@@ -285,6 +288,19 @@ async function loadFile(file: File) {
   scene.setCanopyStates(canopyStates)
   bodyScene.setCanopyStates(canopyStates)
 
+  // ── Deployment detection + replay timeline ──
+  const deployDetection = detectDeployment(result.points)
+  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, deployDetection)
+  if (deployDetection) {
+    console.log(`Deploy detected: lineStretch t=${deployDetection.lineStretchTime.toFixed(2)}s peak=${deployDetection.peakDecel.toFixed(1)}m/s² conf=${deployDetection.confidence.toFixed(2)}`)
+    if (deployTimeline.timingSeconds.fullFlightTime != null) {
+      console.log(`  Full flight at t=${deployTimeline.timingSeconds.fullFlightTime.toFixed(2)}s, inflation=${deployTimeline.timingSeconds.inflationDuration?.toFixed(2)}s`)
+    }
+  }
+  scene.setDeployTimeline(deployTimeline)
+  bodyScene.setDeployTimeline(deployTimeline)
+  currentDeployTimeline = deployTimeline
+
   // Initialize replay
   if (!replay) {
     replay = new GPSReplay(result.points, (index, t, fraction) => {
@@ -471,9 +487,42 @@ function updateReadout(index: number) {
   const ld = a.cd > 0.001 ? a.cl / a.cd : 0
   const psiDeg = ((a.psi * r2d) % 360 + 360) % 360
 
+  // Deploy replay state for this point
+  const drp = currentDeployTimeline?.points[index]
+  const isCanopyPhase = fm?.mode === 6 || fm?.mode === 5 // CANOPY or DEPLOY
+  const displayAoaDeg = isCanopyPhase && drp?.canopyState?.valid
+    ? drp.canopyAoaDeg
+    : a.aoa * r2d
+  const aoaLabel = isCanopyPhase && drp?.canopyState?.valid ? 'α (Canopy)' : 'α (AOA)'
+
+  // Deploy section HTML
+  let deployHtml = ''
+  if (drp && drp.subPhase !== 'pre_deploy') {
+    const subPhaseLabel: Record<string, string> = {
+      pc_toss: '🪂 PC Toss',
+      bridle_stretch: '📏 Bridle Stretch',
+      line_stretch: '⚡ Line Stretch',
+      max_aoa: '📐 Max AoA',
+      snivel: '🌀 Snivel',
+      surge: '🏄 Surge',
+      full_flight: '✈️ Full Flight',
+      pre_deploy: '—',
+    }
+    const tls = drp.timeSinceLineStretch
+    const tlsStr = tls != null ? `${tls >= 0 ? '+' : ''}${tls.toFixed(2)}s` : '—'
+    deployHtml = `
+    <div class="section">Deployment Replay</div>
+    <div class="row"><span class="label">Sub-Phase</span><span class="value">${subPhaseLabel[drp.subPhase] ?? drp.subPhase}</span></div>
+    <div class="row"><span class="label">t from LS</span><span class="value">${tlsStr}</span></div>
+    <div class="row"><span class="label">Deploy</span><span class="value">${(drp.deployFraction * 100).toFixed(0)}%</span></div>
+    <div class="row"><span class="label">Canopy α</span><span class="value">${isNaN(drp.canopyAoaDeg) ? '—' : drp.canopyAoaDeg.toFixed(1) + '°'}</span></div>
+    <div class="row"><span class="label">Trust</span><span class="value" style="color:${drp.canopyTrust ? '#44ff66' : '#ff8844'}">${drp.canopyTrust ? 'Yes' : 'Low'}</span></div>`
+  }
+
   readoutEl.innerHTML = `
     <div class="section">Flight Mode</div>
     <div class="row"><span class="label">Mode</span><span class="value">${fm?.modeString ?? 'N/A'}</span></div>
+    ${deployHtml}
     <div class="section">Position</div>
     <div class="row"><span class="label">Altitude</span><span class="value">${g.hMSL.toFixed(0)} m (${(g.hMSL * 3.281).toFixed(0)} ft)</span></div>
     <div class="row"><span class="label">N / E</span><span class="value">${g.posN.toFixed(0)} / ${g.posE.toFixed(0)} m</span></div>
@@ -491,7 +540,7 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">q (pitch)</span><span class="value">${(br?.q ?? 0).toFixed(1)} °/s</span></div>
     <div class="row"><span class="label">r (yaw)</span><span class="value">${(br?.r ?? 0).toFixed(1)} °/s</span></div>
     <div class="section">Aerodynamics</div>
-    <div class="row"><span class="label">α (AOA)</span><span class="value">${(a.aoa * r2d).toFixed(1)}°</span></div>
+    <div class="row"><span class="label">${aoaLabel}</span><span class="value">${displayAoaDeg.toFixed(1)}°</span></div>
     <div class="row"><span class="label">CL</span><span class="value">${a.cl.toFixed(3)}</span></div>
     <div class="row"><span class="label">CD</span><span class="value">${a.cd.toFixed(3)}</span></div>
     <div class="row"><span class="label">L/D</span><span class="value">${ld.toFixed(2)}</span></div>

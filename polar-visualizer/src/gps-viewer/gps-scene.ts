@@ -17,8 +17,10 @@ import { EulerAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
+import type { DeployReplayTimeline } from './deploy-replay'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
+import { GPSDeployRenderer } from './gps-deploy-renderer'
 
 const MODEL_PATH = '/models/tsimwingsuit.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -33,6 +35,8 @@ export class GPSScene {
   private model: THREE.Group | null = null
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
+  private deployTimeline: DeployReplayTimeline | null = null
+  private deployRenderer: GPSDeployRenderer | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
 
@@ -152,6 +156,12 @@ export class GPSScene {
     } catch (e) {
       console.error('Failed to load canopy model:', e)
     }
+
+    // Create deploy renderer (bodyLength in scene units ≈ MODEL_SCALE * 3.55 = 1.875)
+    this.deployRenderer = new GPSDeployRenderer(this.scene, MODEL_SCALE * 3.55)
+    if (this.deployTimeline) {
+      this.deployRenderer.setTimeline(this.deployTimeline)
+    }
   }
 
   /** Set the aero model config for force vector overlay */
@@ -184,6 +194,11 @@ export class GPSScene {
   /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  setDeployTimeline(timeline: DeployReplayTimeline) {
+    this.deployTimeline = timeline
+    if (this.deployRenderer) this.deployRenderer.setTimeline(timeline)
   }
 
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
@@ -272,15 +287,31 @@ export class GPSScene {
       this.headRenderer.update(pt.processed.t, this.model.quaternion)
     }
 
-    // ── Canopy model ──
-    if (this.canopyModel) {
-      if (cs && cs.valid && canopyPhase) {
-        this.canopyModel.visible = true
-        // Canopy at origin (same as vehicle — riser convergence)
+    // ── Canopy model + deploy rendering ──
+    const drp = this.deployTimeline?.points[this.currentIndex]
+    const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+
+    if (this.deployRenderer && isDeploying) {
+      // During deployment: deploy renderer controls canopy scale + bridle/PC visuals
+      const bodyQuat = this.model?.quaternion ?? new THREE.Quaternion()
+      this.deployRenderer.update(this.currentIndex, pt, bodyQuat, this.canopyModel)
+      // Canopy orientation still from canopy estimator
+      if (this.canopyModel && this.canopyModel.visible && cs && cs.valid) {
         this.canopyModel.position.set(0, 0, 0)
         this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
-      } else {
-        this.canopyModel.visible = false
+      }
+    } else {
+      // Not deploying — hide deploy renderer, normal canopy logic
+      if (this.deployRenderer) this.deployRenderer.hide()
+      if (this.canopyModel) {
+        if (cs && cs.valid && canopyPhase) {
+          this.canopyModel.visible = true
+          this.canopyModel.scale.setScalar(1.39 * 0.62) // full scale
+          this.canopyModel.position.set(0, 0, 0)
+          this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+        } else {
+          this.canopyModel.visible = false
+        }
       }
     }
 
