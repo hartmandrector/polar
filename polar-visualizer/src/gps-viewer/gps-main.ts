@@ -519,9 +519,13 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">Trust</span><span class="value" style="color:${drp.canopyTrust ? '#44ff66' : '#ff8844'}">${drp.canopyTrust ? 'Yes' : 'Low'}</span></div>`
   }
 
+  // Override flight mode label during deployment sub-phases
+  const deployModeLabel = (drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight')
+    ? 'Deploy' : (fm?.modeString ?? 'N/A')
+
   readoutEl.innerHTML = `
     <div class="section">Flight Mode</div>
-    <div class="row"><span class="label">Mode</span><span class="value">${fm?.modeString ?? 'N/A'}</span></div>
+    <div class="row"><span class="label">Mode</span><span class="value">${deployModeLabel}</span></div>
     ${deployHtml}
     <div class="section">Position</div>
     <div class="row"><span class="label">Altitude</span><span class="value">${g.hMSL.toFixed(0)} m (${(g.hMSL * 3.281).toFixed(0)} ft)</span></div>

@@ -91,8 +91,8 @@ const PC_TO_LINE_STRETCH = 1.0
 /** Estimated time for reach + grab before PC toss [s] */
 const REACH_GRAB_TIME = 1.0
 
-/** AoA threshold for "at trim" [deg] — within this of trim = full flight */
-const TRIM_AOA_THRESHOLD_DEG = 15
+/** AoA threshold for "at trim" [deg] — below this absolute value = full flight */
+const FULL_FLIGHT_AOA_DEG = 15
 
 /** Default canopy trim AoA [deg] */
 const TRIM_AOA_DEG = 8
@@ -198,7 +198,7 @@ export function buildDeployReplayTimeline(
     const cs = canopyStates[i]
     if (cs && cs.valid) {
       const aoaDeg = Math.abs(cs.aoa) * (180 / Math.PI)
-      if (Math.abs(aoaDeg - TRIM_AOA_DEG) < TRIM_AOA_THRESHOLD_DEG) {
+      if (aoaDeg < FULL_FLIGHT_AOA_DEG) {
         stableCount++
         if (stableCount >= STABLE_NEEDED) {
           timing.fullFlightIndex = i - STABLE_NEEDED + 1

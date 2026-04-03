@@ -264,13 +264,23 @@ export class GPSScene {
     const cs = this.canopyStates[this.currentIndex]
     const hasSensor = this.headRenderer?.hasSensorData ?? false
 
+    // Deploy timeline: use sub-phase to determine rendering mode
+    const drp = this.deployTimeline?.points[this.currentIndex]
+    const isPreLineStretch = drp && (drp.subPhase === 'pc_toss' || drp.subPhase === 'bridle_stretch')
+    const isPostLineStretch = drp && drp.subPhase !== 'pre_deploy' && !isPreLineStretch
+    const isFullFlight = drp?.subPhase === 'full_flight'
+    const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+
     if (isGround && hasSensor) {
       // Ground mode with sensor data: stand upright, heading from head sensor
       const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
-    } else if (canopyPhase && cs && cs.valid) {
-      // Under canopy: pilot hangs vertically
+    } else if (isPreLineStretch) {
+      // Pre-line-stretch: keep wingsuit flying pose even if flight mode says Deploy/Canopy
+      this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
+    } else if ((isPostLineStretch || canopyPhase) && cs && cs.valid) {
+      // Post-line-stretch or canopy phase: pilot hangs vertically
       const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
@@ -288,25 +298,33 @@ export class GPSScene {
     }
 
     // ── Canopy model + deploy rendering ──
-    const drp = this.deployTimeline?.points[this.currentIndex]
-    const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+    const BASE_CANOPY_SCALE = 1.39 * 0.62
 
     if (this.deployRenderer && isDeploying) {
-      // During deployment: deploy renderer controls canopy scale + bridle/PC visuals
+      // During deployment: deploy renderer controls bridle/PC visuals
       const bodyQuat = this.model?.quaternion ?? new THREE.Quaternion()
       this.deployRenderer.update(this.currentIndex, pt, bodyQuat, this.canopyModel)
-      // Canopy orientation still from canopy estimator
-      if (this.canopyModel && this.canopyModel.visible && cs && cs.valid) {
-        this.canopyModel.position.set(0, 0, 0)
-        this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+      // Canopy GLB: only show from line_stretch onward, scale horizontally only
+      if (this.canopyModel) {
+        if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05) {
+          this.canopyModel.visible = true
+          const h = 0.3 + drp!.deployFraction * 0.7  // horizontal scale factor
+          this.canopyModel.scale.set(BASE_CANOPY_SCALE * h, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE * h)
+          this.canopyModel.position.set(0, 0, 0)
+          if (cs && cs.valid) {
+            this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+          }
+        } else {
+          this.canopyModel.visible = false
+        }
       }
     } else {
       // Not deploying — hide deploy renderer, normal canopy logic
       if (this.deployRenderer) this.deployRenderer.hide()
       if (this.canopyModel) {
-        if (cs && cs.valid && canopyPhase) {
+        if (cs && cs.valid && (isFullFlight || (canopyPhase && !isDeploying))) {
           this.canopyModel.visible = true
-          this.canopyModel.scale.setScalar(1.39 * 0.62) // full scale
+          this.canopyModel.scale.set(BASE_CANOPY_SCALE, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE)
           this.canopyModel.position.set(0, 0, 0)
           this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
         } else {
@@ -316,9 +334,9 @@ export class GPSScene {
     }
 
     // ── Aero overlay ──
-    // Pass origin (0,0,0) as position since vehicle is at origin
+    const showCanopyAero = (isPostLineStretch || canopyPhase) && !isPreLineStretch
     const origin = new THREE.Vector3(0, 0, 0)
-    if (!canopyPhase) {
+    if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
     } else if (cs && cs.valid) {

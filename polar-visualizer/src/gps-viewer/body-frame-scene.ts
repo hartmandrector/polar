@@ -218,9 +218,19 @@ export class BodyFrameScene {
     const canopyPhase = mode >= 5 && mode <= 7
     const cs = this.canopyStates[this.currentIndex]
 
+    // Deploy timeline awareness
+    const drp = this.deployTimeline?.points[this.currentIndex]
+    const isPreLineStretch = drp && (drp.subPhase === 'pc_toss' || drp.subPhase === 'bridle_stretch')
+    const isPostLineStretch = drp && drp.subPhase !== 'pre_deploy' && !isPreLineStretch
+    const isFullFlight = drp?.subPhase === 'full_flight'
+    const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+
     // Get the body-to-inertial quaternion
+    // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
     let bodyQuat: THREE.Quaternion
-    if (canopyPhase && cs && cs.valid) {
+    if (isPreLineStretch) {
+      bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
+    } else if ((isPostLineStretch || canopyPhase) && cs && cs.valid) {
       bodyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
     } else {
       bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
@@ -237,9 +247,9 @@ export class BodyFrameScene {
     translatedPos.applyQuaternion(inverseBodyQuat)
     this.worldGroup.position.copy(translatedPos)
 
-    // Vehicle at origin, identity rotation (or hang pitch under canopy)
+    // Vehicle at origin, identity rotation (or hang pitch under canopy — but not pre-line-stretch)
     this.model.position.set(0, 0, 0)
-    if (canopyPhase) {
+    if ((isPostLineStretch || (canopyPhase && !isPreLineStretch)) && !isDeploying || isFullFlight) {
       // Pilot hangs ~80° pitched up under canopy
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
@@ -254,12 +264,26 @@ export class BodyFrameScene {
       this.headRenderer.update(pt.processed.t, bodyQuat)
     }
 
-    // Canopy in body frame (no inertial rotation)
+    // Canopy in body frame — deploy-aware
+    const BASE_CANOPY_SCALE_BF = 1.39 * 0.7  // body frame uses slightly different base scale
     if (this.canopyModel) {
-      if (cs && cs.valid && canopyPhase) {
+      if (isDeploying) {
+        // During deployment: only show canopy from line_stretch onward, horizontal scale
+        if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05 && cs && cs.valid) {
+          this.canopyModel.visible = true
+          const h = 0.3 + drp!.deployFraction * 0.7
+          this.canopyModel.scale.set(BASE_CANOPY_SCALE_BF * h, BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF * h)
+          this.canopyModel.position.set(0, 0, 0)
+          const canopyInertialQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+          const canopyRelBody = inverseBodyQuat.clone().multiply(canopyInertialQuat)
+          this.canopyModel.quaternion.copy(canopyRelBody)
+        } else {
+          this.canopyModel.visible = false
+        }
+      } else if (cs && cs.valid && (isFullFlight || (canopyPhase && !isDeploying))) {
         this.canopyModel.visible = true
+        this.canopyModel.scale.set(BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF)
         this.canopyModel.position.set(0, 0, 0)
-        // Canopy relative to body: invert body quat, apply canopy quat
         const canopyInertialQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
         const canopyRelBody = inverseBodyQuat.clone().multiply(canopyInertialQuat)
         this.canopyModel.quaternion.copy(canopyRelBody)
@@ -269,8 +293,10 @@ export class BodyFrameScene {
     }
 
     // Aero overlay at origin (body frame — vectors are native)
+    // Pre-line-stretch: show wingsuit aero even if flight mode says canopy
+    const showCanopyAero = (isPostLineStretch || canopyPhase) && !isPreLineStretch
     const origin = new THREE.Vector3(0, 0, 0)
-    if (!canopyPhase) {
+    if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
     } else if (cs && cs.valid) {
