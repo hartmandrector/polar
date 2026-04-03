@@ -146,7 +146,7 @@ export class GPSScene {
     try {
       const gltf = await loader.loadAsync(CANOPY_PATH)
       this.canopyModel = gltf.scene as THREE.Group
-      this.canopyModel.scale.setScalar(1.39 * 0.7)
+      this.canopyModel.scale.setScalar(1.39 * 0.62)
       this.canopyModel.visible = false
       this.scene.add(this.canopyModel)
     } catch (e) {

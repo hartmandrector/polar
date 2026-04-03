@@ -17,13 +17,18 @@ import type { GPSPipelinePoint } from '../gps/types.ts'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
+export type RollMethod = 'aero' | 'coordinated' | 'full' | 'blended'
+
 export interface CanopyEstimatorConfig {
   lineLength: number       // meters, pilot CG to canopy AC (default 3.0)
   pilotCd: number          // pilot drag coefficient (default 0.35)
   pilotS: number           // pilot reference area m² (default 0.5 for slick, ~2.0 wingsuit)
   pilotMass: number        // kg (default 77.5)
+  canopyMass: number       // kg (default 5.0)
   trimOffset_deg: number   // canopy trim AOA offset (default 6.0)
   minAirspeed: number      // m/s below which estimation is unreliable (default 5.0)
+  rollMethod: RollMethod   // roll estimation method (default 'blended')
+  minTurnRate_degS: number // deg/s below which coordinated turn roll is unreliable (default 3.0)
 }
 
 export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
@@ -31,8 +36,11 @@ export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
   pilotCd: 0.35,
   pilotS: 0.5,             // slick suit under canopy
   pilotMass: 77.5,
+  canopyMass: 5.0,
   trimOffset_deg: 6.0,
   minAirspeed: 5.0,
+  rollMethod: 'blended',
+  minTurnRate_degS: 3.0,
 }
 
 // ─── Output ─────────────────────────────────────────────────────────────────
@@ -62,6 +70,9 @@ export interface CanopyState {
   /** CN force magnitude [m/s²] — quality metric (should be ~g for steady flight) */
   cnMag: number
 
+  /** Which roll method was used */
+  rollMethod: RollMethod
+
   /** Valid estimate flag */
   valid: boolean
 }
@@ -69,6 +80,70 @@ export interface CanopyState {
 const GRAVITY = 9.80665
 const D2R = Math.PI / 180
 const R2D = 180 / Math.PI
+
+// ─── Roll Estimation Methods ────────────────────────────────────────────────
+// Reference: docs/PARAGLIDER-ROLL.md, A. Nagy & J. Roha (831paraglider roll.pdf)
+
+/**
+ * Coordinated turn roll angle from GPS heading rate and airspeed.
+ * γ = atan(v² / (g·R)) = atan(v·ω / g)
+ *
+ * Sign: positive ω (turning right) → positive γ (right bank)
+ */
+export function coordinatedTurnRoll(airspeed_ms: number, headingRate_radS: number): number {
+  // R = v / ω  →  v²/R = v·ω
+  return Math.atan2(airspeed_ms * headingRate_radS, GRAVITY)
+}
+
+/**
+ * Full transversal model roll (equation 7 from Nagy & Roha).
+ * Accounts for canopy and pilot CG being at different distances from system CG.
+ *
+ * Solves: (G_p·k₃ − G_k·k₂)·sin(γ) = (G_p·k₃ − G_k·k₂)/g · (v²/R)·cos(γ)
+ *         + ΔF_b·k₁  (brake asymmetry, set to 0 when unknown)
+ *
+ * With ΔF_b = 0 the geometry correction is small (~1-2°) vs coordinated turn,
+ * but the framework supports adding brake estimation later.
+ */
+export function fullTransversalRoll(
+  airspeed_ms: number,
+  headingRate_radS: number,
+  pilotMass_kg: number,
+  canopyMass_kg: number,
+  lineLength_m: number,
+  deltaFb_N: number = 0,   // asymmetric brake force (0 = unknown)
+): number {
+  const totalMass = pilotMass_kg + canopyMass_kg
+  if (totalMass <= 0) return 0
+
+  // System CG position along the line (from pilot end)
+  // k₃ = distance from pilot CG to system CG
+  // k₂ = distance from canopy CG to system CG
+  const k3 = canopyMass_kg / totalMass * lineLength_m   // pilot side
+  const k2 = pilotMass_kg / totalMass * lineLength_m    // canopy side
+  const k1 = lineLength_m                                // lift force arm ≈ full line length
+
+  const Gp = pilotMass_kg * GRAVITY
+  const Gk = canopyMass_kg * GRAVITY
+
+  // v²/R = v·ω
+  const centripetal = airspeed_ms * headingRate_radS
+
+  // Moment coefficients: A·sin(γ) = B·cos(γ) + C
+  // From eq 7: −ΔF_b·k₁ − (Gp/g)·(v²/R)·k₃·cos(γ) + (Gk/g)·(v²/R)·k₂·cos(γ)
+  //            + Gp·sin(γ)·k₃ − Gk·sin(γ)·k₂ = 0
+  const A = Gp * k3 - Gk * k2                              // gravity restoring
+  const B = (Gp * k3 - Gk * k2) / GRAVITY * centripetal    // centrifugal (note sign flip)
+  const C = -deltaFb_N * k1                                 // brake input
+
+  // A·sin(γ) − B·cos(γ) = C
+  // → γ = atan2(B, A) + asin(C / sqrt(A² + B²))
+  const mag = Math.sqrt(A * A + B * B)
+  if (mag < 1e-10) return 0
+
+  const clampedC = Math.max(-mag, Math.min(mag, C))
+  return Math.atan2(B, A) + Math.asin(clampedC / mag)
+}
 
 // ─── Core Estimation ────────────────────────────────────────────────────────
 
@@ -85,7 +160,7 @@ export function estimateCanopyState(
     cpN: 0, cpE: 0, cpD: -config.lineLength,
     vcpN: 0, vcpE: 0, vcpD: 0,
     aoa: 0, roll: 0, phi: 0, theta: 0, psi: 0,
-    cnMag: 0, valid: false,
+    cnMag: 0, rollMethod: 'aero', valid: false,
   }
 
   if (p.airspeed < config.minAirspeed) return invalid
@@ -151,8 +226,45 @@ export function estimateCanopyState(
     aoa = Math.PI - trimAngle - angleBetween
   }
 
-  // ── Step 6: Roll from aero extraction ──
-  const roll = pt.aero.roll
+  // ── Step 6: Roll estimation (method-dependent) ──
+  // See docs/PARAGLIDER-ROLL.md for derivation
+  const aeroRoll = pt.aero.roll
+  const psiDot_radS = pt.bodyRates?.psiDot != null
+    ? pt.bodyRates.psiDot * D2R  // bodyRates.psiDot is deg/s
+    : 0
+
+  let roll: number
+  let usedMethod: RollMethod
+
+  if (config.rollMethod === 'aero') {
+    roll = aeroRoll
+    usedMethod = 'aero'
+  } else if (config.rollMethod === 'coordinated') {
+    roll = coordinatedTurnRoll(vel, psiDot_radS)
+    usedMethod = 'coordinated'
+  } else if (config.rollMethod === 'full') {
+    roll = fullTransversalRoll(vel, psiDot_radS, config.pilotMass, config.canopyMass, config.lineLength)
+    usedMethod = 'full'
+  } else {
+    // 'blended': use coordinated turn roll when turning, aero roll in straight flight.
+    // Blend based on heading rate magnitude.
+    const absPsiDot = Math.abs(pt.bodyRates?.psiDot ?? 0) // deg/s
+    if (absPsiDot > config.minTurnRate_degS * 2) {
+      // Strong turn — coordinated turn roll is reliable
+      roll = coordinatedTurnRoll(vel, psiDot_radS)
+      usedMethod = 'coordinated'
+    } else if (absPsiDot < config.minTurnRate_degS) {
+      // Straight flight — aero extraction is better
+      roll = aeroRoll
+      usedMethod = 'aero'
+    } else {
+      // Transition — linear blend
+      const t = (absPsiDot - config.minTurnRate_degS) / config.minTurnRate_degS
+      const coordRoll = coordinatedTurnRoll(vel, psiDot_radS)
+      roll = aeroRoll * (1 - t) + coordRoll * t
+      usedMethod = 'blended'
+    }
+  }
 
   // ── Step 7: Compose canopy orientation from airspeed + AOA ──
   // The canopy is a weather vane — it faces into the relative wind.
@@ -160,7 +272,7 @@ export function estimateCanopyState(
   // roll = aerodynamic bank angle (same as wingsuit extraction).
 
   // Heading from airspeed direction
-  const psi = Math.atan2(vE, vN)
+  const psi = Math.atan2(vE, vN) + aoa * Math.sin(roll)
 
   // Flight path angle (positive = climbing, negative = descending)
   const gamma = -Math.atan2(vD, Math.sqrt(vN * vN + vE * vE))
@@ -176,6 +288,7 @@ export function estimateCanopyState(
     aoa, roll,
     phi, theta, psi,
     cnMag,
+    rollMethod: usedMethod,
     valid: true,
   }
 }
