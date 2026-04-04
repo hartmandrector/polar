@@ -310,9 +310,9 @@ export class GPSScene {
     const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
     const isLanding = mode === 7
 
-    // Use current canopy state, or fall back to last valid during landing
+    // Use current canopy state, or fall back to last valid when estimator loses lock
     const effectiveCs = (cs && cs.valid) ? cs
-      : (isLanding && this.lastValidCanopyState) ? this.lastValidCanopyState
+      : ((isLanding || canopyPhase) && this.lastValidCanopyState) ? this.lastValidCanopyState
       : null
     if (cs && cs.valid) this.lastValidCanopyState = cs
 
