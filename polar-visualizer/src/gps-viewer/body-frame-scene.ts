@@ -17,6 +17,7 @@ import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
+import type { ExitEstimate } from './exit-detector'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 
@@ -36,6 +37,7 @@ export class BodyFrameScene {
   /** Pre-deploy average roll angle [rad] */
   private preDeployRoll: number | null = null
   private lastValidCanopyState: CanopyState | null = null
+  private exitEstimate: ExitEstimate | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
 
@@ -201,6 +203,10 @@ export class BodyFrameScene {
     }
   }
 
+  setExitEstimate(est: ExitEstimate | null) {
+    this.exitEstimate = est
+  }
+
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
@@ -275,6 +281,15 @@ export class BodyFrameScene {
     if (isGround) {
       // Ground mode: stand upright
       bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+    } else if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
+      // Exit transition: lerp from standing to flying pose
+      const ex = this.exitEstimate
+      const range = ex.flyingIndex - ex.pushOffIndex
+      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
+      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
+      standingQuat.slerp(flyingQuat, t)
+      bodyQuat = standingQuat
     } else if (isPreLineStretch) {
       // Blend roll toward pre-deploy average during deployment
       let roll = pt.aero.roll

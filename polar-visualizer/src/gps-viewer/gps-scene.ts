@@ -18,6 +18,7 @@ import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
+import type { ExitEstimate } from './exit-detector'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import { GPSDeployRenderer } from './gps-deploy-renderer'
@@ -40,6 +41,7 @@ export class GPSScene {
   private preDeployRoll: number | null = null
   /** Last valid canopy state — used during landing when airspeed drops below estimator threshold */
   private lastValidCanopyState: CanopyState | null = null
+  private exitEstimate: ExitEstimate | null = null
   private deployRenderer: GPSDeployRenderer | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
@@ -239,6 +241,10 @@ export class GPSScene {
     }
   }
 
+  setExitEstimate(est: ExitEstimate | null) {
+    this.exitEstimate = est
+  }
+
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
@@ -325,6 +331,15 @@ export class GPSScene {
       // Ground mode without sensor: stand upright, heading from GPS track
       const standingPitch = Math.PI / 2
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, pt.aero.psi))
+    } else if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
+      // Exit transition: lerp from standing to flying pose
+      const ex = this.exitEstimate
+      const range = ex.flyingIndex - ex.pushOffIndex
+      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
+      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
+      standingQuat.slerp(flyingQuat, t)
+      this.model.quaternion.copy(standingQuat)
     } else if (isPreLineStretch) {
       // Pre-line-stretch: keep wingsuit flying pose, but blend roll toward
       // pre-deploy average to avoid backsliding artifacts from unreliable aero

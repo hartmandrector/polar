@@ -21,6 +21,7 @@ import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 import { estimateCanopyBatch } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
+import { detectExit, type ExitEstimate } from './exit-detector'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -300,6 +301,14 @@ async function loadFile(file: File) {
   scene.setDeployTimeline(deployTimeline)
   bodyScene.setDeployTimeline(deployTimeline)
   currentDeployTimeline = deployTimeline
+
+  // ── Exit detection (ground → flight transition) ──
+  const exitEstimate = detectExit(result.points)
+  if (exitEstimate) {
+    console.log(`Exit detected: pushOff t=${exitEstimate.pushOffTime.toFixed(2)}s, flying t=${exitEstimate.flyingTime.toFixed(2)}s (${(exitEstimate.flyingTime - exitEstimate.pushOffTime).toFixed(2)}s transition)`)
+  }
+  scene.setExitEstimate(exitEstimate)
+  bodyScene.setExitEstimate(exitEstimate)
 
   // Initialize replay
   if (!replay) {
