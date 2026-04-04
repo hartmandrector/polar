@@ -89,7 +89,18 @@ export class GPSDeployRenderer {
 
     // Synthesize a WingsuitDeployRenderState from the replay point
     const state = this.synthesizeRenderState(drp, pt)
-    this.renderer.update(state, bodyQuat)
+
+    // Post-line-stretch: pass canopy-top anchor so chain originates from canopy
+    const tls = drp.timeSinceLineStretch ?? 0
+    let anchorPos: THREE.Vector3 | undefined
+    if (tls >= 0) {
+      const s = this.bodyLength / 1.875  // meters-to-scene scale
+      const RISER_LENGTH = 8.0
+      // NED (0,0,-8) → Three.js (0, 8*s, 0), then rotate by body attitude
+      anchorPos = new THREE.Vector3(0, RISER_LENGTH * s, 0)
+      anchorPos.applyQuaternion(bodyQuat)
+    }
+    this.renderer.update(state, bodyQuat, anchorPos)
 
     // Canopy GLB visibility: only show from line_stretch onward, scale horizontally
     if (canopyModel) {
