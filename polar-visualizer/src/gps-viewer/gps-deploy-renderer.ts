@@ -133,8 +133,8 @@ export class GPSDeployRenderer {
     let phase: WingsuitDeployRenderState['phase']
 
     if (tls < 0) {
-      // Pre-line-stretch: chain extending over ~1 second
-      const preDuration = 1.0
+      // Pre-line-stretch: chain extending over ~2 seconds
+      const preDuration = 2.0
       chainFraction = Math.max(0, Math.min(1, (tls + preDuration) / preDuration))
       phase = chainFraction < 0.3 ? 'pc_toss'
         : chainFraction < 0.8 ? 'bridle_paying_out'
