@@ -290,7 +290,7 @@ export class GPSScene {
     const isPreLineStretch = drp && (drp.subPhase === 'pc_toss' || drp.subPhase === 'bridle_stretch')
     const isPostLineStretch = drp && drp.subPhase !== 'pre_deploy' && !isPreLineStretch
     const isFullFlight = drp?.subPhase === 'full_flight'
-    const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+    const isDeploying = drp && drp.subPhase !== 'pre_deploy'
     const isLanding = mode === 7
 
     // Use current canopy state, or fall back to last valid when estimator loses lock
@@ -351,8 +351,15 @@ export class GPSScene {
 
     if (this.deployRenderer && isDeploying) {
       // During deployment: deploy renderer controls bridle/PC visuals
-      const bodyQuat = this.model?.quaternion ?? new THREE.Quaternion()
-      this.deployRenderer.update(this.currentIndex, pt, bodyQuat, this.canopyModel)
+      // Pre-line-stretch: use pilot (wingsuit) model quaternion
+      // Post-line-stretch: use canopy orientation (PC trails from canopy)
+      let deployQuat: THREE.Quaternion
+      if (isPostLineStretch && effectiveCs) {
+        deployQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
+      } else {
+        deployQuat = this.model?.quaternion?.clone() ?? new THREE.Quaternion()
+      }
+      this.deployRenderer.update(this.currentIndex, pt, deployQuat, this.canopyModel)
       // Canopy GLB: only show from line_stretch onward, scale horizontally only
       if (this.canopyModel) {
         if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05) {

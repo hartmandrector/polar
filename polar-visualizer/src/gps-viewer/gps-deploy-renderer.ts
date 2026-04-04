@@ -90,15 +90,14 @@ export class GPSDeployRenderer {
     // Synthesize a WingsuitDeployRenderState from the replay point
     const state = this.synthesizeRenderState(drp, pt)
 
-    // Post-line-stretch: pass canopy-top anchor so chain originates from canopy
+    // Post-line-stretch: anchor at canopy origin (bodyQuat is canopy orientation)
     const tls = drp.timeSinceLineStretch ?? 0
     let anchorPos: THREE.Vector3 | undefined
     if (tls >= 0) {
-      const s = this.bodyLength / 1.875  // meters-to-scene scale
-      const RISER_LENGTH = 8.0
-      // NED (0,0,-8) → Three.js (0, 8*s, 0), then rotate by body attitude
-      anchorPos = new THREE.Vector3(0, RISER_LENGTH * s, 0)
-      anchorPos.applyQuaternion(bodyQuat)
+      // Canopy origin in scene coords = (0,0,0) in canopy NED, no offset needed
+      // The DeployRenderer default anchor is mid-back which is wrong for canopy,
+      // so pass explicit origin
+      anchorPos = new THREE.Vector3(0, 0, 0)
     }
     this.renderer.update(state, bodyQuat, anchorPos)
 
@@ -210,23 +209,16 @@ export class GPSDeployRenderer {
         }
       }
     } else {
-      // ── Post-line-stretch: chain from canopy top, PC trails aft ──
+      // ── Post-line-stretch: PC trails aft of canopy ──
+      // bodyQuat is now the canopy orientation, so positions are canopy-relative.
+      // Origin (0,0,0) = canopy CG. PC trails aft (-X in canopy NED).
       chainFraction = 1
       phase = 'line_stretch'
 
-      // Under canopy the body frame is the canopy/pilot system.
-      // Canopy is above pilot: NED Z = -RISER (up in body frame).
-      // PC/bridle trail aft of canopy: -X direction in body NED.
-      const RISER_LENGTH = 8.0  // approximate line + riser length [m]
-      const canopyOrigin: Vec3 = { x: 0, y: 0, z: -RISER_LENGTH }
-
-      // Trail direction: aft (-X) in canopy body frame
-      const trailAxis: Vec3 = { x: -1, y: 0, z: 0 }
-
       pcPosition = {
-        x: canopyOrigin.x + trailAxis.x * TOTAL_CHAIN_LENGTH,
-        y: canopyOrigin.y + trailAxis.y * TOTAL_CHAIN_LENGTH,
-        z: canopyOrigin.z + trailAxis.z * TOTAL_CHAIN_LENGTH,
+        x: -TOTAL_CHAIN_LENGTH,
+        y: 0,
+        z: 0,
       }
 
       segments = []
@@ -234,9 +226,9 @@ export class GPSDeployRenderer {
         const segDist = (i + 1) * SEGMENT_LENGTH
         segments.push({
           position: {
-            x: canopyOrigin.x + trailAxis.x * segDist,
-            y: canopyOrigin.y + trailAxis.y * segDist,
-            z: canopyOrigin.z + trailAxis.z * segDist,
+            x: -segDist,
+            y: 0,
+            z: 0,
           },
           velocity: { x: 0, y: 0, z: 0 },
           visible: true,
