@@ -90,6 +90,9 @@ export class GPSAeroOverlay {
   /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
   bodyFrame = false
 
+  /** Scale factor for force vectors during deployment (0–1, default 1) */
+  deployScale = 1.0
+
   /** Last computed moment breakdown (for external consumers like MomentInset) */
   lastMoments: AxisMoments = {
     pitch: { aero: 0, pilot: 0, gyro: 0, net: 0 },
@@ -297,7 +300,7 @@ export class GPSAeroOverlay {
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
 
       // Lift
-      const liftLen = Math.abs(ps.forces.lift) * FORCE_SCALE
+      const liftLen = Math.abs(ps.forces.lift) * FORCE_SCALE * this.deployScale
       if (liftLen > MIN_ARROW) {
         const dir = ps.forces.lift >= 0 ? liftDirWorld.clone() : liftDirWorld.clone().negate()
         sa.lift.setDirection(dir)
@@ -309,7 +312,7 @@ export class GPSAeroOverlay {
       }
 
       // Drag
-      const dragLen = ps.forces.drag * FORCE_SCALE
+      const dragLen = ps.forces.drag * FORCE_SCALE * this.deployScale
       if (dragLen > MIN_ARROW) {
         sa.drag.setDirection(dragDirWorld)
         sa.drag.setLength(dragLen, 0.06, 0.03)
@@ -320,7 +323,7 @@ export class GPSAeroOverlay {
       }
 
       // Side force
-      const sideLen = Math.abs(ps.forces.side) * FORCE_SCALE
+      const sideLen = Math.abs(ps.forces.side) * FORCE_SCALE * this.deployScale
       if (sideLen > MIN_ARROW) {
         const dir = ps.forces.side >= 0 ? sideDirWorld.clone() : sideDirWorld.clone().negate()
         sa.side.setDirection(dir)

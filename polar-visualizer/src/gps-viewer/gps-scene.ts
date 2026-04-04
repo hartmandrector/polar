@@ -341,6 +341,7 @@ export class GPSScene {
       this.canopyAeroOverlay.hide()
     } else if (cs && cs.valid) {
       this.aeroOverlay.hide()
+      this.canopyAeroOverlay.deployScale = (isDeploying && drp) ? drp.deployFraction : 1.0
       this.canopyAeroOverlay.aeroOverrides = {
         aoa: cs.aoa,
         roll: cs.phi,
