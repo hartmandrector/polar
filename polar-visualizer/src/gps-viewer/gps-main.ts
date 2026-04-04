@@ -349,21 +349,35 @@ async function loadFile(file: File) {
       getFlightBounds: () => {
         if (!result) return { startTime: 0, endTime: 0 }
         const pts = result.points
-        // Find first freefall/wingsuit frame and last landing frame
+
+        // Start: use exit detector push-off (a few seconds before for context)
         let startTime = pts[0]?.processed.t ?? 0
+        if (exitEstimate) {
+          // 2 seconds before push-off for pre-exit context
+          const preRoll = 2.0
+          startTime = Math.max(pts[0].processed.t, pts[exitEstimate.pushOffIndex].processed.t - preRoll)
+        } else {
+          // Fallback: first wingsuit/freefall frame
+          for (const p of pts) {
+            if (p.flightMode && p.flightMode.mode >= 3) {
+              startTime = p.processed.t
+              break
+            }
+          }
+        }
+
+        // End: last frame before returning to ground mode (mode 1)
         let endTime = pts[pts.length - 1]?.processed.t ?? 0
-        for (const p of pts) {
-          if (p.flightMode && p.flightMode.mode >= 3) { // WINGSUIT or later
-            startTime = p.processed.t
-            break
-          }
-        }
         for (let i = pts.length - 1; i >= 0; i--) {
-          if (pts[i].flightMode && pts[i].flightMode!.mode <= 7) {
-            endTime = pts[i].processed.t
+          const mode = pts[i].flightMode?.mode ?? 0
+          if (mode > 1) {
+            // Include a couple seconds of ground mode after landing
+            const postRoll = 2.0
+            endTime = Math.min(pts[pts.length - 1].processed.t, pts[i].processed.t + postRoll)
             break
           }
         }
+
         return { startTime, endTime }
       },
     })
