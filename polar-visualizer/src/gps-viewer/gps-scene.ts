@@ -349,7 +349,11 @@ export class GPSScene {
     // ── Canopy model + deploy rendering ──
     const BASE_CANOPY_SCALE = 1.39 * 0.66
 
-    if (this.deployRenderer && isDeploying) {
+    if (isGround) {
+      // Ground mode: hide all canopy/deploy visuals
+      if (this.deployRenderer) this.deployRenderer.hide()
+      if (this.canopyModel) this.canopyModel.visible = false
+    } else if (this.deployRenderer && isDeploying) {
       // During deployment: deploy renderer controls bridle/PC visuals
       // Pre-line-stretch: use pilot (wingsuit) model quaternion
       // Post-line-stretch: use canopy orientation (PC trails from canopy)
