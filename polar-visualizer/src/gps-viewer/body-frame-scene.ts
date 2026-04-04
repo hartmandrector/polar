@@ -126,7 +126,7 @@ export class BodyFrameScene {
     try {
       const gltf = await loader.loadAsync(CANOPY_PATH)
       this.canopyModel = gltf.scene as THREE.Group
-      this.canopyModel.scale.setScalar(1.39 * 0.7)
+      this.canopyModel.scale.setScalar(1.39 * 0.66)
       this.canopyModel.visible = false
       // Make canopy semi-transparent so aero vectors show through
       this.canopyModel.traverse((child) => {
@@ -277,7 +277,7 @@ export class BodyFrameScene {
     }
 
     // Canopy in body frame — deploy-aware
-    const BASE_CANOPY_SCALE_BF = 1.39 * 0.7  // body frame uses slightly different base scale
+    const BASE_CANOPY_SCALE_BF = 1.39 * 0.66  // body frame uses slightly different base scale
     if (this.canopyModel) {
       if (isDeploying) {
         // During deployment: only show canopy from line_stretch onward, horizontal scale
