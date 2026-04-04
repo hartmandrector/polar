@@ -34,9 +34,7 @@ export class BodyFrameScene {
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
   private deployTimeline: DeployReplayTimeline | null = null
-  /** Pre-deploy average roll angle [rad] */
-  private preDeployRoll: number | null = null
-  private lastValidCanopyState: CanopyState | null = null
+    private lastValidCanopyState: CanopyState | null = null
   private exitEstimate: ExitEstimate | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
@@ -181,26 +179,6 @@ export class BodyFrameScene {
   setDeployTimeline(timeline: DeployReplayTimeline) {
     this.deployTimeline = timeline
 
-    // Compute pre-deploy average roll from ~2s of clean wingsuit flight before PC toss
-    this.preDeployRoll = null
-    if (timeline.timing.pcTossIndex != null && this.data.length > 0) {
-      const pcIdx = timeline.timing.pcTossIndex
-      const sampleRate = this.data.length > 1
-        ? 1 / (this.data[1].processed.t - this.data[0].processed.t)
-        : 20
-      const windowSamples = Math.round(2.0 * sampleRate)
-      const start = Math.max(0, pcIdx - windowSamples)
-      let sumSin = 0, sumCos = 0, count = 0
-      for (let i = start; i < pcIdx; i++) {
-        const roll = this.data[i].aero.roll
-        sumSin += Math.sin(roll)
-        sumCos += Math.cos(roll)
-        count++
-      }
-      if (count > 0) {
-        this.preDeployRoll = Math.atan2(sumSin / count, sumCos / count)
-      }
-    }
   }
 
   setExitEstimate(est: ExitEstimate | null) {
@@ -291,14 +269,14 @@ export class BodyFrameScene {
       // Ground mode: stand upright
       bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
     } else if (isPreLineStretch) {
-      // Blend roll toward pre-deploy average during deployment
+      // Blend roll toward zero by line stretch
       let roll = pt.aero.roll
-      if (this.preDeployRoll != null && drp) {
+      if (drp) {
         const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
         const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
         const range = lsIdx - pcIdx
         const t = range > 0 ? Math.max(0, Math.min(1, (this.currentIndex - pcIdx) / range)) : 0
-        roll = roll * (1 - t) + this.preDeployRoll * t
+        roll = roll * (1 - t)  // lerp toward zero
       }
       bodyQuat = bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi)
     } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
