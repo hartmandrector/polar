@@ -106,6 +106,9 @@ export class DeployRenderer {
   /** PC highlight ring (fallback + tension indicator) */
   private pcRing: THREE.Mesh
 
+  /** Optional rotation offset applied after chain orientation (for GPS replay frame correction) */
+  pcRotationOffset: THREE.Quaternion | null = null
+
   // ── GLB models (loaded asynchronously) ──
   /** Pilot chute GLB clone */
   private pcModel: THREE.Group | null = null
@@ -384,6 +387,10 @@ export class DeployRenderer {
       if (chainPoints.length >= 2) {
         const prev = chainPoints[chainPoints.length - 2]
         orientAlongChain(this.pcModel, prev, pcPos)
+      }
+      // Apply optional rotation offset (e.g. GPS replay frame correction)
+      if (this.pcRotationOffset) {
+        this.pcModel.quaternion.multiply(this.pcRotationOffset)
       }
     }
 

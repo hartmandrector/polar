@@ -62,6 +62,12 @@ export class GPSDeployRenderer {
   constructor(scene: THREE.Scene, bodyLength: number) {
     this.renderer = new DeployRenderer(scene, bodyLength)
     this.bodyLength = bodyLength
+    // GPS replay chain runs pure -Z in Three.js (NED -X = aft), which gives
+    // orientAlongChain a different roll than the sim's 3D chain geometry.
+    // Apply 90° correction around the chain axis (Z).
+    this.renderer.pcRotationOffset = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, 1), Math.PI / 2
+    )
   }
 
   setTimeline(timeline: DeployReplayTimeline) {
