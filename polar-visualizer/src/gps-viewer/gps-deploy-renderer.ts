@@ -77,29 +77,19 @@ export class GPSDeployRenderer {
     }
 
     const drp = this.timeline.points[index]
-    if (!drp || drp.subPhase === 'pre_deploy' || drp.subPhase === 'full_flight') {
+    if (!drp || drp.subPhase === 'pre_deploy') {
       this.renderer.hide()
-      // Full flight: canopy at full scale
-      if (canopyModel && drp?.subPhase === 'full_flight') {
-        canopyModel.visible = true
-      }
       return
+    }
+
+    // Full flight: keep PC/bridle visible, canopy at full scale
+    if (drp.subPhase === 'full_flight') {
+      if (canopyModel) canopyModel.visible = true
     }
 
     // Synthesize a WingsuitDeployRenderState from the replay point
     const state = this.synthesizeRenderState(drp, pt)
-
-    // After bridle stretch, anchor chain to canopy top (not pilot's back).
-    // Before that, default mid-back anchor is used (anchorPos = undefined).
-    const isPostBridle = drp.subPhase === 'line_stretch' || drp.subPhase === 'max_aoa'
-      || drp.subPhase === 'snivel' || drp.subPhase === 'surge'
-    let anchorPos: THREE.Vector3 | undefined
-    if (isPostBridle && canopyModel) {
-      // Canopy top in scene coords — use the canopy model's world position
-      anchorPos = new THREE.Vector3()
-      canopyModel.getWorldPosition(anchorPos)
-    }
-    this.renderer.update(state, bodyQuat, anchorPos)
+    this.renderer.update(state, bodyQuat)
 
     // Canopy GLB visibility: only show from line_stretch onward, scale horizontally
     if (canopyModel) {
@@ -132,8 +122,8 @@ export class GPSDeployRenderer {
    * Build a synthetic WingsuitDeployRenderState from a deploy replay point.
    *
    * The positions are body-CG-relative in NED meters.
-   * Pre-line-stretch: PC + segments extending along tension axis.
-   * Post-line-stretch: chain fully extended, positions along tension axis.
+   * Pre-line-stretch: PC + segments extending along tension axis from pilot.
+   * Post-line-stretch: chain hangs from canopy top, PC trails behind canopy.
    */
   private synthesizeRenderState(
     drp: DeployReplayPoint,
@@ -141,33 +131,13 @@ export class GPSDeployRenderer {
   ): WingsuitDeployRenderState {
     const tls = drp.timeSinceLineStretch ?? 0
 
-    // Determine how much of the chain is visible
-    let chainFraction: number  // 0–1, how much of chain is deployed
-    let phase: WingsuitDeployRenderState['phase']
-
-    if (tls < 0) {
-      // Pre-line-stretch: chain extending over ~1.5 seconds (PC toss to line stretch)
-      const preDuration = 1.5
-      chainFraction = Math.max(0, Math.min(1, (tls + preDuration) / preDuration))
-      phase = chainFraction < 0.3 ? 'pc_toss'
-        : chainFraction < 0.8 ? 'bridle_paying_out'
-        : 'canopy_extracting'
-    } else {
-      // Post-line-stretch: chain fully extended
-      chainFraction = 1
-      phase = 'line_stretch'
-    }
-
-    // Tension axis from velocity vector (relative wind in body frame).
-    // The PC trails into the wind — opposite to velocity in body frame.
+    // ── Tension axis from velocity (relative wind in body frame) ──
     const g = pt.processed
     const speed = g.airspeed
-    let axis: Vec3
+    let windAxis: Vec3
 
     if (speed > 2) {
-      // Velocity in NED inertial frame
       const vN = g.velN, vE = g.velE, vD = g.velD
-      // Rotate into body frame using Euler angles (DCM: inertial → body)
       const phi = pt.aero.roll, theta = pt.aero.theta, psi = pt.aero.psi
       const cp = Math.cos(phi), sp = Math.sin(phi)
       const ct = Math.cos(theta), st = Math.sin(theta)
@@ -175,67 +145,92 @@ export class GPSDeployRenderer {
       const vBx = (ct*cy)*vN + (ct*sy)*vE + (-st)*vD
       const vBy = (sp*st*cy - cp*sy)*vN + (sp*st*sy + cp*cy)*vE + (sp*ct)*vD
       const vBz = (cp*st*cy + sp*sy)*vN + (cp*st*sy - sp*cy)*vE + (cp*ct)*vD
-      // PC trails opposite to velocity in body frame (into the wind)
-      axis = normalizeVec3({ x: -vBx, y: -vBy, z: -vBz })
+      // Opposite to velocity = into the wind
+      windAxis = normalizeVec3({ x: -vBx, y: -vBy, z: -vBz })
     } else {
-      // Low speed fallback: straight aft + up
-      axis = normalizeVec3({ x: -1, y: 0, z: -0.3 })
+      windAxis = normalizeVec3({ x: -1, y: 0, z: -0.3 })
     }
 
-    if (chainFraction < 0.3) {
-      // PC toss: add lateral component (thrown to the side)
-      const throwProgress = chainFraction / 0.3
-      const lateral = (1.0 - throwProgress) * 0.5
-      axis = normalizeVec3({ x: axis.x, y: axis.y + lateral, z: axis.z })
-    }
+    let chainFraction: number
+    let phase: WingsuitDeployRenderState['phase']
+    let segments: BridleSegmentState[]
+    let pcPosition: Vec3
+    let canopyBag: WingsuitDeployRenderState['canopyBag'] = null
 
-    // Place segments along the tension axis
-    const visibleLength = chainFraction * TOTAL_CHAIN_LENGTH
-    const segments: BridleSegmentState[] = []
+    if (tls < 0) {
+      // ── Pre-line-stretch: chain extending from pilot along wind axis ──
+      const preDuration = 1.5
+      chainFraction = Math.max(0, Math.min(1, (tls + preDuration) / preDuration))
+      phase = chainFraction < 0.3 ? 'pc_toss'
+        : chainFraction < 0.8 ? 'bridle_paying_out'
+        : 'canopy_extracting'
 
-    for (let i = 0; i < SEGMENT_COUNT; i++) {
-      const segDist = (i + 1) * SEGMENT_LENGTH
-      const freed = segDist <= visibleLength
-      const dist = freed ? segDist : 0
-      segments.push({
-        position: {
-          x: axis.x * dist,
-          y: axis.y * dist,
-          z: axis.z * dist,
-        },
-        velocity: { x: 0, y: 0, z: 0 },
-        visible: freed,
-        freed,
-      })
-    }
+      let axis = windAxis
+      if (chainFraction < 0.3) {
+        const throwProgress = chainFraction / 0.3
+        const lateral = (1.0 - throwProgress) * 0.5
+        axis = normalizeVec3({ x: axis.x, y: axis.y + lateral, z: axis.z })
+      }
 
-    // PC position: at the tip of the deployed chain
-    const pcDist = Math.max(0.5, Math.min(visibleLength, TOTAL_CHAIN_LENGTH))
-    const pcPosition: Vec3 = {
-      x: axis.x * pcDist,
-      y: axis.y * pcDist,
-      z: axis.z * pcDist,
-    }
+      const visibleLength = chainFraction * TOTAL_CHAIN_LENGTH
+      segments = []
+      for (let i = 0; i < SEGMENT_COUNT; i++) {
+        const segDist = (i + 1) * SEGMENT_LENGTH
+        const freed = segDist <= visibleLength
+        const dist = freed ? segDist : 0
+        segments.push({
+          position: { x: axis.x * dist, y: axis.y * dist, z: axis.z * dist },
+          velocity: { x: 0, y: 0, z: 0 },
+          visible: freed,
+          freed,
+        })
+      }
 
-    // Canopy bag (snivel model): only during canopy_extracting phase
-    // After line stretch, the canopy is out of the bag — hide snivel
-    let canopyBag = null
-    if (phase === 'canopy_extracting') {
-      const extractProgress = Math.max(0, (chainFraction - 0.7) / 0.3)
-      const bagDist = extractProgress * TOTAL_CHAIN_LENGTH * 0.25
-      canopyBag = {
-        position: {
-          x: axis.x * bagDist,
-          y: axis.y * bagDist,
-          z: axis.z * bagDist,
-        },
-        velocity: { x: 0, y: 0, z: 0 },
-        pitch: 0,
-        pitchRate: 0,
-        roll: 0,
-        rollRate: 0,
-        yaw: 0,
-        yawRate: 0,
+      const pcDist = Math.max(0.5, Math.min(visibleLength, TOTAL_CHAIN_LENGTH))
+      pcPosition = { x: axis.x * pcDist, y: axis.y * pcDist, z: axis.z * pcDist }
+
+      if (phase === 'canopy_extracting') {
+        const extractProgress = Math.max(0, (chainFraction - 0.7) / 0.3)
+        const bagDist = extractProgress * TOTAL_CHAIN_LENGTH * 0.25
+        canopyBag = {
+          position: { x: axis.x * bagDist, y: axis.y * bagDist, z: axis.z * bagDist },
+          velocity: { x: 0, y: 0, z: 0 },
+          pitch: 0, pitchRate: 0, roll: 0, rollRate: 0, yaw: 0, yawRate: 0,
+        }
+      }
+    } else {
+      // ── Post-line-stretch: chain from canopy top, PC trails behind canopy ──
+      chainFraction = 1
+      phase = 'line_stretch'
+
+      // Canopy is above pilot in body frame NED.
+      // Under canopy, body Z-axis points roughly down (gravity).
+      // Line/riser length ~8m puts canopy above pilot.
+      // In body-frame NED: negative Z = up (toward canopy).
+      const RISER_LENGTH = 8.0  // approximate line + riser length [m]
+      const canopyOrigin: Vec3 = { x: 0, y: 0, z: -RISER_LENGTH }
+
+      // PC trails behind canopy along relative wind, ~TOTAL_CHAIN_LENGTH from canopy
+      pcPosition = {
+        x: canopyOrigin.x + windAxis.x * TOTAL_CHAIN_LENGTH,
+        y: canopyOrigin.y + windAxis.y * TOTAL_CHAIN_LENGTH,
+        z: canopyOrigin.z + windAxis.z * TOTAL_CHAIN_LENGTH,
+      }
+
+      // Segments along the chain from canopy to PC
+      segments = []
+      for (let i = 0; i < SEGMENT_COUNT; i++) {
+        const segDist = (i + 1) * SEGMENT_LENGTH
+        segments.push({
+          position: {
+            x: canopyOrigin.x + windAxis.x * segDist,
+            y: canopyOrigin.y + windAxis.y * segDist,
+            z: canopyOrigin.z + windAxis.z * segDist,
+          },
+          velocity: { x: 0, y: 0, z: 0 },
+          visible: true,
+          freed: true,
+        })
       }
     }
 
@@ -248,7 +243,7 @@ export class GPSDeployRenderer {
       bridleTension: tls >= 0 ? 500 : chainFraction * 200,
       pinTension: tls >= 0 ? 300 : 0,
       bagTension: tls >= 0 ? 200 : 0,
-      chainDistance: pcDist,
+      chainDistance: Math.sqrt(pcPosition.x ** 2 + pcPosition.y ** 2 + pcPosition.z ** 2),
       bagDistance: canopyBag ? Math.sqrt(
         canopyBag.position.x ** 2 + canopyBag.position.y ** 2 + canopyBag.position.z ** 2
       ) : 0,
