@@ -115,8 +115,8 @@ export class GPSDeployRenderer {
       // Chain offset (same as main.ts CANOPY_CHAIN_Y_OFFSET)
       const chainOffset = new THREE.Vector3(0, CANOPY_CHAIN_Y_OFFSET, 0)
 
-      // PC orientation: apply body-to-inertial rotation so PC roll matches canopy frame
-      this.renderer.pcRotationOffset = bodyQuat.clone()
+      // PC orientation: use last segment's quaternion (flag for deploy-render.ts)
+      this.renderer.pcRotationOffset = new THREE.Quaternion()  // non-null = copy-from-segment mode
 
       this.renderer.update(state, bodyQuat, anchor, chainOffset)
     } else {

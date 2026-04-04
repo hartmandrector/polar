@@ -383,14 +383,22 @@ export class DeployRenderer {
     if (useGLB && this.pcModel) {
       this.pcModel.position.copy(pcPos)
       this.pcModel.visible = true
-      // Orient PC: opening faces away from body (toward incoming air)
-      if (chainPoints.length >= 2) {
+      // Orient PC: copy last visible segment's orientation (already chain-aligned),
+      // or fall back to orientAlongChain if no segments visible
+      let oriented = false
+      if (this.pcRotationOffset) {
+        // GPS replay: use last visible segment's quaternion for consistent roll
+        for (let i = state.segments.length - 1; i >= 0; i--) {
+          if (segChainIdx[i] >= 0 && this.segmentModels[i]) {
+            this.pcModel.quaternion.copy(this.segmentModels[i].quaternion)
+            oriented = true
+            break
+          }
+        }
+      }
+      if (!oriented && chainPoints.length >= 2) {
         const prev = chainPoints[chainPoints.length - 2]
         orientAlongChain(this.pcModel, prev, pcPos)
-      }
-      // Apply optional rotation offset (e.g. GPS replay frame correction)
-      if (this.pcRotationOffset) {
-        this.pcModel.quaternion.multiply(this.pcRotationOffset)
       }
     }
 
