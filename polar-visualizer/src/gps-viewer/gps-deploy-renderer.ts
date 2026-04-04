@@ -103,7 +103,7 @@ export class GPSDeployRenderer {
     if (isPostLS) {
       // ── Post-line-stretch: mirror main.ts canopy deploy rendering ──
       // Anchor = bridleTop attachment point, scaled by canopy scale, rotated by canopy quat
-      const anchor = BRIDLE_TOP_THREE.clone().multiplyScalar(canopyScale)
+      const anchor = BRIDLE_TOP_THREE.clone().multiplyScalar(canopyScale * 0.66)
       anchor.applyQuaternion(bodyQuat)
 
       // Chain offset (same as main.ts CANOPY_CHAIN_Y_OFFSET)
@@ -220,9 +220,18 @@ export class GPSDeployRenderer {
         }
       }
     } else {
-      // ── Post-line-stretch: chain trails aft from canopy ──
-      // Positions in NED, converted by DeployRenderer's toScene() + bodyQuat.
-      // -X in NED = aft in canopy body frame.
+      // ── Post-line-stretch: chain trails aft from canopy bridleTop ──
+      // The anchor is at bridleTop in scene coords. Segments go through
+      // toScene(ned) = nedToThree(ned, 1.0, chainOffset) then bodyQuat.
+      // We need segments to start near the anchor and trail aft.
+      //
+      // nedToThree({x,y,z}, 1) = (-y, -z, x) + chainOffset(0, 2.8, 0)
+      // Anchor (before bodyQuat) ≈ (0, 4.28, -0.78) with canopyScale=0.917.
+      // Solving: -y=0 → y=0; -z+2.8=4.28 → z=-1.48; x=-0.78
+      // So bridleTop in NED ≈ (-0.78, 0, -1.48).
+      // Chain trails aft: -X in canopy NED = further negative X.
+      const anchorNED: Vec3 = { x: -0.78, y: 0, z: -1.48 }
+
       chainFraction = 1
       phase = 'line_stretch'
 
@@ -230,14 +239,22 @@ export class GPSDeployRenderer {
       for (let i = 0; i < SEGMENT_COUNT; i++) {
         const segDist = (i + 1) * SEGMENT_LENGTH
         segments.push({
-          position: { x: -segDist, y: 0, z: 0 },
+          position: {
+            x: anchorNED.x - segDist,
+            y: anchorNED.y,
+            z: anchorNED.z,
+          },
           velocity: { x: 0, y: 0, z: 0 },
           visible: true,
           freed: true,
         })
       }
 
-      pcPosition = { x: -TOTAL_CHAIN_LENGTH, y: 0, z: 0 }
+      pcPosition = {
+        x: anchorNED.x - TOTAL_CHAIN_LENGTH,
+        y: anchorNED.y,
+        z: anchorNED.z,
+      }
     }
 
     return {
