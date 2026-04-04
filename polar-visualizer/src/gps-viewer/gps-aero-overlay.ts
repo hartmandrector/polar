@@ -292,11 +292,11 @@ export class GPSAeroOverlay {
       const ps = result.perSegment[i]
 
       // Segment position in world space (body NED → Three.js → world)
-      // During deployment, scale spanwise (Y in NED) by deploy fraction
-      const spanScale = this.deployFraction
+      // During deployment, scale horizontal plane (X=chord, Y=span in NED) by deploy fraction
+      const hScale = this.deployFraction
       const segPosNED = {
-        x: ps.positionMeters.x,
-        y: ps.positionMeters.y * spanScale,
+        x: ps.positionMeters.x * hScale,
+        y: ps.positionMeters.y * hScale,
         z: ps.positionMeters.z,
       }
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
