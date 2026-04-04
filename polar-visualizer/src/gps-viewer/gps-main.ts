@@ -489,7 +489,7 @@ function updateReadout(index: number) {
 
   // Deploy replay state for this point
   const drp = currentDeployTimeline?.points[index]
-  const isCanopyPhase = fm?.mode === 6 || fm?.mode === 5 // CANOPY or DEPLOY
+  const isCanopyPhase = fm?.mode === 6 || fm?.mode === 5 || fm?.mode === 7 // CANOPY, DEPLOY, or LANDING
   const displayAoaDeg = isCanopyPhase && drp?.canopyState?.valid
     ? drp.canopyAoaDeg
     : a.aoa * r2d
