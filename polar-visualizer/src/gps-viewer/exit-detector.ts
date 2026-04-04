@@ -33,22 +33,26 @@ export interface ExitEstimate {
 export function detectExit(points: GPSPipelinePoint[]): ExitEstimate | null {
   if (points.length < 10) return null
 
-  // Step 1: Find first frame where mode transitions from GROUND to something else
-  let firstNonGroundIdx = -1
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1].flightMode?.mode ?? 0
-    const curr = points[i].flightMode?.mode ?? 0
-    if (prev <= 1 && curr > 1) {
-      firstNonGroundIdx = i
+  // Step 1: Find where vertical speed reaches 11 m/s downward (NED: velD > 11)
+  // This ensures they're truly in freefall, regardless of push style.
+  let freefallIdx = -1
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].processed.velD > 11) {
+      freefallIdx = i
       break
     }
   }
 
-  if (firstNonGroundIdx < 0) return null
+  if (freefallIdx < 0) return null
 
-  // Step 2: Find first wingsuit (3) or freefall (4) frame
+  // Step 2: Push-off = 1.3 seconds before the 11 m/s point
+  const dt = points.length > 1 ? points[1].processed.t - points[0].processed.t : 0.05
+  const sampleRate = dt > 0 ? 1 / dt : 20
+  const pushIdx = Math.max(0, freefallIdx - Math.round(1.3 * sampleRate))
+
+  // Step 3: Find first wingsuit (3) or freefall (4) frame for flying-established
   let flyingIdx = -1
-  for (let i = firstNonGroundIdx; i < points.length; i++) {
+  for (let i = pushIdx; i < points.length; i++) {
     const mode = points[i].flightMode?.mode ?? 0
     if (mode === 3 || mode === 4) {
       flyingIdx = i
@@ -56,28 +60,8 @@ export function detectExit(points: GPSPipelinePoint[]): ExitEstimate | null {
     }
   }
 
-  // If no wingsuit/freefall found, use the first non-ground as flying
-  if (flyingIdx < 0) flyingIdx = firstNonGroundIdx
-
-  // Step 3: Walk backward from first non-ground to find push-off
-  // Push-off = where vertical speed first drops below -0.5 m/s
-  // (velD > 0.5 in NED, since D is positive downward)
-  const PUSH_THRESHOLD = 0.5  // m/s downward (NED velD positive = falling)
-  const searchStart = Math.max(0, firstNonGroundIdx - 100)  // ~5s at 20Hz
-
-  let pushIdx = firstNonGroundIdx
-  for (let i = firstNonGroundIdx; i >= searchStart; i--) {
-    const velD = points[i].processed.velD
-    if (velD < PUSH_THRESHOLD) {
-      // Found where we weren't falling yet — push-off is next frame
-      pushIdx = i + 1
-      break
-    }
-    pushIdx = i  // keep walking back while we're falling
-  }
-
-  // Sanity: push-off should be before flying
-  if (pushIdx >= flyingIdx) pushIdx = Math.max(0, flyingIdx - 1)
+  // If no wingsuit/freefall found, use the freefall velocity point
+  if (flyingIdx < 0) flyingIdx = freefallIdx
 
   return {
     pushOffIndex: pushIdx,
