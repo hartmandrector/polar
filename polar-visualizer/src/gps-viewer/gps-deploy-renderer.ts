@@ -16,14 +16,20 @@ import type { GPSPipelinePoint } from '../gps/types'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-/** Total bridle chain length [m] (must match deploy-wingsuit.ts) */
+/** Total chain length [m] pre-line-stretch: CG → shoulder → risers → lines → bag → bridle → PC */
 const TOTAL_CHAIN_LENGTH = 7.4
+
+/** Bridle-only length [m] post-line-stretch: bridleTop attachment → PC */
+const BRIDLE_LENGTH = 3.3
 
 /** Number of bridle segments */
 const SEGMENT_COUNT = 10
 
-/** Segment length [m] */
-const SEGMENT_LENGTH = TOTAL_CHAIN_LENGTH / SEGMENT_COUNT
+/** Segment length [m] for pre-LS (full chain) */
+const PRE_LS_SEGMENT_LENGTH = TOTAL_CHAIN_LENGTH / SEGMENT_COUNT
+
+/** Segment length [m] for post-LS (bridle only) */
+const POST_LS_SEGMENT_LENGTH = BRIDLE_LENGTH / SEGMENT_COUNT
 
 /** PC diameter for drag visual */
 const PC_CD_NOMINAL = 0.6
@@ -196,7 +202,7 @@ export class GPSDeployRenderer {
       const visibleLength = chainFraction * TOTAL_CHAIN_LENGTH
       segments = []
       for (let i = 0; i < SEGMENT_COUNT; i++) {
-        const segDist = (i + 1) * SEGMENT_LENGTH
+        const segDist = (i + 1) * PRE_LS_SEGMENT_LENGTH
         const freed = segDist <= visibleLength
         const dist = freed ? segDist : 0
         segments.push({
@@ -237,7 +243,7 @@ export class GPSDeployRenderer {
 
       segments = []
       for (let i = 0; i < SEGMENT_COUNT; i++) {
-        const segDist = (i + 1) * SEGMENT_LENGTH
+        const segDist = (i + 1) * POST_LS_SEGMENT_LENGTH
         segments.push({
           position: {
             x: anchorNED.x - segDist,
@@ -251,7 +257,7 @@ export class GPSDeployRenderer {
       }
 
       pcPosition = {
-        x: anchorNED.x - TOTAL_CHAIN_LENGTH,
+        x: anchorNED.x - BRIDLE_LENGTH,
         y: anchorNED.y,
         z: anchorNED.z,
       }
