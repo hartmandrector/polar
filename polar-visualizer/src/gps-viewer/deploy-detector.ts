@@ -182,30 +182,18 @@ export function detectDeployment(
 
   // ── Step 3: Walk backward from peak to find line stretch ────────────
   // The peak deceleration is typically max inflation rate, ~1s AFTER line stretch.
-  // Line stretch is the initial orientation-changing force before max g.
-  // Strategy: go back ~1s from peak decel as a baseline estimate,
-  // then refine by looking for the first significant acceleration rise.
+  // Pre-line-stretch has very low acceleration (freefall/wingsuit).
+  // Walk backward from ~1s before peak, looking for where accel drops
+  // below a low threshold (~2 m/s²). Limit walk to 1.5s max.
   const approxLsIdx = Math.max(searchStart, peakIdx - Math.round(sampleRate * 1.0))
+  const maxWalkBack = Math.round(sampleRate * 1.5)  // don't walk back more than 1.5s
+  const walkLimit = Math.max(searchStart, approxLsIdx - maxWalkBack)
   
-  // Walk forward from the approximate point to find where accel first rises
-  // above baseline — that's the actual line stretch moment.
-  const preStart = Math.max(0, searchStart)
-  const preEnd = Math.max(0, approxLsIdx - Math.round(sampleRate * 1)) // 1s before approx LS
-  let baselineDecel = 0
-  let baselineCount = 0
-  for (let i = preStart; i < preEnd; i++) {
-    baselineDecel += decelMagnitude(points[i].processed)
-    baselineCount++
-  }
-  baselineDecel = baselineCount > 0 ? baselineDecel / baselineCount : 3
+  const LOW_ACCEL_THRESHOLD = 2.0  // m/s² — pre-line-stretch is near zero accel
 
-  // Onset threshold: 1.5× baseline or 5 m/s², whichever is larger
-  const onsetThreshold = Math.max(baselineDecel * 1.5, 5)
-
-  // Walk backward from ~1s before peak to find where accel drops to baseline
   let lineStretchIdx = approxLsIdx
-  for (let i = approxLsIdx; i >= searchStart; i--) {
-    if (decelMagnitude(points[i].processed) < onsetThreshold) {
+  for (let i = approxLsIdx; i >= walkLimit; i--) {
+    if (decelMagnitude(points[i].processed) < LOW_ACCEL_THRESHOLD) {
       lineStretchIdx = i + 1
       break
     }
