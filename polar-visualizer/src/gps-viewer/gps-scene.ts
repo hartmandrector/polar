@@ -321,6 +321,10 @@ export class GPSScene {
       const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
+    } else if (isGround) {
+      // Ground mode without sensor: stand upright, heading from GPS track
+      const standingPitch = Math.PI / 2
+      this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, pt.aero.psi))
     } else if (isPreLineStretch) {
       // Pre-line-stretch: keep wingsuit flying pose, but blend roll toward
       // pre-deploy average to avoid backsliding artifacts from unreliable aero

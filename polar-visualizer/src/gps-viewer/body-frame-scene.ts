@@ -271,7 +271,11 @@ export class BodyFrameScene {
     // Get the body-to-inertial quaternion
     // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
     let bodyQuat: THREE.Quaternion
-    if (isPreLineStretch) {
+    const isGround = mode === 1
+    if (isGround) {
+      // Ground mode: stand upright
+      bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+    } else if (isPreLineStretch) {
       // Blend roll toward pre-deploy average during deployment
       let roll = pt.aero.roll
       if (this.preDeployRoll != null && drp) {
