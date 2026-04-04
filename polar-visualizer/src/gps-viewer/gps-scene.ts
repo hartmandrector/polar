@@ -279,8 +279,8 @@ export class GPSScene {
     } else if (isPreLineStretch) {
       // Pre-line-stretch: keep wingsuit flying pose even if flight mode says Deploy/Canopy
       this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
-    } else if ((isPostLineStretch || canopyPhase) && cs && cs.valid) {
-      // Post-line-stretch or canopy phase: pilot hangs vertically
+    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && cs && cs.valid) {
+      // Post-line-stretch or canopy phase (only if no deploy timeline to override): pilot hangs
       const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
@@ -322,7 +322,7 @@ export class GPSScene {
       // Not deploying — hide deploy renderer, normal canopy logic
       if (this.deployRenderer) this.deployRenderer.hide()
       if (this.canopyModel) {
-        if (cs && cs.valid && (isFullFlight || (canopyPhase && !isDeploying))) {
+        if (cs && cs.valid && (isFullFlight || (canopyPhase && !this.deployTimeline))) {
           this.canopyModel.visible = true
           this.canopyModel.scale.set(BASE_CANOPY_SCALE, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE)
           this.canopyModel.position.set(0, 0, 0)
@@ -334,7 +334,7 @@ export class GPSScene {
     }
 
     // ── Aero overlay ──
-    const showCanopyAero = (isPostLineStretch || canopyPhase) && !isPreLineStretch
+    const showCanopyAero = (isPostLineStretch || (canopyPhase && !this.deployTimeline)) && !isPreLineStretch
     const origin = new THREE.Vector3(0, 0, 0)
     if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)

@@ -86,7 +86,7 @@ export interface DeployReplayTimeline {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Estimated time from PC toss to line stretch [s] */
-const PC_TO_LINE_STRETCH = 2.0
+const PC_TO_LINE_STRETCH = 3.5
 
 /** Estimated time for reach + grab before PC toss [s] */
 const REACH_GRAB_TIME = 1.0

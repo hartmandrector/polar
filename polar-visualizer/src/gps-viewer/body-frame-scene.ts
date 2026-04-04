@@ -230,7 +230,7 @@ export class BodyFrameScene {
     let bodyQuat: THREE.Quaternion
     if (isPreLineStretch) {
       bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
-    } else if ((isPostLineStretch || canopyPhase) && cs && cs.valid) {
+    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && cs && cs.valid) {
       bodyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
     } else {
       bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
@@ -249,7 +249,7 @@ export class BodyFrameScene {
 
     // Vehicle at origin, identity rotation (or hang pitch under canopy — but not pre-line-stretch)
     this.model.position.set(0, 0, 0)
-    if ((isPostLineStretch || (canopyPhase && !isPreLineStretch)) && !isDeploying || isFullFlight) {
+    if ((isPostLineStretch || (canopyPhase && !this.deployTimeline && !isPreLineStretch)) || isFullFlight) {
       // Pilot hangs ~80° pitched up under canopy
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
@@ -280,7 +280,7 @@ export class BodyFrameScene {
         } else {
           this.canopyModel.visible = false
         }
-      } else if (cs && cs.valid && (isFullFlight || (canopyPhase && !isDeploying))) {
+      } else if (cs && cs.valid && (isFullFlight || (canopyPhase && !this.deployTimeline))) {
         this.canopyModel.visible = true
         this.canopyModel.scale.set(BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF)
         this.canopyModel.position.set(0, 0, 0)
@@ -294,7 +294,7 @@ export class BodyFrameScene {
 
     // Aero overlay at origin (body frame — vectors are native)
     // Pre-line-stretch: show wingsuit aero even if flight mode says canopy
-    const showCanopyAero = (isPostLineStretch || canopyPhase) && !isPreLineStretch
+    const showCanopyAero = (isPostLineStretch || (canopyPhase && !this.deployTimeline)) && !isPreLineStretch
     const origin = new THREE.Vector3(0, 0, 0)
     if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)
