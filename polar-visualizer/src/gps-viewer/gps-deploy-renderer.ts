@@ -145,10 +145,8 @@ export class GPSDeployRenderer {
       phase = 'line_stretch'
     }
 
-    // Tension axis evolves during PC toss:
-    // The PC trails into the relative wind. Compute from velocity vector.
-    // In body frame: relative wind comes from forward, PC trails aft.
-    // Use inertial velocity rotated into body frame for direction.
+    // Tension axis from velocity vector (relative wind in body frame).
+    // The PC trails into the wind — opposite to velocity in body frame.
     const g = pt.processed
     const speed = g.airspeed
     let axis: Vec3
@@ -156,12 +154,11 @@ export class GPSDeployRenderer {
     if (speed > 2) {
       // Velocity in NED inertial frame
       const vN = g.velN, vE = g.velE, vD = g.velD
-      // Rotate into body frame using Euler angles
+      // Rotate into body frame using Euler angles (DCM: inertial → body)
       const phi = pt.aero.roll, theta = pt.aero.theta, psi = pt.aero.psi
       const cp = Math.cos(phi), sp = Math.sin(phi)
       const ct = Math.cos(theta), st = Math.sin(theta)
       const cy = Math.cos(psi), sy = Math.sin(psi)
-      // DCM: inertial → body (rows of rotation matrix)
       const vBx = (ct*cy)*vN + (ct*sy)*vE + (-st)*vD
       const vBy = (sp*st*cy - cp*sy)*vN + (sp*st*sy + cp*cy)*vE + (sp*ct)*vD
       const vBz = (cp*st*cy + sp*sy)*vN + (cp*st*sy - sp*cy)*vE + (cp*ct)*vD
@@ -200,7 +197,6 @@ export class GPSDeployRenderer {
     }
 
     // PC position: at the tip of the deployed chain
-    // During early toss, PC is close to body and moving out
     const pcDist = Math.max(0.5, Math.min(visibleLength, TOTAL_CHAIN_LENGTH))
     const pcPosition: Vec3 = {
       x: axis.x * pcDist,
@@ -212,7 +208,6 @@ export class GPSDeployRenderer {
     // After line stretch, the canopy is out of the bag — hide snivel
     let canopyBag = null
     if (phase === 'canopy_extracting') {
-      // Bag starts at body and gets pulled out toward PC
       const extractProgress = Math.max(0, (chainFraction - 0.7) / 0.3)
       const bagDist = extractProgress * TOTAL_CHAIN_LENGTH * 0.25
       canopyBag = {
