@@ -46,9 +46,11 @@ function normalizeVec3(v: Vec3): Vec3 {
 export class GPSDeployRenderer {
   private renderer: DeployRenderer
   private timeline: DeployReplayTimeline | null = null
+  private bodyLength: number
 
   constructor(scene: THREE.Scene, bodyLength: number) {
     this.renderer = new DeployRenderer(scene, bodyLength)
+    this.bodyLength = bodyLength
   }
 
   setTimeline(timeline: DeployReplayTimeline) {
@@ -86,7 +88,18 @@ export class GPSDeployRenderer {
 
     // Synthesize a WingsuitDeployRenderState from the replay point
     const state = this.synthesizeRenderState(drp, pt)
-    this.renderer.update(state, bodyQuat)
+
+    // After bridle stretch, anchor chain to canopy top (not pilot's back).
+    // Before that, default mid-back anchor is used (anchorPos = undefined).
+    const isPostBridle = drp.subPhase === 'line_stretch' || drp.subPhase === 'max_aoa'
+      || drp.subPhase === 'snivel' || drp.subPhase === 'surge'
+    let anchorPos: THREE.Vector3 | undefined
+    if (isPostBridle && canopyModel) {
+      // Canopy top in scene coords — use the canopy model's world position
+      anchorPos = new THREE.Vector3()
+      canopyModel.getWorldPosition(anchorPos)
+    }
+    this.renderer.update(state, bodyQuat, anchorPos)
 
     // Canopy GLB visibility: only show from line_stretch onward, scale horizontally
     if (canopyModel) {

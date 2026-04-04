@@ -37,9 +37,9 @@ export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
   pilotS: 0.5,             // slick suit under canopy
   pilotMass: 77.5,
   canopyMass: 5.0,
-  trimOffset_deg: 6.0,
+  trimOffset_deg: 10.0,
   minAirspeed: 5.0,
-  rollMethod: 'blended',
+  rollMethod: 'coordinated',
   minTurnRate_degS: 3.0,
 }
 
