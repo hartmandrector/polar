@@ -22,6 +22,7 @@ import { estimateCanopyBatch } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
+import { redecomposeCanopyPhases } from './redecompose-canopy'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -302,6 +303,21 @@ async function loadFile(file: File) {
   bodyScene.setDeployTimeline(deployTimeline)
   currentDeployTimeline = deployTimeline
 
+  // ── Pass 8: Re-decompose canopy phases ──
+  // Overwrite aero extraction (CL/CD/angles) and body rates for
+  // DEPLOY/CANOPY/LANDING with canopy estimator values.
+  const redecompCount = redecomposeCanopyPhases(
+    result.points,
+    canopyStates,
+    deployTimeline,
+    {
+      canopySRef: canopyPolar.s,
+      totalMass: 77.5 + (canopyPolar.m ?? 5),  // pilot + canopy
+      accelWindowSize: 21,
+    },
+  )
+  console.log(`Canopy re-decomposition: ${redecompCount}/${result.points.length} points overwritten`)
+
   // ── Exit detection (ground → flight transition) ──
   const exitEstimate = detectExit(result.points)
   if (exitEstimate) {
@@ -513,10 +529,9 @@ function updateReadout(index: number) {
   // Deploy replay state for this point
   const drp = currentDeployTimeline?.points[index]
   const isCanopyPhase = fm?.mode === 6 || fm?.mode === 5 || fm?.mode === 7 // CANOPY, DEPLOY, or LANDING
-  const displayAoaDeg = isCanopyPhase && drp?.canopyState?.valid
-    ? drp.canopyAoaDeg
-    : a.aoa * r2d
-  const aoaLabel = isCanopyPhase && drp?.canopyState?.valid ? 'α (Canopy)' : 'α (AOA)'
+  // After re-decomposition, a.aoa is already canopy AoA for canopy phases
+  const displayAoaDeg = a.aoa * r2d
+  const aoaLabel = isCanopyPhase ? 'α (Canopy)' : 'α (AOA)'
 
   // Deploy section HTML
   let deployHtml = ''
@@ -574,12 +589,12 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">kL / kD</span><span class="value">${a.kl.toFixed(3)} / ${a.kd.toFixed(3)}</span></div>
     <div class="row"><span class="label">q̄</span><span class="value">${g.qbar.toFixed(0)} Pa</span></div>
     <div class="row"><span class="label">ρ</span><span class="value">${g.rho.toFixed(4)} kg/m³</span></div>
-    <div class="row"><span class="label">AOA residual</span><span class="value">${a.aoaResidual.toFixed(4)}</span></div>
-    <div class="section">Control Solver</div>
+    ${!isCanopyPhase ? `<div class="row"><span class="label">AOA residual</span><span class="value">${a.aoaResidual.toFixed(4)}</span></div>` : ''}
+    ${!isCanopyPhase ? `<div class="section">Control Solver</div>
     <div class="row"><span class="label">Converged</span><span class="value" style="color:${p.solvedControls?.converged ? '#44ff66' : '#ff4444'}">${p.solvedControls?.converged ? 'Yes' : 'No'}</span></div>
     <div class="row"><span class="label">Pitch</span><span class="value">${(p.solvedControls?.pitchThrottle ?? 0).toFixed(3)}</span></div>
     <div class="row"><span class="label">Roll</span><span class="value">${(p.solvedControls?.rollThrottle ?? 0).toFixed(3)}</span></div>
-    <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>
+    <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>` : `<div class="row"><span class="label">S (canopy)</span><span class="value">20.4 m² (220 ft²)</span></div>`}
   `
 }
 
