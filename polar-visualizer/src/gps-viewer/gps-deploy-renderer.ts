@@ -62,12 +62,6 @@ export class GPSDeployRenderer {
   constructor(scene: THREE.Scene, bodyLength: number) {
     this.renderer = new DeployRenderer(scene, bodyLength)
     this.bodyLength = bodyLength
-    // GPS replay chain runs pure -Z in Three.js (NED -X = aft), which gives
-    // orientAlongChain a different roll than the sim's 3D chain geometry.
-    // Apply 90° correction around the chain axis (Z).
-    this.renderer.pcRotationOffset = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 0, 1), Math.PI / 2
-    )
   }
 
   setTimeline(timeline: DeployReplayTimeline) {
@@ -121,9 +115,13 @@ export class GPSDeployRenderer {
       // Chain offset (same as main.ts CANOPY_CHAIN_Y_OFFSET)
       const chainOffset = new THREE.Vector3(0, CANOPY_CHAIN_Y_OFFSET, 0)
 
+      // PC orientation: apply body-to-inertial rotation so PC roll matches canopy frame
+      this.renderer.pcRotationOffset = bodyQuat.clone()
+
       this.renderer.update(state, bodyQuat, anchor, chainOffset)
     } else {
       // ── Pre-line-stretch: pilot-relative, no anchor override ──
+      this.renderer.pcRotationOffset = null
       this.renderer.update(state, bodyQuat)
     }
 
