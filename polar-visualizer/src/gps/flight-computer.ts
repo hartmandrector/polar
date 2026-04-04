@@ -397,7 +397,8 @@ export class FlightComputer {
         return FlightMode.CANOPY;
 
       case FlightMode.LANDING:
-        if (this.fastMode === FlightMode.GROUND && this.landingDetected) {
+        // Stay in Landing until nearly stopped (< 0.5 m/s groundspeed)
+        if (groundSpeed < 0.5) {
           this.resetJumpState();
           return FlightMode.GROUND;
         }
