@@ -210,33 +210,33 @@ export class GPSDeployRenderer {
         }
       }
     } else {
-      // ── Post-line-stretch: chain from canopy top, PC trails behind canopy ──
+      // ── Post-line-stretch: chain from canopy top, PC trails aft ──
       chainFraction = 1
       phase = 'line_stretch'
 
-      // Canopy is above pilot in body frame NED.
-      // Under canopy, body Z-axis points roughly down (gravity).
-      // Line/riser length ~8m puts canopy above pilot.
-      // In body-frame NED: negative Z = up (toward canopy).
+      // Under canopy the body frame is the canopy/pilot system.
+      // Canopy is above pilot: NED Z = -RISER (up in body frame).
+      // PC/bridle trail aft of canopy: -X direction in body NED.
       const RISER_LENGTH = 8.0  // approximate line + riser length [m]
       const canopyOrigin: Vec3 = { x: 0, y: 0, z: -RISER_LENGTH }
 
-      // PC trails behind canopy along relative wind, ~TOTAL_CHAIN_LENGTH from canopy
+      // Trail direction: aft (-X) in canopy body frame
+      const trailAxis: Vec3 = { x: -1, y: 0, z: 0 }
+
       pcPosition = {
-        x: canopyOrigin.x + windAxis.x * TOTAL_CHAIN_LENGTH,
-        y: canopyOrigin.y + windAxis.y * TOTAL_CHAIN_LENGTH,
-        z: canopyOrigin.z + windAxis.z * TOTAL_CHAIN_LENGTH,
+        x: canopyOrigin.x + trailAxis.x * TOTAL_CHAIN_LENGTH,
+        y: canopyOrigin.y + trailAxis.y * TOTAL_CHAIN_LENGTH,
+        z: canopyOrigin.z + trailAxis.z * TOTAL_CHAIN_LENGTH,
       }
 
-      // Segments along the chain from canopy to PC
       segments = []
       for (let i = 0; i < SEGMENT_COUNT; i++) {
         const segDist = (i + 1) * SEGMENT_LENGTH
         segments.push({
           position: {
-            x: canopyOrigin.x + windAxis.x * segDist,
-            y: canopyOrigin.y + windAxis.y * segDist,
-            z: canopyOrigin.z + windAxis.z * segDist,
+            x: canopyOrigin.x + trailAxis.x * segDist,
+            y: canopyOrigin.y + trailAxis.y * segDist,
+            z: canopyOrigin.z + trailAxis.z * segDist,
           },
           velocity: { x: 0, y: 0, z: 0 },
           visible: true,
