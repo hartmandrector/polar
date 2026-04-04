@@ -150,8 +150,20 @@ export class GPSScene {
     try {
       const gltf = await loader.loadAsync(CANOPY_PATH)
       this.canopyModel = gltf.scene as THREE.Group
-      this.canopyModel.scale.setScalar(1.39 * 0.62)
+      this.canopyModel.scale.setScalar(1.39 * 0.7)
       this.canopyModel.visible = false
+      // Make canopy semi-transparent so aero vectors show through
+      this.canopyModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh
+          const mat = mesh.material as THREE.Material
+          if (mat) {
+            mat.transparent = true
+            mat.opacity = 0.65
+            mat.depthWrite = false  // prevents z-fighting with vectors behind
+          }
+        }
+      })
       this.scene.add(this.canopyModel)
     } catch (e) {
       console.error('Failed to load canopy model:', e)
@@ -298,7 +310,7 @@ export class GPSScene {
     }
 
     // ── Canopy model + deploy rendering ──
-    const BASE_CANOPY_SCALE = 1.39 * 0.62
+    const BASE_CANOPY_SCALE = 1.39 * 0.7
 
     if (this.deployRenderer && isDeploying) {
       // During deployment: deploy renderer controls bridle/PC visuals

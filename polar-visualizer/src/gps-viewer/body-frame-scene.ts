@@ -128,6 +128,18 @@ export class BodyFrameScene {
       this.canopyModel = gltf.scene as THREE.Group
       this.canopyModel.scale.setScalar(1.39 * 0.7)
       this.canopyModel.visible = false
+      // Make canopy semi-transparent so aero vectors show through
+      this.canopyModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh
+          const mat = mesh.material as THREE.Material
+          if (mat) {
+            mat.transparent = true
+            mat.opacity = 0.65
+            mat.depthWrite = false
+          }
+        }
+      })
       this.scene.add(this.canopyModel)
     } catch (e) {
       console.error('Failed to load canopy model:', e)
