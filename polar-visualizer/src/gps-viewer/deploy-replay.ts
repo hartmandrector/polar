@@ -86,10 +86,10 @@ export interface DeployReplayTimeline {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Estimated time from PC toss to line stretch [s] */
-const PC_TO_LINE_STRETCH = 3.5
+const PC_TO_LINE_STRETCH = 1.5
 
 /** Estimated time for reach + grab before PC toss [s] */
-const REACH_GRAB_TIME = 1.0
+const REACH_GRAB_TIME = 1.5
 
 /** AoA threshold for "at trim" [deg] — below this absolute value = full flight */
 const FULL_FLIGHT_AOA_DEG = 15

@@ -180,24 +180,31 @@ export function detectDeployment(
     }
   }
 
-  // ── Step 3: Walk backward from peak to find onset (line stretch) ───
-  // Line stretch = where deceleration first exceeds a baseline threshold.
-  // The baseline is the average decel in the pre-deployment region.
+  // ── Step 3: Walk backward from peak to find line stretch ────────────
+  // The peak deceleration is typically max inflation rate, ~1s AFTER line stretch.
+  // Line stretch is the initial orientation-changing force before max g.
+  // Strategy: go back ~1s from peak decel as a baseline estimate,
+  // then refine by looking for the first significant acceleration rise.
+  const approxLsIdx = Math.max(searchStart, peakIdx - Math.round(sampleRate * 1.0))
+  
+  // Walk forward from the approximate point to find where accel first rises
+  // above baseline — that's the actual line stretch moment.
   const preStart = Math.max(0, searchStart)
-  const preEnd = Math.max(0, peakIdx - Math.round(sampleRate * 2)) // 2s before peak
+  const preEnd = Math.max(0, approxLsIdx - Math.round(sampleRate * 1)) // 1s before approx LS
   let baselineDecel = 0
   let baselineCount = 0
   for (let i = preStart; i < preEnd; i++) {
     baselineDecel += decelMagnitude(points[i].processed)
     baselineCount++
   }
-  baselineDecel = baselineCount > 0 ? baselineDecel / baselineCount : 5
+  baselineDecel = baselineCount > 0 ? baselineDecel / baselineCount : 3
 
-  // Onset threshold: 2× baseline or 10 m/s², whichever is larger
-  const onsetThreshold = Math.max(baselineDecel * 2, 10)
+  // Onset threshold: 1.5× baseline or 5 m/s², whichever is larger
+  const onsetThreshold = Math.max(baselineDecel * 1.5, 5)
 
-  let lineStretchIdx = peakIdx
-  for (let i = peakIdx - 1; i >= searchStart; i--) {
+  // Walk backward from ~1s before peak to find where accel drops to baseline
+  let lineStretchIdx = approxLsIdx
+  for (let i = approxLsIdx; i >= searchStart; i--) {
     if (decelMagnitude(points[i].processed) < onsetThreshold) {
       lineStretchIdx = i + 1
       break
