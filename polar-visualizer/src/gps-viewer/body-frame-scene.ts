@@ -35,6 +35,7 @@ export class BodyFrameScene {
   private deployTimeline: DeployReplayTimeline | null = null
   /** Pre-deploy average roll angle [rad] */
   private preDeployRoll: number | null = null
+  private lastValidCanopyState: CanopyState | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
 
@@ -259,6 +260,13 @@ export class BodyFrameScene {
     const isPostLineStretch = drp && drp.subPhase !== 'pre_deploy' && !isPreLineStretch
     const isFullFlight = drp?.subPhase === 'full_flight'
     const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+    const isLanding = mode === 7
+
+    // Use current canopy state, or fall back to last valid during landing
+    const effectiveCs = (cs && cs.valid) ? cs
+      : (isLanding && this.lastValidCanopyState) ? this.lastValidCanopyState
+      : null
+    if (cs && cs.valid) this.lastValidCanopyState = cs
 
     // Get the body-to-inertial quaternion
     // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
@@ -274,8 +282,8 @@ export class BodyFrameScene {
         roll = roll * (1 - t) + this.preDeployRoll * t
       }
       bodyQuat = bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi)
-    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && cs && cs.valid) {
-      bodyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
+      bodyQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
     } else {
       bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
     }
@@ -313,22 +321,22 @@ export class BodyFrameScene {
     if (this.canopyModel) {
       if (isDeploying) {
         // During deployment: only show canopy from line_stretch onward, horizontal scale
-        if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05 && cs && cs.valid) {
+        if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05 && effectiveCs) {
           this.canopyModel.visible = true
           const h = 0.3 + drp!.deployFraction * 0.7
           this.canopyModel.scale.set(BASE_CANOPY_SCALE_BF * h, BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF * h)
           this.canopyModel.position.set(0, 0, 0)
-          const canopyInertialQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+          const canopyInertialQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
           const canopyRelBody = inverseBodyQuat.clone().multiply(canopyInertialQuat)
           this.canopyModel.quaternion.copy(canopyRelBody)
         } else {
           this.canopyModel.visible = false
         }
-      } else if (cs && cs.valid && (isFullFlight || (canopyPhase && !this.deployTimeline))) {
+      } else if (effectiveCs && (isFullFlight || isLanding || (canopyPhase && !this.deployTimeline))) {
         this.canopyModel.visible = true
         this.canopyModel.scale.set(BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF, BASE_CANOPY_SCALE_BF)
         this.canopyModel.position.set(0, 0, 0)
-        const canopyInertialQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+        const canopyInertialQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
         const canopyRelBody = inverseBodyQuat.clone().multiply(canopyInertialQuat)
         this.canopyModel.quaternion.copy(canopyRelBody)
       } else {
@@ -343,14 +351,14 @@ export class BodyFrameScene {
     if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
-    } else if (cs && cs.valid) {
+    } else if (effectiveCs) {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.deployFraction = (isDeploying && drp) ? drp.deployFraction : 1.0
       this.canopyAeroOverlay.aeroOverrides = {
-        aoa: cs.aoa,
-        roll: cs.phi,
-        theta: cs.theta,
-        psi: cs.psi,
+        aoa: effectiveCs.aoa,
+        roll: effectiveCs.phi,
+        theta: effectiveCs.theta,
+        psi: effectiveCs.psi,
       }
       this.canopyAeroOverlay.update(pt, origin)
     } else {

@@ -38,6 +38,8 @@ export class GPSScene {
   private deployTimeline: DeployReplayTimeline | null = null
   /** Pre-deploy average roll angle [rad] — computed from clean wingsuit flight before PC toss */
   private preDeployRoll: number | null = null
+  /** Last valid canopy state — used during landing when airspeed drops below estimator threshold */
+  private lastValidCanopyState: CanopyState | null = null
   private deployRenderer: GPSDeployRenderer | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
@@ -306,6 +308,13 @@ export class GPSScene {
     const isPostLineStretch = drp && drp.subPhase !== 'pre_deploy' && !isPreLineStretch
     const isFullFlight = drp?.subPhase === 'full_flight'
     const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
+    const isLanding = mode === 7
+
+    // Use current canopy state, or fall back to last valid during landing
+    const effectiveCs = (cs && cs.valid) ? cs
+      : (isLanding && this.lastValidCanopyState) ? this.lastValidCanopyState
+      : null
+    if (cs && cs.valid) this.lastValidCanopyState = cs
 
     if (isGround && hasSensor) {
       // Ground mode with sensor data: stand upright, heading from head sensor
@@ -325,9 +334,9 @@ export class GPSScene {
         roll = roll * (1 - t) + this.preDeployRoll * t
       }
       this.model.quaternion.copy(bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi))
-    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && cs && cs.valid) {
-      // Post-line-stretch or canopy phase (only if no deploy timeline to override): pilot hangs
-      const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
+    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
+      // Post-line-stretch or canopy/landing phase: pilot hangs
+      const canopyQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
       )
@@ -357,8 +366,8 @@ export class GPSScene {
           const h = 0.3 + drp!.deployFraction * 0.7  // horizontal scale factor
           this.canopyModel.scale.set(BASE_CANOPY_SCALE * h, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE * h)
           this.canopyModel.position.set(0, 0, 0)
-          if (cs && cs.valid) {
-            this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+          if (effectiveCs) {
+            this.canopyModel.quaternion.copy(bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi))
           }
         } else {
           this.canopyModel.visible = false
@@ -368,11 +377,11 @@ export class GPSScene {
       // Not deploying — hide deploy renderer, normal canopy logic
       if (this.deployRenderer) this.deployRenderer.hide()
       if (this.canopyModel) {
-        if (cs && cs.valid && (isFullFlight || (canopyPhase && !this.deployTimeline))) {
+        if (effectiveCs && (isFullFlight || isLanding || (canopyPhase && !this.deployTimeline))) {
           this.canopyModel.visible = true
           this.canopyModel.scale.set(BASE_CANOPY_SCALE, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE)
           this.canopyModel.position.set(0, 0, 0)
-          this.canopyModel.quaternion.copy(bodyToInertialQuat(cs.phi, cs.theta, cs.psi))
+          this.canopyModel.quaternion.copy(bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi))
         } else {
           this.canopyModel.visible = false
         }
@@ -385,14 +394,14 @@ export class GPSScene {
     if (!showCanopyAero) {
       this.aeroOverlay.update(pt, origin)
       this.canopyAeroOverlay.hide()
-    } else if (cs && cs.valid) {
+    } else if (effectiveCs) {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.deployFraction = (isDeploying && drp) ? drp.deployFraction : 1.0
       this.canopyAeroOverlay.aeroOverrides = {
-        aoa: cs.aoa,
-        roll: cs.phi,
-        theta: cs.theta,
-        psi: cs.psi,
+        aoa: effectiveCs.aoa,
+        roll: effectiveCs.phi,
+        theta: effectiveCs.theta,
+        psi: effectiveCs.psi,
       }
       this.canopyAeroOverlay.update(pt, origin)
     } else {
