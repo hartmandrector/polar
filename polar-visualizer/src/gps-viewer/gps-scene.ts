@@ -322,7 +322,16 @@ export class GPSScene {
       : null
     if (cs && cs.valid) this.lastValidCanopyState = cs
 
-    if (isGround && hasSensor) {
+    if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
+      // Exit transition: lerp from standing to flying pose (overrides ground mode)
+      const ex = this.exitEstimate
+      const range = ex.flyingIndex - ex.pushOffIndex
+      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
+      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
+      standingQuat.slerp(flyingQuat, t)
+      this.model.quaternion.copy(standingQuat)
+    } else if (isGround && hasSensor) {
       // Ground mode with sensor data: stand upright, heading from head sensor
       const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
@@ -331,15 +340,6 @@ export class GPSScene {
       // Ground mode without sensor: stand upright, heading from GPS track
       const standingPitch = Math.PI / 2
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, pt.aero.psi))
-    } else if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
-      // Exit transition: lerp from standing to flying pose
-      const ex = this.exitEstimate
-      const range = ex.flyingIndex - ex.pushOffIndex
-      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
-      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
-      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
-      standingQuat.slerp(flyingQuat, t)
-      this.model.quaternion.copy(standingQuat)
     } else if (isPreLineStretch) {
       // Pre-line-stretch: keep wingsuit flying pose, but blend roll toward
       // pre-deploy average to avoid backsliding artifacts from unreliable aero

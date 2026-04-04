@@ -278,11 +278,8 @@ export class BodyFrameScene {
     // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
     let bodyQuat: THREE.Quaternion
     const isGround = mode === 1
-    if (isGround) {
-      // Ground mode: stand upright
-      bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
-    } else if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
-      // Exit transition: lerp from standing to flying pose
+    if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
+      // Exit transition: lerp from standing to flying pose (overrides ground mode)
       const ex = this.exitEstimate
       const range = ex.flyingIndex - ex.pushOffIndex
       const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
@@ -290,6 +287,9 @@ export class BodyFrameScene {
       const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
       standingQuat.slerp(flyingQuat, t)
       bodyQuat = standingQuat
+    } else if (isGround) {
+      // Ground mode: stand upright
+      bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
     } else if (isPreLineStretch) {
       // Blend roll toward pre-deploy average during deployment
       let roll = pt.aero.roll
