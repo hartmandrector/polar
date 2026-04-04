@@ -36,6 +36,8 @@ export class GPSScene {
   private canopyModel: THREE.Group | null = null
   private canopyStates: CanopyState[] = []
   private deployTimeline: DeployReplayTimeline | null = null
+  /** Pre-deploy average roll angle [rad] — computed from clean wingsuit flight before PC toss */
+  private preDeployRoll: number | null = null
   private deployRenderer: GPSDeployRenderer | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
@@ -211,6 +213,28 @@ export class GPSScene {
   setDeployTimeline(timeline: DeployReplayTimeline) {
     this.deployTimeline = timeline
     if (this.deployRenderer) this.deployRenderer.setTimeline(timeline)
+
+    // Compute pre-deploy average roll from ~2s of clean wingsuit flight before PC toss
+    this.preDeployRoll = null
+    if (timeline.timing.pcTossIndex != null && this.data.length > 0) {
+      const pcIdx = timeline.timing.pcTossIndex
+      const sampleRate = this.data.length > 1
+        ? 1 / (this.data[1].processed.t - this.data[0].processed.t)
+        : 20
+      const windowSamples = Math.round(2.0 * sampleRate)  // 2s window
+      const start = Math.max(0, pcIdx - windowSamples)
+      const end = pcIdx
+      let sumSin = 0, sumCos = 0, count = 0
+      for (let i = start; i < end; i++) {
+        const roll = this.data[i].aero.roll
+        sumSin += Math.sin(roll)
+        sumCos += Math.cos(roll)
+        count++
+      }
+      if (count > 0) {
+        this.preDeployRoll = Math.atan2(sumSin / count, sumCos / count)
+      }
+    }
   }
 
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
@@ -289,8 +313,18 @@ export class GPSScene {
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
     } else if (isPreLineStretch) {
-      // Pre-line-stretch: keep wingsuit flying pose even if flight mode says Deploy/Canopy
-      this.model.quaternion.copy(bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi))
+      // Pre-line-stretch: keep wingsuit flying pose, but blend roll toward
+      // pre-deploy average to avoid backsliding artifacts from unreliable aero
+      let roll = pt.aero.roll
+      if (this.preDeployRoll != null && drp) {
+        // Blend: at PC toss start use 100% aero, by line stretch use 100% pre-deploy average
+        const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
+        const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
+        const range = lsIdx - pcIdx
+        const t = range > 0 ? Math.max(0, Math.min(1, (this.currentIndex - pcIdx) / range)) : 0
+        roll = roll * (1 - t) + this.preDeployRoll * t
+      }
+      this.model.quaternion.copy(bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi))
     } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && cs && cs.valid) {
       // Post-line-stretch or canopy phase (only if no deploy timeline to override): pilot hangs
       const canopyQuat = bodyToInertialQuat(cs.phi, cs.theta, cs.psi)
