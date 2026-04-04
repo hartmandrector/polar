@@ -87,11 +87,11 @@ export class GPSAeroOverlay {
   private config: AeroOverlayConfig | null = null
   private controls: SegmentControls = defaultControls()
 
+  /** Deploy fraction (0–1) — scales segment positions horizontally (span-wise) */
+  deployFraction = 1.0
+
   /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
   bodyFrame = false
-
-  /** Scale factor for force vectors during deployment (0–1, default 1) */
-  deployScale = 1.0
 
   /** Last computed moment breakdown (for external consumers like MomentInset) */
   lastMoments: AxisMoments = {
@@ -292,15 +292,17 @@ export class GPSAeroOverlay {
       const ps = result.perSegment[i]
 
       // Segment position in world space (body NED → Three.js → world)
+      // During deployment, scale spanwise (Y in NED) by deploy fraction
+      const spanScale = this.deployFraction
       const segPosNED = {
         x: ps.positionMeters.x,
-        y: ps.positionMeters.y,
+        y: ps.positionMeters.y * spanScale,
         z: ps.positionMeters.z,
       }
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
 
       // Lift
-      const liftLen = Math.abs(ps.forces.lift) * FORCE_SCALE * this.deployScale
+      const liftLen = Math.abs(ps.forces.lift) * FORCE_SCALE
       if (liftLen > MIN_ARROW) {
         const dir = ps.forces.lift >= 0 ? liftDirWorld.clone() : liftDirWorld.clone().negate()
         sa.lift.setDirection(dir)
@@ -312,7 +314,7 @@ export class GPSAeroOverlay {
       }
 
       // Drag
-      const dragLen = ps.forces.drag * FORCE_SCALE * this.deployScale
+      const dragLen = ps.forces.drag * FORCE_SCALE
       if (dragLen > MIN_ARROW) {
         sa.drag.setDirection(dragDirWorld)
         sa.drag.setLength(dragLen, 0.06, 0.03)
@@ -323,7 +325,7 @@ export class GPSAeroOverlay {
       }
 
       // Side force
-      const sideLen = Math.abs(ps.forces.side) * FORCE_SCALE * this.deployScale
+      const sideLen = Math.abs(ps.forces.side) * FORCE_SCALE
       if (sideLen > MIN_ARROW) {
         const dir = ps.forces.side >= 0 ? sideDirWorld.clone() : sideDirWorld.clone().negate()
         sa.side.setDirection(dir)
