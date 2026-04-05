@@ -120,6 +120,23 @@
           <div class="chart-container" id="capture-panel">
             <div class="chart-header"><span>PNG Capture</span></div>
             <div id="capture-controls" style="padding: 8px 12px;">
+              <!-- Canopy estimator controls -->
+              <div style="margin-bottom:8px;">
+                <label style="font-size:11px;color:#8090a0;display:block;margin-bottom:3px;">
+                  Trim Offset: <span id="trim-offset-value">10.0</span>°
+                </label>
+                <input type="range" id="trim-offset-slider" min="-1" max="15" step="0.5" value="10.0"
+                  style="width:100%;accent-color:#e94560;">
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="font-size:11px;color:#8090a0;display:block;margin-bottom:3px;">Roll Method</label>
+                <select id="roll-method-select" style="width:100%;padding:4px;background:#1a1e2e;color:#d0d8e0;border:1px solid #2a3040;border-radius:3px;font-size:12px;">
+                  <option value="aero">Aero</option>
+                  <option value="coordinated">Coordinated</option>
+                  <option value="full" selected>Full</option>
+                  <option value="blended">Blended</option>
+                </select>
+              </div>
               <button id="capture-btn" style="width:100%;padding:6px 12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Capture PNG Sequence</button>
               <div style="margin-top:6px;font-size:11px;color:#8090a0;">
                 <span>Status: </span><span id="capture-status">Ready</span>

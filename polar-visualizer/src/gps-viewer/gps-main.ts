@@ -18,7 +18,7 @@ import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, type ControlInversionConfig } from './control-solver'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
-import { estimateCanopyBatch } from './canopy-estimator'
+import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
@@ -49,6 +49,38 @@ let captureHandler: CaptureHandler | null = null
 let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 let currentDeployTimeline: DeployReplayTimeline | null = null
+let cachedDeployDetection: ReturnType<typeof detectDeployment> = null
+
+// ─── Canopy Estimator UI Controls ───────────────────────────────────────────
+
+const trimSlider = document.getElementById('trim-offset-slider') as HTMLInputElement
+const trimValue = document.getElementById('trim-offset-value')!
+const rollSelect = document.getElementById('roll-method-select') as HTMLSelectElement
+
+function recalcCanopy() {
+  if (!result || !scene || !bodyScene) return
+  const trimOffset = parseFloat(trimSlider.value)
+  const rollMethod = rollSelect.value as RollMethod
+
+  console.log(`Recalc canopy: trim=${trimOffset}° roll=${rollMethod}`)
+  const canopyStates = estimateCanopyBatch(result.points, { trimOffset_deg: trimOffset, rollMethod })
+  const validCount = canopyStates.filter(s => s.valid).length
+  console.log(`  ${validCount}/${canopyStates.length} valid states`)
+
+  scene.setCanopyStates(canopyStates)
+  bodyScene.setCanopyStates(canopyStates)
+
+  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, cachedDeployDetection)
+  scene.setDeployTimeline(deployTimeline)
+  bodyScene.setDeployTimeline(deployTimeline)
+  currentDeployTimeline = deployTimeline
+}
+
+trimSlider.addEventListener('input', () => {
+  trimValue.textContent = parseFloat(trimSlider.value).toFixed(1)
+})
+trimSlider.addEventListener('change', recalcCanopy)
+rollSelect.addEventListener('change', recalcCanopy)
 
 // ─── Drop Zone ──────────────────────────────────────────────────────────────
 
@@ -282,8 +314,11 @@ async function loadFile(file: File) {
   scene.setEKF(ekfResult.ekf)
   bodyScene.setEKF(ekfResult.ekf)
 
-  // ── Canopy estimation ──
-  const canopyStates = estimateCanopyBatch(result.points)
+  // ── Canopy estimation (use current UI control values) ──
+  const canopyStates = estimateCanopyBatch(result.points, {
+    trimOffset_deg: parseFloat(trimSlider.value),
+    rollMethod: rollSelect.value as RollMethod,
+  })
   const validCount = canopyStates.filter(s => s.valid).length
   console.log(`Canopy estimator: ${validCount}/${canopyStates.length} valid states`)
   scene.setCanopyStates(canopyStates)
@@ -291,6 +326,7 @@ async function loadFile(file: File) {
 
   // ── Deployment detection + replay timeline ──
   const deployDetection = detectDeployment(result.points)
+  cachedDeployDetection = deployDetection
   const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, deployDetection)
   if (deployDetection) {
     console.log(`Deploy detected: lineStretch t=${deployDetection.lineStretchTime.toFixed(2)}s peak=${deployDetection.peakDecel.toFixed(1)}m/s² conf=${deployDetection.confidence.toFixed(2)}`)

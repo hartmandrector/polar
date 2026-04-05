@@ -39,7 +39,7 @@ export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
   canopyMass: 5.0,
   trimOffset_deg: 10.0,
   minAirspeed: 5.0,
-  rollMethod: 'coordinated',
+  rollMethod: 'full',
   minTurnRate_degS: 3.0,
 }
 
