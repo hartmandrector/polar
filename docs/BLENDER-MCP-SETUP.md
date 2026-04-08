@@ -2,6 +2,97 @@
 
 Reference for working on wingsuit and canopy GLB models in Blender with the MCP server.
 
+## MCP Architecture
+
+```
+VS Code (MCP client)  ──MCP protocol──▶  uvx blender-mcp (bridge)  ──TCP 9876──▶  Blender Addon (socket server)
+OpenClaw (WSL)        ──TCP 9876──────▶  Blender Addon (socket server)
+```
+
+### VS Code MCP Config
+
+File: `.vscode/mcp.json`
+```json
+{
+  "servers": {
+    "blender": {
+      "command": "uvx",
+      "args": ["blender-mcp"]
+    }
+  }
+}
+```
+
+VS Code launches `uvx blender-mcp` as an MCP server process. That bridge connects to Blender's addon socket on `localhost:9876` and translates MCP tool calls into the addon's JSON protocol.
+
+### OpenClaw Direct Bridge (WSL → Blender)
+
+OpenClaw runs in WSL2. Blender runs on Windows. The addon listens on `localhost:9876` (Windows side).
+
+- **Windows host IP from WSL**: `172.27.224.1` (via `ip route show default | awk '{print $3}'`)
+- **Port**: 9880 (changed from default 9876 to avoid conflicts with stale bridge processes)
+- **Protocol**: Raw TCP socket, plain JSON messages (no HTTP, no framing)
+- **Port proxy required**: Blender addon binds to `127.0.0.1` only. WSL2 is on a virtual network (`172.27.x.x`) so a Windows portproxy is needed:
+  ```powershell
+  # Run as admin — forwards WSL traffic to Blender's localhost socket
+  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=9880 connectaddress=127.0.0.1 connectport=9880
+  ```
+- **Firewall rule**: Also required for the port:
+  ```powershell
+  New-NetFirewallRule -DisplayName "Blender MCP 9880" -Direction Inbound -LocalPort 9880 -Protocol TCP -Action Allow
+  ```
+
+### Blender Addon Details
+
+- **Source**: `C:\Users\hartm\AppData\Roaming\Blender Foundation\Blender\3.4\scripts\addons\addon.py`
+- **Author**: Siddharth Ahuja (BlenderMCP v1.2)
+- **Blender version**: 3.4
+
+### Socket Protocol
+
+Send a JSON object, receive a JSON object back. No length prefix, no newline delimiter — just raw JSON.
+
+**Request format:**
+```json
+{"type": "<command>", "params": {<command-specific params>}}
+```
+
+**Response format:**
+```json
+{"status": "success", "result": {<response data>}}
+```
+or
+```json
+{"status": "error", "message": "<error description>"}
+```
+
+**Available commands:**
+| Command | Params | Description |
+|---------|--------|-------------|
+| `get_scene_info` | none | List all objects, materials, scene settings |
+| `get_object_info` | `{"name": "..."}` | Detailed info for one object |
+| `execute_code` | `{"code": "..."}` | Run arbitrary Python in Blender |
+| `get_viewport_screenshot` | none | Capture viewport as base64 image |
+
+**Important**: The addon uses `bpy.app.timers.register()` to execute commands on Blender's main thread. The connection must stay open — the response comes asynchronously after the timer fires. Blender must be in an active state (not in a modal dialog or splash screen) for timers to process.
+
+### Bridge Script
+
+`polar-visualizer/scripts/blender-bridge.py` — Simple Python script for sending commands from WSL:
+```bash
+python3 polar-visualizer/scripts/blender-bridge.py get_scene_info
+python3 polar-visualizer/scripts/blender-bridge.py execute_code '{"code": "import bpy; print(list(bpy.data.objects.keys()))"}'
+```
+
+### Troubleshooting
+
+- **Connection drops with no response**: Addon server may not be started. In Blender: N-key sidebar → BlenderMCP tab → click "Start Server"
+- **Timer not firing**: Blender must be in normal interactive mode (not splash screen, not modal dialog)
+- **Port not reachable from WSL**: Check `ip route show default` for Windows host IP; may need Windows Firewall exception for port 9876
+- **Check Blender console**: Window → Toggle System Console shows addon print messages ("Connected to client", "Client disconnected", errors)
+
+---
+
 ## Axis Conventions
 
 ### Blender (Y-up, right-handed)
@@ -39,21 +130,23 @@ axes: {
 }
 ```
 
-### In Blender (before export)
-Since Blender's glTF exporter swaps Y↔Z:
-- **Blender +Y** → GLB +Z = head/forward/leading edge
-- **Blender −Y** → GLB −Z = feet/aft/trailing edge
-- **Blender +X** → GLB +X = left wing
-- **Blender −X** → GLB −X = right wing
-- **Blender +Z** → GLB +Y = back/dorsal (top surface)
-- **Blender −Z** → GLB −Y = belly/ventral (bottom surface)
+### In Blender (after GLB import)
+The glTF importer converts Y-up → Z-up with a sign flip on the depth axis:
+- **Blender −Y** → GLB +Z = **head/forward/leading edge**
+- **Blender +Y** → GLB −Z = **feet/aft/trailing edge**
+- **Blender +X** → GLB +X = **left wing (port)**
+- **Blender −X** → GLB −X = **right wing (starboard)**
+- **Blender +Z** → GLB +Y = **back/dorsal (top surface)**
+- **Blender −Z** → GLB −Y = **belly/ventral (bottom surface)**
+
+Mapping: `Blender X = GLB X`, `Blender Y = −GLB Z`, `Blender Z = GLB Y`
 
 **Summary for Blender editing:**
-- Face the model looking down the **−Y axis** to see it from the front (head-on)
+- Face the model looking down the **+Y axis** to see it from the front (head-on)
 - The pilot lies **prone** with belly facing **−Z** in Blender
 - Wings extend along **±X** (left/right)
-- Head points **+Y**, feet point **−Y**
-- Leading edge = max +Y vertices, trailing edge = max −Y vertices
+- Head points **−Y**, feet point **+Y**
+- Leading edge = min Y vertices (most negative Y), trailing edge = max Y vertices
 
 ## Current Models
 
@@ -124,9 +217,9 @@ Since Blender's glTF exporter swaps Y↔Z:
 In the wingsuit model, key chord-fraction positions from `polar-data.ts`:
 - **CG at 40% chord** (`A5_CG_XC = 0.40`)
 - **System chord = 1.8m** (`A5_SYS_CHORD`)
-- Leading edge = 0% chord = max +Z (GLB) = max +Y (Blender)
-- Trailing edge = 100% chord = min +Z (GLB) = min −Y (Blender)
-- Chord axis runs along **Z in GLB / Y in Blender** (head-to-foot direction)
+- Leading edge = 0% chord = max +Z (GLB) = min −Y (Blender)
+- Trailing edge = 100% chord = min −Z (GLB) = max +Y (Blender)
+- Chord axis runs along **Z in GLB / −Y in Blender** (head-to-foot direction)
 
 ## Notes
 

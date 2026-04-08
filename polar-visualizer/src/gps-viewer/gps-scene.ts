@@ -23,7 +23,7 @@ import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import { GPSDeployRenderer } from './gps-deploy-renderer'
 
-const MODEL_PATH = '/models/tsimwingsuit.glb'
+const MODEL_PATH = '/models/WSV8.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
 // GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
 const MODEL_SCALE = 1.875 / 3.55  // ≈ 0.528

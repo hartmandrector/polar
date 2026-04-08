@@ -21,7 +21,7 @@ import type { ExitEstimate } from './exit-detector'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 
-const MODEL_PATH = '/models/tsimwingsuit.glb'
+const MODEL_PATH = '/models/WSV8.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
 const MODEL_SCALE = 1.875 / 3.55
 
