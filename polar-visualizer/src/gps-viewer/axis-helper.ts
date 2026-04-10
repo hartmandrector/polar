@@ -101,8 +101,8 @@ export class EulerAxisHelper {
     this.thetaLabel.position.copy(pitchDir.clone().multiplyScalar(LABEL_OFFSET))
     this.group.add(this.thetaLabel)
 
-    // Yaw axis = body z-down = scene -Y (show as +Y for visual clarity)
-    const yawDir = new THREE.Vector3(0, 1, 0)
+    // Yaw axis = body z-down = scene -Y (NED down)
+    const yawDir = new THREE.Vector3(0, -1, 0)
     this.group.add(makeAxisLine(yawDir, COL_YAW))
     this.group.add(makeArrowTip(yawDir, COL_YAW))
     this.psiLabel = makeTextSprite('ψ', COL_YAW)
@@ -125,9 +125,48 @@ export class BodyRateAxisHelper {
   private qLabel: THREE.Sprite
   private rLabel: THREE.Sprite
 
+  // Gravity indicator (updated each frame)
+  private gravLine: THREE.Line
+  private gravTip: THREE.Mesh
+  private gravLabel: THREE.Sprite
+  private static readonly GRAV_COLOR = 0x888888
+  private static readonly GRAV_LENGTH = 2.0
+
   constructor() {
     this.group = new THREE.Group()
     this.group.renderOrder = 999
+
+    // ── Gravity vector (drawn first → renders behind axes) ──
+    const gravDir = new THREE.Vector3(0, -1, 0)  // default: straight down in scene
+    const gravLen = BodyRateAxisHelper.GRAV_LENGTH
+    const gc = BodyRateAxisHelper.GRAV_COLOR
+
+    // Dashed line for gravity
+    const gravPts = [new THREE.Vector3(0, 0, 0), gravDir.clone().multiplyScalar(gravLen)]
+    const gravGeo = new THREE.BufferGeometry().setFromPoints(gravPts)
+    this.gravLine = new THREE.Line(gravGeo, new THREE.LineDashedMaterial({
+      color: gc, dashSize: 0.12, gapSize: 0.06, depthTest: false, opacity: 0.6, transparent: true
+    }))
+    this.gravLine.computeLineDistances()
+    this.gravLine.renderOrder = 998
+    this.group.add(this.gravLine)
+
+    // Arrow tip
+    const tipGeo = new THREE.ConeGeometry(0.05, 0.18, 8)
+    this.gravTip = new THREE.Mesh(tipGeo, new THREE.MeshBasicMaterial({
+      color: gc, depthTest: false, opacity: 0.6, transparent: true
+    }))
+    this.gravTip.position.copy(gravDir.clone().multiplyScalar(gravLen))
+    this.gravTip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), gravDir)
+    this.gravTip.renderOrder = 998
+    this.group.add(this.gravTip)
+
+    this.gravLabel = makeTextSprite('g', gc)
+    this.gravLabel.position.copy(gravDir.clone().multiplyScalar(gravLen + 0.3))
+    this.gravLabel.renderOrder = 998
+    this.group.add(this.gravLabel)
+
+    // ── p/q/r axes (drawn on top) ──
 
     // Same NED→scene mapping as EulerAxisHelper
     const rollDir = new THREE.Vector3(0, 0, 1)
@@ -144,7 +183,7 @@ export class BodyRateAxisHelper {
     this.qLabel.position.copy(pitchDir.clone().multiplyScalar(LABEL_OFFSET))
     this.group.add(this.qLabel)
 
-    const yawDir = new THREE.Vector3(0, 1, 0)
+    const yawDir = new THREE.Vector3(0, -1, 0)
     this.group.add(makeAxisLine(yawDir, COL_YAW))
     this.group.add(makeArrowTip(yawDir, COL_YAW))
     this.rLabel = makeTextSprite('r', COL_YAW)
@@ -153,5 +192,30 @@ export class BodyRateAxisHelper {
 
     // Position directly below the vehicle
     this.group.position.set(0, -5, 0)
+  }
+
+  /**
+   * Update gravity vector direction in body frame.
+   * @param inverseBodyQuat — the inverse body-to-inertial quaternion
+   *   (same one applied to worldGroup in body-frame-scene)
+   */
+  updateGravity(inverseBodyQuat: THREE.Quaternion): void {
+    // Inertial gravity in scene coords = (0, -1, 0) (NED down = scene -Y)
+    // In body frame, gravity direction = inverseBodyQuat * inertialGravity
+    const gDir = new THREE.Vector3(0, -1, 0).applyQuaternion(inverseBodyQuat).normalize()
+    const gravLen = BodyRateAxisHelper.GRAV_LENGTH
+
+    // Update line
+    const positions = this.gravLine.geometry.attributes.position as THREE.BufferAttribute
+    positions.setXYZ(1, gDir.x * gravLen, gDir.y * gravLen, gDir.z * gravLen)
+    positions.needsUpdate = true
+    this.gravLine.computeLineDistances()
+
+    // Update tip
+    this.gravTip.position.copy(gDir.clone().multiplyScalar(gravLen))
+    this.gravTip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), gDir)
+
+    // Update label
+    this.gravLabel.position.copy(gDir.clone().multiplyScalar(gravLen + 0.3))
   }
 }

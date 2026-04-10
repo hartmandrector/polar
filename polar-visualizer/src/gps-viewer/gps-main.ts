@@ -531,6 +531,24 @@ function updateLegends(index: number) {
 
 const readoutEl = document.getElementById('readout')!
 
+// ─── Overlay toggle ─────────────────────────────────────────────────────────
+const overlayToggle = document.getElementById('overlay-toggle') as HTMLInputElement
+overlayToggle.addEventListener('change', () => {
+  const show = overlayToggle.checked
+  document.querySelectorAll('.scene-legend').forEach(el => {
+    ;(el as HTMLElement).style.display = show ? '' : 'none'
+  })
+  readoutEl.style.display = show ? '' : 'none'
+})
+
+// ─── Axis helper mode ───────────────────────────────────────────────────────
+const axisHelperSelect = document.getElementById('axis-helper-mode') as HTMLSelectElement
+axisHelperSelect.addEventListener('change', () => {
+  const mode = axisHelperSelect.value as 'none' | 'frame' | 'all'
+  if (scene) scene.setAxisMode(mode)
+  if (bodyScene) bodyScene.setAxisMode(mode)
+})
+
 function updateReadout(index: number) {
   if (!result || index >= result.points.length) return
   const p = result.points[index]
