@@ -13,7 +13,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
-import { EulerAxisHelper } from './axis-helper'
+import { EulerAxisHelper, BodyRateAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -59,6 +59,7 @@ export class GPSScene {
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
   private eulerAxis: EulerAxisHelper
+  private bodyRateAxis: BodyRateAxisHelper  // shown in "all" mode
 
   /** Exposed for external moment inset to read */
   get lastOverlayState() {
@@ -124,6 +125,11 @@ export class GPSScene {
     this.eulerAxis = new EulerAxisHelper()
     this.scene.add(this.eulerAxis.group)
 
+    // Body rate axis helper (p/q/r + gravity) — hidden by default, shown in "all" mode
+    this.bodyRateAxis = new BodyRateAxisHelper()
+    this.bodyRateAxis.group.visible = false
+    this.scene.add(this.bodyRateAxis.group)
+
     // Resize handling
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
@@ -188,6 +194,12 @@ export class GPSScene {
   /** Set the canopy aero model config */
   setCanopyAeroConfig(config: AeroOverlayConfig) {
     this.canopyAeroOverlay.setConfig(config)
+  }
+
+  /** Set axis helper visibility mode: 'none' | 'frame' | 'all' */
+  setAxisMode(mode: 'none' | 'frame' | 'all') {
+    this.eulerAxis.group.visible = mode === 'frame' || mode === 'all'
+    this.bodyRateAxis.group.visible = mode === 'all'
   }
 
   setData(points: GPSPipelinePoint[]) {
@@ -391,6 +403,14 @@ export class GPSScene {
           this.canopyModel.visible = false
         }
       }
+    }
+
+    // ── Update body rate axes in inertial scene (for "all" mode) ──
+    // pqr axes rotate with the vehicle in the inertial frame
+    if (this.bodyRateAxis.group.visible) {
+      this.bodyRateAxis.group.quaternion.copy(this.model.quaternion)
+      const inverseQuat = this.model.quaternion.clone().invert()
+      this.bodyRateAxis.updateGravity(inverseQuat)
     }
 
     // ── Aero overlay ──

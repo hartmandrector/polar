@@ -93,7 +93,7 @@ html, body {
   min-width: 400px;
   display: flex;
   flex-direction: column;
-  background: #0a0a12;
+  background: transparent;
   position: relative;
 }
 

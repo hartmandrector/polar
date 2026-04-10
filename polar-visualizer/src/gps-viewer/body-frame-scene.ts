@@ -12,7 +12,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
-import { BodyRateAxisHelper } from './axis-helper'
+import { BodyRateAxisHelper, EulerAxisHelper } from './axis-helper'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -54,6 +54,7 @@ export class BodyFrameScene {
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
   private bodyRateAxis: BodyRateAxisHelper
+  private eulerAxis: EulerAxisHelper  // shown in "all" mode
 
   private ekf: OrientationEKF | null = null
 
@@ -102,9 +103,14 @@ export class BodyFrameScene {
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay.bodyFrame = true
 
-    // Body rate axis helper (p/q/r)
+    // Body rate axis helper (p/q/r + gravity)
     this.bodyRateAxis = new BodyRateAxisHelper()
     this.scene.add(this.bodyRateAxis.group)
+
+    // Euler axis helper (φ/θ/ψ) — hidden by default, shown in "all" mode
+    this.eulerAxis = new EulerAxisHelper()
+    this.eulerAxis.group.visible = false
+    this.scene.add(this.eulerAxis.group)
 
     this.handleResize()
     window.addEventListener('resize', () => this.handleResize())
@@ -155,6 +161,12 @@ export class BodyFrameScene {
 
   setCanopyAeroConfig(config: AeroOverlayConfig) {
     this.canopyAeroOverlay.setConfig(config)
+  }
+
+  /** Set axis helper visibility mode: 'none' | 'frame' | 'all' */
+  setAxisMode(mode: 'none' | 'frame' | 'all') {
+    this.bodyRateAxis.group.visible = mode === 'frame' || mode === 'all'
+    this.eulerAxis.group.visible = mode === 'all'
   }
 
   setData(points: GPSPipelinePoint[]) {
@@ -289,6 +301,15 @@ export class BodyFrameScene {
     // This makes the world rotate around the stationary vehicle
     const inverseBodyQuat = bodyQuat.clone().invert()
     this.worldGroup.quaternion.copy(inverseBodyQuat)
+
+    // Update gravity indicator in body frame
+    this.bodyRateAxis.updateGravity(inverseBodyQuat)
+
+    // Update euler axes in body scene (for "all" mode)
+    // φθψ are inertial-fixed, so they rotate with the world = inverse body quat
+    if (this.eulerAxis.group.visible) {
+      this.eulerAxis.group.quaternion.copy(inverseBodyQuat)
+    }
 
     // Also need to rotate the translation by the inverse quat
     // so position offset is in body frame coordinates
