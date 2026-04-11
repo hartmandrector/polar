@@ -63,7 +63,12 @@ function recalcCanopy() {
   const rollMethod = rollSelect.value as RollMethod
 
   console.log(`Recalc canopy: trim=${trimOffset}° roll=${rollMethod}`)
-  const canopyStates = estimateCanopyBatch(result.points, { trimOffset_deg: trimOffset, rollMethod })
+  const canopyStates = estimateCanopyBatch(result.points, {
+    trimOffset_deg: trimOffset,
+    rollMethod,
+    deployEndIndex: cachedDeployDetection?.fullInflationIndex ?? null,
+    deployEndTime: cachedDeployDetection?.fullInflationTime ?? null,
+  })
   const validCount = canopyStates.filter(s => s.valid).length
   console.log(`  ${validCount}/${canopyStates.length} valid states`)
 
@@ -314,22 +319,28 @@ async function loadFile(file: File) {
   scene.setEKF(ekfResult.ekf)
   bodyScene.setEKF(ekfResult.ekf)
 
+  // ── Deployment detection (run first so canopy estimator can use phase info) ──
+  const deployDetection = detectDeployment(result.points)
+  cachedDeployDetection = deployDetection
+  if (deployDetection) {
+    console.log(`Deploy detected: lineStretch t=${deployDetection.lineStretchTime.toFixed(2)}s peak=${deployDetection.peakDecel.toFixed(1)}m/s² conf=${deployDetection.confidence.toFixed(2)}`)
+  }
+
   // ── Canopy estimation (use current UI control values) ──
   const canopyStates = estimateCanopyBatch(result.points, {
     trimOffset_deg: parseFloat(trimSlider.value),
     rollMethod: rollSelect.value as RollMethod,
+    deployEndIndex: deployDetection?.fullInflationIndex ?? null,
+    deployEndTime: deployDetection?.fullInflationTime ?? null,
   })
   const validCount = canopyStates.filter(s => s.valid).length
   console.log(`Canopy estimator: ${validCount}/${canopyStates.length} valid states`)
   scene.setCanopyStates(canopyStates)
   bodyScene.setCanopyStates(canopyStates)
 
-  // ── Deployment detection + replay timeline ──
-  const deployDetection = detectDeployment(result.points)
-  cachedDeployDetection = deployDetection
+  // ── Deployment replay timeline ──
   const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, deployDetection)
   if (deployDetection) {
-    console.log(`Deploy detected: lineStretch t=${deployDetection.lineStretchTime.toFixed(2)}s peak=${deployDetection.peakDecel.toFixed(1)}m/s² conf=${deployDetection.confidence.toFixed(2)}`)
     if (deployTimeline.timingSeconds.fullFlightTime != null) {
       console.log(`  Full flight at t=${deployTimeline.timingSeconds.fullFlightTime.toFixed(2)}s, inflation=${deployTimeline.timingSeconds.inflationDuration?.toFixed(2)}s`)
     }
@@ -652,17 +663,42 @@ headSensorInput.addEventListener('change', async () => {
   headSensorStatus.textContent = `Loading ${file.name}...`
 
   const text = await file.text()
-  const points = parseHeadSensorCSV(text)
+  const { points, gpsStartIndex } = parseHeadSensorCSV(text)
 
   if (points.length === 0) {
     headSensorStatus.textContent = 'No valid data found'
     return
   }
 
-  const offset = parseFloat(headTimeOffset.value) || 0
+  // Auto-compute time offset using gps_time column (absolute UTC)
+  // sensorGpsTimeMs = absolute UTC at first sensor GPS point
+  // GPS pipeline t=0 = GNSSData[0].timestamp (ms since epoch)
+  // offset = gps_pipeline_t_at_sensor_gps_start - sensor_t_at_gps_start
+  let offset = parseFloat(headTimeOffset.value) || 0
+  const userSetOffset = headTimeOffset.value !== '' && headTimeOffset.value !== '0'
+  if (gpsStartIndex >= 0 && !userSetOffset && result) {
+    const sensorGpsTimeMs = points[gpsStartIndex].gpsTimeMs
+    const pipelineEpochMs = result?.startEpochMs ?? NaN
+    if (!isNaN(sensorGpsTimeMs) && !isNaN(pipelineEpochMs)) {
+      // GPS pipeline t corresponding to sensor's first GPS moment
+      const pipelineT = (sensorGpsTimeMs - pipelineEpochMs) / 1000
+      // Sensor normalized t at that same moment
+      const sensorT = points[gpsStartIndex].t
+      // sensorTime = gpsTime + offset → offset = sensorT - pipelineT
+      offset = sensorT - pipelineT
+      headTimeOffset.value = offset.toFixed(2)
+      console.log(`Head sensor auto-align via gps_time: sensorT=${sensorT.toFixed(2)}s → pipelineT=${pipelineT.toFixed(2)}s → offset=${offset.toFixed(2)}s`)
+    } else if (gpsStartIndex >= 0) {
+      // Fallback: no gps_time column, assume GPS starts at pipeline t=0
+      offset = points[gpsStartIndex].t
+      headTimeOffset.value = offset.toFixed(2)
+      console.log(`Head sensor auto-align (fallback): GPS at sensorT=${points[gpsStartIndex].t.toFixed(2)}s → offset=${offset.toFixed(2)}s`)
+    }
+  }
+
   scene?.setHeadSensorData(points, offset)
   bodyScene?.setHeadSensorData(points, offset)
-  headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s)`
+  headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s) offset=${offset.toFixed(1)}s`
 })
 
 headTimeOffset.addEventListener('change', () => {

@@ -127,7 +127,7 @@ export class BodyFrameScene {
       this.model.scale.setScalar(MODEL_SCALE)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
-      this.headRenderer = new HeadModelRenderer(this.model)
+      this.headRenderer = new HeadModelRenderer(this.scene)
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -331,7 +331,7 @@ export class BodyFrameScene {
 
     // Head model — use bodyQuat for relative rotation computation
     if (this.headRenderer) {
-      this.headRenderer.update(pt.processed.t, bodyQuat)
+      this.headRenderer.update(pt.processed.t, this.model.position, this.model.quaternion, MODEL_SCALE, bodyQuat)
     }
 
     // Canopy in body frame — deploy-aware

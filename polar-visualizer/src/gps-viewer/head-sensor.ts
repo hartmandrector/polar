@@ -15,6 +15,7 @@
 
 export interface HeadSensorPoint {
   t: number            // seconds from start
+  gpsTimeMs: number    // absolute UTC ms (from gps_time column), NaN if not available
   // Euler angles (degrees, NWU from fusion)
   roll: number
   pitch: number
@@ -52,14 +53,18 @@ export interface HeadSensorPoint {
 /**
  * Parse fused sensor fusion CSV export.
  * Skips comment lines (#) and unit row (second non-comment line).
+ * Normalizes timestamps to start at 0.
+ * Returns { points, gpsStartIndex } where gpsStartIndex is the first row
+ * with valid GPS data (for auto time-alignment with TRACK.CSV).
  */
-export function parseHeadSensorCSV(text: string): HeadSensorPoint[] {
+export function parseHeadSensorCSV(text: string): { points: HeadSensorPoint[]; gpsStartIndex: number } {
   const lines = text.split('\n')
   const points: HeadSensorPoint[] = []
 
   let headerCols: string[] = []
   let headerFound = false
   let unitRowSkipped = false
+  let gpsStartIndex = -1
 
   for (const rawLine of lines) {
     const line = rawLine.trim()
@@ -87,8 +92,27 @@ export function parseHeadSensorCSV(text: string): HeadSensorPoint[] {
       return v
     }
 
+    const gpsLat = get('gps_lat')
+    const gpsTimeRaw = (() => {
+      const idx = headerCols.indexOf('gps_time')
+      if (idx < 0 || idx >= cols.length) return ''
+      return cols[idx].trim()
+    })()
+    const gpsTimeMs = gpsTimeRaw ? new Date(gpsTimeRaw).getTime() : NaN
+
+    // Detect first row with GPS data (prefer gps_time, fall back to gps_lat)
+    if (gpsStartIndex < 0) {
+      if (gpsTimeRaw && !isNaN(gpsTimeMs)) {
+        gpsStartIndex = points.length
+      } else if (!isNaN(gpsLat) && Math.abs(gpsLat) > 1) {
+        // gps_lat > 1 degree = real geodetic coordinate (not interpolated near-zero)
+        gpsStartIndex = points.length
+      }
+    }
+
     points.push({
       t: get('timestamp'),
+      gpsTimeMs,
       roll: get('roll'),
       pitch: get('pitch'),
       yaw: get('yaw'),
@@ -111,13 +135,23 @@ export function parseHeadSensorCSV(text: string): HeadSensorPoint[] {
       magX: get('mag_x'),
       magY: get('mag_y'),
       magZ: get('mag_z'),
-      gpsLat: get('gps_lat'),
+      gpsLat: gpsLat,
       gpsLon: get('gps_lon'),
       gpsHMSL: get('gps_hMSL'),
     })
   }
 
-  return points
+  // Normalize timestamps to start at 0
+  if (points.length > 0) {
+    const t0 = points[0].t
+    if (t0 !== 0) {
+      for (const p of points) {
+        p.t -= t0
+      }
+    }
+  }
+
+  return { points, gpsStartIndex }
 }
 
 /**
@@ -149,6 +183,7 @@ export function lerpSensorPoints(a: HeadSensorPoint, b: HeadSensorPoint, f: numb
   const l = (va: number, vb: number) => va + (vb - va) * f
   return {
     t: l(a.t, b.t),
+    gpsTimeMs: l(a.gpsTimeMs, b.gpsTimeMs),
     roll: l(a.roll, b.roll),
     pitch: l(a.pitch, b.pitch),
     yaw: l(a.yaw, b.yaw),

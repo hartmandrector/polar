@@ -151,7 +151,7 @@ export class GPSScene {
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
       // Create head renderer (attached to wingsuit model)
-      this.headRenderer = new HeadModelRenderer(this.model)
+      this.headRenderer = new HeadModelRenderer(this.scene)
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -329,19 +329,43 @@ export class GPSScene {
       // Ground mode without sensor: stand upright, heading from GPS track
       const standingPitch = Math.PI / 2
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, pt.aero.psi))
-    } else if (isPreLineStretch) {
-      // Pre-line-stretch: blend roll toward zero by line stretch
-      let roll = pt.aero.roll
-      if (drp) {
-        const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
-        const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
-        const range = lsIdx - pcIdx
-        const t = range > 0 ? Math.max(0, Math.min(1, (this.currentIndex - pcIdx) / range)) : 0
-        roll = roll * (1 - t)  // lerp toward zero
+    } else if (isPreLineStretch || (isPostLineStretch && !isFullFlight)) {
+      // Deployment transition: slerp from wingsuit pose at PC toss → canopy hang
+      // Spans from pcTossIndex through lineStretch + TRANSITION_TAIL seconds
+      const TRANSITION_TAIL = 2.0  // seconds after line stretch to finish transition
+      const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
+      const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
+
+      // Wingsuit quaternion frozen at PC toss (last clean wingsuit pose)
+      const pcPt = this.data![Math.min(pcIdx, this.data!.length - 1)]
+      const frozenQuat = bodyToInertialQuat(pcPt.aero.roll, pcPt.aero.theta, pcPt.aero.psi)
+
+      // Target: canopy hang quat (or best guess during deployment)
+      let targetQuat: THREE.Quaternion
+      if (effectiveCs) {
+        targetQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
+        const hangPitch = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
+        )
+        targetQuat.multiply(hangPitch)
+      } else {
+        // No canopy state yet — just use standing-ish pose under PC heading
+        targetQuat = bodyToInertialQuat(0, Math.PI / 2, pcPt.aero.psi)
       }
-      this.model.quaternion.copy(bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi))
-    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
-      // Post-line-stretch or canopy/landing phase: pilot hangs
+
+      // Compute progress: 0 at pcToss, 1 at lineStretch + TRANSITION_TAIL
+      const pcTime = this.data![Math.min(pcIdx, this.data!.length - 1)].processed.t
+      const lsTime = this.data![Math.min(lsIdx, this.data!.length - 1)].processed.t
+      const endTime = lsTime + TRANSITION_TAIL
+      const totalDuration = endTime - pcTime
+      const elapsed = pt.processed.t - pcTime
+      const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 1
+      const s = t * t * (3 - 2 * t) // smoothstep
+
+      frozenQuat.slerp(targetQuat, s)
+      this.model.quaternion.copy(frozenQuat)
+    } else if ((isFullFlight || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
+      // Full flight under canopy — pilot hangs under canopy orientation
       const canopyQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
@@ -355,7 +379,7 @@ export class GPSScene {
 
     // ── Head model (only when sensor data loaded) ──
     if (this.headRenderer && hasSensor) {
-      this.headRenderer.update(pt.processed.t, this.model.quaternion)
+      this.headRenderer.update(pt.processed.t, this.model.position, this.model.quaternion, MODEL_SCALE)
     }
 
     // ── Canopy model + deploy rendering ──
@@ -373,7 +397,8 @@ export class GPSScene {
       if (isPostLineStretch && effectiveCs) {
         deployQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
       } else {
-        deployQuat = this.model?.quaternion?.clone() ?? new THREE.Quaternion()
+        // Pre-line-stretch: use raw pipeline orientation (not the frozen wingsuit slerp)
+        deployQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
       }
       this.deployRenderer.update(this.currentIndex, pt, deployQuat, this.canopyModel)
       // Canopy GLB: only show from line_stretch onward, scale horizontally only
