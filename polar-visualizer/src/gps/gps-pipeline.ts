@@ -276,6 +276,7 @@ export interface PipelineResult {
   format: string;
   pointCount: number;
   duration: number;          // seconds
+  startEpochMs: number;      // first GNSS timestamp (ms since Unix epoch) for absolute time alignment
   points: GPSPipelinePoint[];
   /** Stability CSV rows if input was stability format (pass-through) */
   stabilityRows?: StabilityCSVRow[];
@@ -302,6 +303,7 @@ export function processGPSFile(
       format: 'stability',
       pointCount: points.length,
       duration: points.length > 0 ? points[points.length - 1].processed.t : 0,
+      startEpochMs: gnss.length > 0 ? gnss[0].timestamp : 0,
       points,
       stabilityRows: rows,
     };
@@ -319,6 +321,7 @@ export function processGPSFile(
     format,
     pointCount: points.length,
     duration: points.length > 0 ? points[points.length - 1].processed.t : 0,
+    startEpochMs: gnss.length > 0 ? gnss[0].timestamp : 0,
     points,
   };
 }

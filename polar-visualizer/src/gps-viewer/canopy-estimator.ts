@@ -29,6 +29,8 @@ export interface CanopyEstimatorConfig {
   minAirspeed: number      // m/s below which estimation is unreliable (default 5.0)
   rollMethod: RollMethod   // roll estimation method (default 'blended')
   minTurnRate_degS: number // deg/s below which coordinated turn roll is unreliable (default 3.0)
+  deployEndIndex: number | null // index where deployment ends (full inflation); blended uses full roll before this
+  deployEndTime: number | null  // timestamp of deployEndIndex; used for smooth blend transition
 }
 
 export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
@@ -39,8 +41,10 @@ export const DEFAULT_CANOPY_CONFIG: CanopyEstimatorConfig = {
   canopyMass: 5.0,
   trimOffset_deg: 10.0,
   minAirspeed: 5.0,
-  rollMethod: 'full',
+  rollMethod: 'blended',
   minTurnRate_degS: 3.0,
+  deployEndIndex: null,
+  deployEndTime: null,
 }
 
 // ─── Output ─────────────────────────────────────────────────────────────────
@@ -153,6 +157,7 @@ export function fullTransversalRoll(
 export function estimateCanopyState(
   pt: GPSPipelinePoint,
   config: CanopyEstimatorConfig = DEFAULT_CANOPY_CONFIG,
+  pointIndex?: number,
 ): CanopyState {
   const p = pt.processed
 
@@ -246,23 +251,37 @@ export function estimateCanopyState(
     roll = fullTransversalRoll(vel, psiDot_radS, config.pilotMass, config.canopyMass, config.lineLength)
     usedMethod = 'full'
   } else {
-    // 'blended': use coordinated turn roll when turning, aero roll in straight flight.
-    // Blend based on heading rate magnitude.
-    const absPsiDot = Math.abs(pt.bodyRates?.psiDot ?? 0) // deg/s
-    if (absPsiDot > config.minTurnRate_degS * 2) {
-      // Strong turn — coordinated turn roll is reliable
+    // 'blended': during deployment (before deployEndIndex) use full transversal model
+    // (ΔF_b = 0 with brakes stowed → very accurate). After deployment use coordinated turn.
+    // 2-second smooth transition at the boundary.
+    const deployEnd = config.deployEndIndex
+    const inDeployment = deployEnd != null && pointIndex != null && pointIndex < deployEnd
+
+    if (inDeployment) {
+      // Deployment phase — brakes stowed, ΔF_b = 0, full model is accurate
+      roll = fullTransversalRoll(vel, psiDot_radS, config.pilotMass, config.canopyMass, config.lineLength)
+      usedMethod = 'full'
+    } else if (deployEnd != null && config.deployEndTime != null) {
+      // Post-deployment — blend from full → coordinated over 2 seconds
+      const BLEND_DURATION = 2.0 // seconds
+      const elapsed = p.t - config.deployEndTime
+      const fullRoll = fullTransversalRoll(vel, psiDot_radS, config.pilotMass, config.canopyMass, config.lineLength)
+      const coordRoll = coordinatedTurnRoll(vel, psiDot_radS)
+
+      if (elapsed < BLEND_DURATION) {
+        const t = elapsed / BLEND_DURATION
+        // Smooth ease: cubic hermite (smooth start and end)
+        const s = t * t * (3 - 2 * t)
+        roll = fullRoll * (1 - s) + coordRoll * s
+        usedMethod = 'blended'
+      } else {
+        roll = coordRoll
+        usedMethod = 'coordinated'
+      }
+    } else {
+      // No deploy info — fall back to coordinated
       roll = coordinatedTurnRoll(vel, psiDot_radS)
       usedMethod = 'coordinated'
-    } else if (absPsiDot < config.minTurnRate_degS) {
-      // Straight flight — aero extraction is better
-      roll = aeroRoll
-      usedMethod = 'aero'
-    } else {
-      // Transition — linear blend
-      const t = (absPsiDot - config.minTurnRate_degS) / config.minTurnRate_degS
-      const coordRoll = coordinatedTurnRoll(vel, psiDot_radS)
-      roll = aeroRoll * (1 - t) + coordRoll * t
-      usedMethod = 'blended'
     }
   }
 
@@ -304,5 +323,5 @@ export function estimateCanopyBatch(
   config: Partial<CanopyEstimatorConfig> = {},
 ): CanopyState[] {
   const cfg = { ...DEFAULT_CANOPY_CONFIG, ...config }
-  return points.map(pt => estimateCanopyState(pt, cfg))
+  return points.map((pt, i) => estimateCanopyState(pt, cfg, i))
 }
