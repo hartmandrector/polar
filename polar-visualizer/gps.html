@@ -47,6 +47,11 @@
           </select>
           <button id="btn-load-new" title="Load new file">📂</button>
         </div>
+        <!-- Keyframe timeline (diamonds on a thin track below scrubber) -->
+        <div id="kf-timeline" style="height:12px;position:relative;margin:0 60px 0 36px;display:none;">
+          <div style="position:absolute;top:5px;left:0;right:0;height:2px;background:#2a3040;border-radius:1px;"></div>
+          <!-- Keyframe markers are injected dynamically -->
+        </div>
       </div>
 
       <!-- Right: charts + readout -->
@@ -157,6 +162,33 @@
               </div>
               <div style="font-size:11px;color:#8090a0;">
                 <span>Frame: </span><span id="capture-frame">—</span>
+              </div>
+
+              <!-- Keyframe controls -->
+              <div style="margin-top:12px;border-top:1px solid #2a3040;padding-top:8px;">
+                <label style="font-size:12px;color:#c0c8d0;font-weight:600;display:block;margin-bottom:6px;">
+                  <input type="checkbox" id="kf-enabled" style="accent-color:#e94560;vertical-align:middle;">
+                  Keyframe Mode
+                </label>
+                <div style="display:flex;gap:4px;margin-bottom:6px;">
+                  <button id="kf-add-inertial" style="flex:1;padding:4px 6px;background:#2a5090;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Add keyframe at current time for inertial camera">+ Inertial</button>
+                  <button id="kf-add-body" style="flex:1;padding:4px 6px;background:#2a5090;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Add keyframe at current time for body camera">+ Body</button>
+                </div>
+                <div style="display:flex;gap:4px;margin-bottom:6px;">
+                  <button id="kf-delete" style="flex:1;padding:4px 6px;background:#703030;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Delete nearest keyframe at current time">Delete</button>
+                  <button id="kf-clear" style="flex:1;padding:4px 6px;background:#403030;color:#ccc;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Clear all keyframes">Clear</button>
+                </div>
+                <div style="display:flex;gap:4px;margin-bottom:6px;">
+                  <button id="kf-save" style="flex:1;padding:4px 6px;background:#1a3a1a;color:#8c8;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Save JSON</button>
+                  <button id="kf-load-btn" style="flex:1;padding:4px 6px;background:#1a3a1a;color:#8c8;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Load JSON</button>
+                  <input type="file" id="kf-load-input" accept=".json" style="display:none">
+                </div>
+                <div style="display:flex;gap:4px;margin-bottom:6px;">
+                  <button id="kf-set-start" style="flex:1;padding:4px 6px;background:#2a4060;color:#8cf;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Set capture start at current time">Set Start</button>
+                  <button id="kf-set-end" style="flex:1;padding:4px 6px;background:#2a4060;color:#8cf;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Set capture end at current time">Set End</button>
+                  <button id="kf-clear-range" style="padding:4px 6px;background:#403030;color:#ccc;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Clear capture range">✕</button>
+                </div>
+                <div style="font-size:10px;color:#6a7a8a;" id="kf-status">No keyframes</div>
               </div>
             </div>
           </div>

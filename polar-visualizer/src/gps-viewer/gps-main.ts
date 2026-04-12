@@ -22,6 +22,8 @@ import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
+import { KeyframeEditor } from './keyframe-editor'
+import type { CaptureSessionState } from './capture-session'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -50,6 +52,8 @@ let result: PipelineResult | null = null
 let ekfResult: EKFRunnerResult | null = null
 let currentDeployTimeline: DeployReplayTimeline | null = null
 let cachedDeployDetection: ReturnType<typeof detectDeployment> = null
+let loadedTrackPath: string | null = null
+let loadedSensorPath: string | null = null
 
 // ─── Canopy Estimator UI Controls ───────────────────────────────────────────
 
@@ -124,6 +128,7 @@ btnLoadNew.addEventListener('click', () => {
 
 async function loadFile(file: File) {
   flightInfo.textContent = `Loading ${file.name}...`
+  if (!loadedTrackPath) loadedTrackPath = file.name  // best guess from drag-and-drop
   dropZone.classList.add('hidden')
   viewerLayout.classList.remove('hidden')
 
@@ -367,6 +372,7 @@ async function loadFile(file: File) {
       updateMomentInset()
       updateLegends(index)
       updateTransport(t, dur)
+      applyKeyframeCameras(t)
     })
   } else {
     replay.setData(result.points)
@@ -392,6 +398,11 @@ async function loadFile(file: File) {
         updateReadout(index)
         updateMomentInset()
         updateLegends(index)
+        // Apply keyframe cameras for capture
+        if (result) {
+          const t = result.points[Math.min(index, result.points.length - 1)].processed.t
+          applyKeyframeCameras(t)
+        }
       },
       getFlightBounds: () => {
         if (!result) return { startTime: 0, endTime: 0 }
@@ -424,6 +435,10 @@ async function loadFile(file: File) {
             break
           }
         }
+
+        // Override with keyframe capture range if set
+        if (kfEditor.captureStart != null) startTime = kfEditor.captureStart
+        if (kfEditor.captureEnd != null) endTime = kfEditor.captureEnd
 
         return { startTime, endTime }
       },
@@ -465,6 +480,7 @@ scrubber.addEventListener('input', () => {
   updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
+  applyKeyframeCameras(t)
 })
 
 speedSelect.addEventListener('change', () => {
@@ -711,3 +727,409 @@ headTimeOffset.addEventListener('change', () => {
     console.log(`Head time offset changed to ${offset}s`)
   }
 })
+
+// ─── Keyframe Editor ────────────────────────────────────────────────────────
+
+const kfEditor = new KeyframeEditor()
+
+const kfEnabled = document.getElementById('kf-enabled') as HTMLInputElement
+const kfAddInertial = document.getElementById('kf-add-inertial')!
+const kfAddBody = document.getElementById('kf-add-body')!
+const kfDelete = document.getElementById('kf-delete')!
+const kfClear = document.getElementById('kf-clear')!
+const kfSave = document.getElementById('kf-save')!
+const kfLoadBtn = document.getElementById('kf-load-btn')!
+const kfLoadInput = document.getElementById('kf-load-input') as HTMLInputElement
+const kfStatus = document.getElementById('kf-status')!
+const kfTimeline = document.getElementById('kf-timeline')!
+
+/** Get current GPS pipeline time from the scrubber/replay */
+function getCurrentGPSTime(): number {
+  if (!result || result.points.length === 0) return 0
+  const idx = parseInt(scrubber.value) || 0
+  return result.points[Math.min(idx, result.points.length - 1)].processed.t
+}
+
+kfEnabled.addEventListener('change', () => {
+  kfEditor.setEnabled(kfEnabled.checked)
+  kfTimeline.style.display = kfEnabled.checked ? 'block' : 'none'
+  updateKfStatus()
+})
+
+kfAddInertial.addEventListener('click', () => {
+  if (!scene) return
+  const t = getCurrentGPSTime()
+  kfEditor.addInertialKeyframe(t, scene.getCameraPosition(), scene.getCameraZoom())
+  console.log(`Added inertial keyframe at t=${t.toFixed(2)}s`)
+})
+
+kfAddBody.addEventListener('click', () => {
+  if (!bodyScene) return
+  const t = getCurrentGPSTime()
+  kfEditor.addBodyKeyframe(t, bodyScene.getCameraPosition(), bodyScene.getCameraZoom())
+  console.log(`Added body keyframe at t=${t.toFixed(2)}s`)
+})
+
+kfDelete.addEventListener('click', () => {
+  const t = getCurrentGPSTime()
+  // Delete nearest keyframe within 2 seconds
+  const ni = kfEditor.findNearest(kfEditor.inertialKeyframes, t)
+  const nb = kfEditor.findNearest(kfEditor.bodyKeyframes, t)
+  if (ni && ni.distance < 2) {
+    kfEditor.deleteInertialKeyframe(ni.index)
+    console.log(`Deleted inertial keyframe at index ${ni.index}`)
+  }
+  if (nb && nb.distance < 2) {
+    kfEditor.deleteBodyKeyframe(nb.index)
+    console.log(`Deleted body keyframe at index ${nb.index}`)
+  }
+})
+
+kfClear.addEventListener('click', () => {
+  if (confirm('Clear all keyframes?')) {
+    kfEditor.clear()
+  }
+})
+
+kfSave.addEventListener('click', () => kfEditor.save())
+kfLoadBtn.addEventListener('click', () => kfLoadInput.click())
+kfLoadInput.addEventListener('change', async () => {
+  const file = kfLoadInput.files?.[0]
+  if (!file) return
+  const text = await file.text()
+  if (kfEditor.fromJSON(text)) {
+    console.log('Keyframes loaded from', file.name)
+  }
+})
+
+function updateKfStatus() {
+  const ni = kfEditor.inertialKeyframes.length
+  const nb = kfEditor.bodyKeyframes.length
+  const parts: string[] = []
+  if (ni > 0 || nb > 0) parts.push(`Inertial: ${ni}, Body: ${nb}`)
+  if (kfEditor.captureStart != null) parts.push(`Start: ${kfEditor.captureStart.toFixed(1)}s`)
+  if (kfEditor.captureEnd != null) parts.push(`End: ${kfEditor.captureEnd.toFixed(1)}s`)
+  kfStatus.textContent = parts.length > 0 ? parts.join(' | ') : (kfEditor.isEnabled ? 'Enabled — no keyframes' : 'No keyframes')
+}
+
+function renderKfTimeline() {
+  if (!result || result.points.length === 0) return
+  const dur = result.duration
+
+  // Clear old markers
+  const markers = kfTimeline.querySelectorAll('.kf-marker')
+  markers.forEach(m => m.remove())
+
+  const addMarkers = (keyframes: readonly { t: number }[], color: string) => {
+    for (const kf of keyframes) {
+      const pct = dur > 0 ? (kf.t / dur) * 100 : 0
+      const marker = document.createElement('div')
+      marker.className = 'kf-marker'
+      marker.style.cssText = `position:absolute;left:${pct}%;top:1px;width:8px;height:8px;background:${color};transform:translateX(-4px) rotate(45deg);cursor:pointer;z-index:1;`
+      marker.title = `t=${kf.t.toFixed(1)}s`
+      kfTimeline.appendChild(marker)
+    }
+  }
+
+  addMarkers(kfEditor.inertialKeyframes, '#4488ff')
+  addMarkers(kfEditor.bodyKeyframes, '#ff8844')
+
+  // Capture range markers (vertical bars)
+  const addRangeMarker = (t: number | null, color: string, label: string) => {
+    if (t == null || dur <= 0) return
+    const pct = (t / dur) * 100
+    const marker = document.createElement('div')
+    marker.className = 'kf-marker'
+    marker.style.cssText = `position:absolute;left:${pct}%;top:0;width:2px;height:12px;background:${color};transform:translateX(-1px);cursor:pointer;z-index:2;`
+    marker.title = `${label}: ${t.toFixed(1)}s`
+    kfTimeline.appendChild(marker)
+  }
+  addRangeMarker(kfEditor.captureStart, '#44ffaa', 'Capture start')
+  addRangeMarker(kfEditor.captureEnd, '#ff4466', 'Capture end')
+}
+
+kfEditor.onChange(() => {
+  updateKfStatus()
+  renderKfTimeline()
+})
+
+/**
+ * Apply keyframe camera states at current time.
+ * Called from the replay frame callback.
+ */
+function applyKeyframeCameras(t: number) {
+  if (!kfEditor.isEnabled) {
+    scene?.releaseKeyframeOverride()
+    bodyScene?.releaseKeyframeOverride()
+    return
+  }
+
+  const inertialState = kfEditor.getInertialCamera(t)
+  if (inertialState && scene) {
+    scene.setCameraState(inertialState.position, inertialState.zoom)
+  } else {
+    scene?.releaseKeyframeOverride()
+  }
+
+  const bodyState = kfEditor.getBodyCamera(t)
+  if (bodyState && bodyScene) {
+    bodyScene.setCameraState(bodyState.position, bodyState.zoom)
+  } else {
+    bodyScene?.releaseKeyframeOverride()
+  }
+}
+
+// (keyframe cameras applied in replay callback and scrubber handler above)
+
+// ─── Capture Range Buttons ──────────────────────────────────────────────────
+
+const kfSetStart = document.getElementById('kf-set-start')!
+const kfSetEnd = document.getElementById('kf-set-end')!
+const kfClearRange = document.getElementById('kf-clear-range')!
+
+kfSetStart.addEventListener('click', () => {
+  const t = getCurrentGPSTime()
+  kfEditor.setCaptureStart(t)
+  console.log(`Capture start set to t=${t.toFixed(2)}s`)
+})
+
+kfSetEnd.addEventListener('click', () => {
+  const t = getCurrentGPSTime()
+  kfEditor.setCaptureEnd(t)
+  console.log(`Capture end set to t=${t.toFixed(2)}s`)
+})
+
+kfClearRange.addEventListener('click', () => {
+  kfEditor.setCaptureStart(null)
+  kfEditor.setCaptureEnd(null)
+  console.log('Capture range cleared')
+})
+
+// ─── Session State for Playwright Capture ───────────────────────────────────
+
+const axisHelperMode = document.getElementById('axis-helper-mode') as HTMLSelectElement
+
+/** Build complete session state for Playwright automation */
+function buildCaptureSession(): CaptureSessionState | null {
+  if (!result) return null
+  const bounds = captureHandler
+    ? (() => { 
+        // Trigger getFlightBounds through capture handler's logic
+        const pts = result!.points
+        let startTime = pts[0]?.processed.t ?? 0
+        let endTime = pts[pts.length - 1]?.processed.t ?? 0
+        if (kfEditor.captureStart != null) startTime = kfEditor.captureStart
+        if (kfEditor.captureEnd != null) endTime = kfEditor.captureEnd
+        return { startTime, endTime }
+      })()
+    : { startTime: 0, endTime: result.duration }
+
+  const frameRate = 60
+  const totalFrames = Math.ceil((bounds.endTime - bounds.startTime) * frameRate)
+
+  return {
+    version: 1,
+    trackPath: loadedTrackPath ?? '',
+    sensorPath: loadedSensorPath,
+    headTimeOffset: parseFloat(headTimeOffset.value) || 0,
+    trimOffset: parseFloat(trimSlider.value) || 10,
+    rollMethod: rollSelect.value,
+    displayOverlays: overlayToggle.checked,
+    axisHelpers: axisHelperMode.value,
+    keyframeEnabled: kfEnabled.checked,
+    keyframes: JSON.parse(kfEditor.toJSON()),
+    capture: {
+      frameRate,
+      startTime: bounds.startTime,
+      endTime: bounds.endTime,
+      totalFrames,
+      flightDate: '',
+    },
+  }
+}
+
+// Expose session state on window for Playwright to read
+;(window as any).__getCaptureSession = buildCaptureSession
+
+// ─── URL-based Auto-Load (for Playwright automation) ────────────────────────
+
+async function loadFromURL(trackPath: string) {
+  const resp = await fetch(`/${trackPath}`)
+  if (!resp.ok) { console.error(`Failed to fetch ${trackPath}: ${resp.status}`); return }
+  const text = await resp.text()
+  const file = new File([text], trackPath.split('/').pop() || 'TRACK.CSV', { type: 'text/csv' })
+  loadedTrackPath = trackPath
+  await loadFile(file)
+}
+
+async function loadSensorFromURL(sensorPath: string) {
+  console.log(`loadSensorFromURL: fetching /${sensorPath}`)
+  const resp = await fetch(`/${sensorPath}`)
+  if (!resp.ok) { console.error(`Failed to fetch ${sensorPath}: ${resp.status}`); return }
+  const text = await resp.text()
+  console.log(`loadSensorFromURL: got ${text.length} bytes, parsing...`)
+  const { points, gpsStartIndex } = parseHeadSensorCSV(text)
+  console.log(`loadSensorFromURL: ${points.length} points, gpsStartIndex=${gpsStartIndex}, scene=${!!scene}, result=${!!result}`)
+  if (points.length === 0) { headSensorStatus.textContent = 'Loaded but 0 points parsed'; return }
+
+  loadedSensorPath = sensorPath
+  let offset = 0
+  if (gpsStartIndex >= 0 && result) {
+    const sensorGpsTimeMs = points[gpsStartIndex].gpsTimeMs
+    const pipelineEpochMs = result.startEpochMs ?? NaN
+    if (!isNaN(sensorGpsTimeMs) && !isNaN(pipelineEpochMs)) {
+      offset = points[gpsStartIndex].t - (sensorGpsTimeMs - pipelineEpochMs) / 1000
+    } else {
+      offset = points[gpsStartIndex].t
+    }
+  }
+  headTimeOffset.value = offset.toFixed(2)
+  scene?.setHeadSensorData(points, offset)
+  bodyScene?.setHeadSensorData(points, offset)
+  headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s) offset=${offset.toFixed(1)}s`
+  console.log(`Sensor loaded from URL: ${sensorPath}, ${points.length} pts, offset=${offset.toFixed(2)}s`)
+}
+
+/** Apply a capture session state (from Playwright CAPTURE_INIT or URL param) */
+async function applyCaptureSession(state: CaptureSessionState) {
+  // Load track (awaits full pipeline)
+  if (state.trackPath) {
+    await loadFromURL(state.trackPath)
+  }
+
+  // Apply UI settings
+  trimSlider.value = String(state.trimOffset)
+  trimSlider.dispatchEvent(new Event('input'))
+  rollSelect.value = state.rollMethod
+  rollSelect.dispatchEvent(new Event('change'))
+  overlayToggle.checked = state.displayOverlays
+  overlayToggle.dispatchEvent(new Event('change'))
+  axisHelperMode.value = state.axisHelpers
+  axisHelperMode.dispatchEvent(new Event('change'))
+
+  // Load keyframes
+  kfEditor.fromJSON(JSON.stringify(state.keyframes))
+  kfEnabled.checked = state.keyframeEnabled
+  kfEnabled.dispatchEvent(new Event('change'))
+
+  // Load sensor data
+  if (state.sensorPath) {
+    await loadSensorFromURL(state.sensorPath)
+    headTimeOffset.value = String(state.headTimeOffset)
+  }
+
+  console.log('Capture session applied', state)
+  ;(window as any).__sessionReady = true
+}
+
+// Expose for Playwright
+;(window as any).__applyCaptureSession = applyCaptureSession
+
+// ─── URL Param Auto-Configuration ───────────────────────────────────────────
+// Example: /gps?track=07-29-25/TRACK.CSV&sensor=07-29-25/fused.csv&trim=10&roll=blended&overlays=0&axis=none&kf=1
+// Or full session: /gps?session=<base64 JSON>
+
+;(async () => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const autoSession = urlParams.get('session')
+
+  if (autoSession) {
+    try {
+      const state = JSON.parse(atob(autoSession)) as CaptureSessionState
+      await applyCaptureSession(state)
+    } catch (e) {
+      console.error('Failed to parse session param:', e)
+    }
+    return
+  }
+
+  // Individual URL params
+  const autoTrack = urlParams.get('track')
+  if (!autoTrack) return
+
+  // 1. Load track (awaits pipeline completion)
+  await loadFromURL(autoTrack)
+
+  // 2. Apply UI settings from URL params
+  const trim = urlParams.get('trim')
+  if (trim != null) {
+    trimSlider.value = trim
+    trimSlider.dispatchEvent(new Event('input'))
+  }
+
+  const roll = urlParams.get('roll')
+  if (roll) {
+    rollSelect.value = roll
+    rollSelect.dispatchEvent(new Event('change'))
+  }
+
+  const overlays = urlParams.get('overlays')
+  if (overlays != null) {
+    overlayToggle.checked = overlays !== '0' && overlays !== 'false'
+    overlayToggle.dispatchEvent(new Event('change'))
+  }
+
+  const axis = urlParams.get('axis')
+  if (axis) {
+    axisHelperMode.value = axis
+    axisHelperMode.dispatchEvent(new Event('change'))
+  }
+
+  const kfMode = urlParams.get('kf')
+  if (kfMode != null) {
+    kfEnabled.checked = kfMode !== '0' && kfMode !== 'false'
+    kfEnabled.dispatchEvent(new Event('change'))
+  }
+
+  // 3. Load fused CSV sensor — looks in same folder as track by default
+  const sensorParam = urlParams.get('sensor')
+  if (sensorParam) {
+    await loadSensorFromURL(sensorParam)
+  } else {
+    // Auto-detect: look for fused CSV in same folder as track
+    const trackFolder = autoTrack.substring(0, autoTrack.lastIndexOf('/'))
+    if (trackFolder) {
+      const candidates = ['SENSOR_fused_fusion.csv', 'fused.csv', 'sensor_fused.csv']
+      let found = false
+      for (const name of candidates) {
+        try {
+          console.log(`Auto-detect sensor: trying /${trackFolder}/${name}`)
+          const testResp = await fetch(`/${trackFolder}/${name}`, { method: 'HEAD' })
+          console.log(`Auto-detect sensor: ${name} → ${testResp.status} (content-type: ${testResp.headers.get('content-type')})`)
+          if (testResp.ok) {
+            // Verify it's not a fallback HTML page
+            const ct = testResp.headers.get('content-type') || ''
+            if (ct.includes('html')) {
+              console.log(`Auto-detect sensor: ${name} returned HTML (SPA fallback), skipping`)
+              continue
+            }
+            console.log(`Auto-detected ${name} in ${trackFolder}/`)
+            await loadSensorFromURL(`${trackFolder}/${name}`)
+            found = true
+            break
+          }
+        } catch (e) { console.log(`Auto-detect sensor: ${name} failed`, e) }
+      }
+      if (!found) console.log('Auto-detect sensor: no fused CSV found in', trackFolder)
+    }
+  }
+
+  // 4. Load keyframes from URL param (base64 JSON) or file
+  const kfData = urlParams.get('keyframes')
+  if (kfData) {
+    try {
+      kfEditor.fromJSON(atob(kfData))
+    } catch (e) {
+      console.error('Failed to parse keyframes param:', e)
+    }
+  }
+
+  // Apply keyframes at initial position (t=0)
+  if (kfEditor.isEnabled && kfEditor.inertialKeyframes.length > 0) {
+    // Use first keyframe time as initial application point
+    applyKeyframeCameras(kfEditor.inertialKeyframes[0].t)
+  }
+
+  ;(window as any).__sessionReady = true
+  console.log('URL auto-configuration complete')
+})()

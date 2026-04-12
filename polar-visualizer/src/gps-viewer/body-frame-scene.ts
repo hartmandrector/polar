@@ -128,6 +128,11 @@ export class BodyFrameScene {
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
       this.headRenderer = new HeadModelRenderer(this.scene)
+      if (this.pendingSensorData) {
+        this.headRenderer.setSensorData(this.pendingSensorData.data)
+        this.headRenderer.setTimeOffset(this.pendingSensorData.offset)
+        this.pendingSensorData = null
+      }
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -197,10 +202,14 @@ export class BodyFrameScene {
     this.exitEstimate = est
   }
 
+  private pendingSensorData: { data: HeadSensorPoint[]; offset: number } | null = null
+
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
       this.headRenderer.setTimeOffset(timeOffset)
+    } else {
+      this.pendingSensorData = { data, offset: timeOffset }
     }
   }
 
@@ -400,4 +409,20 @@ export class BodyFrameScene {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
   }
+
+  // ── Camera accessors for keyframe system ──
+
+  getCameraPosition(): THREE.Vector3 { return this.camera.position.clone() }
+  getCameraZoom(): number { return this.camera.zoom }
+
+  setCameraState(position: THREE.Vector3, zoom: number) {
+    this.controls.enableDamping = false
+    this.camera.position.copy(position)
+    this.camera.zoom = zoom
+    this.camera.updateProjectionMatrix()
+    this.controls.update()
+    this.controls.enableDamping = true
+  }
+
+  releaseKeyframeOverride() { /* no-op */ }
 }
