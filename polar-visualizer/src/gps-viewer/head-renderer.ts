@@ -76,9 +76,9 @@ export class HeadModelRenderer {
       // Create sensor vector overlay in headGroup (moves with head)
       this.sensorOverlay = new HeadSensorOverlay(this.headGroup)
       this.loaded = true
-      // Hide head until sensor data is loaded
-      this.headGroup.visible = false
-      console.log('Head model loaded (hidden until sensor data loaded)')
+      // Show head if sensor data already loaded, otherwise hide
+      this.headGroup.visible = this.sensorData.length > 0
+      console.log(`Head model loaded (${this.sensorData.length > 0 ? 'visible — sensor data present' : 'hidden until sensor data loaded'})`)
     } catch (e) {
       console.error('Failed to load head model:', e)
     }

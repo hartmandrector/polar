@@ -11,6 +11,7 @@
  */
 
 import type { GPSPipelinePoint } from '../gps/types'
+import type { CaptureSessionState } from './capture-session'
 
 export interface CaptureCallbacks {
   /** Render frame at time t with interpolation fraction between indices */
@@ -136,6 +137,34 @@ export class CaptureHandler {
     return { index, fraction }
   }
 
+  /**
+   * Build a complete URL with all session state as query params.
+   * Playwright navigates to this URL to replicate the exact scene.
+   */
+  private buildCaptureUrl(session: CaptureSessionState | null): string {
+    const base = new URL('/gps.html', window.location.origin)
+    if (!session) {
+      // Fallback: just pass current URL
+      return window.location.href
+    }
+
+    if (session.trackPath) base.searchParams.set('track', session.trackPath)
+    if (session.sensorPath) base.searchParams.set('sensor', session.sensorPath)
+    base.searchParams.set('trim', String(session.trimOffset))
+    base.searchParams.set('roll', session.rollMethod)
+    base.searchParams.set('overlays', session.displayOverlays ? '1' : '0')
+    base.searchParams.set('axis', session.axisHelpers)
+    base.searchParams.set('kf', session.keyframeEnabled ? '1' : '0')
+
+    // Keyframes as base64 JSON
+    if (session.keyframes) {
+      const kfJson = JSON.stringify(session.keyframes)
+      base.searchParams.set('keyframes', btoa(kfJson))
+    }
+
+    return base.toString()
+  }
+
   /** Trigger capture externally (from UI button) */
   startCapture() {
     if (this.points.length === 0) {
@@ -157,6 +186,21 @@ export class CaptureHandler {
     const dateStr = this.flightDate || new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 
     // POST to playwright-capture server to start the capture
+    // Include full session state so Playwright can auto-configure a fresh instance
+    const sessionState = (window as any).__getCaptureSession?.()
+    if (sessionState) {
+      sessionState.capture = {
+        frameRate: this.frameRate,
+        startTime: this.startTime,
+        endTime: this.endTime,
+        totalFrames: this.totalFrames,
+        flightDate: dateStr,
+      }
+    }
+
+    // Build complete capture URL with all current state as params
+    const captureUrl = this.buildCaptureUrl(sessionState)
+
     fetch('http://localhost:3333/capture-polar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -166,7 +210,8 @@ export class CaptureHandler {
         startTime: this.startTime,
         endTime: this.endTime,
         flightDate: dateStr,
-        url: window.location.href,
+        url: captureUrl,
+        session: sessionState ?? null,
       }),
     }).then(r => {
       if (!r.ok) this.updateStatus('Server error')

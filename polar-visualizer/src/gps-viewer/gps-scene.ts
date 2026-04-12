@@ -152,6 +152,13 @@ export class GPSScene {
       this.scene.add(this.model)
       // Create head renderer (attached to wingsuit model)
       this.headRenderer = new HeadModelRenderer(this.scene)
+      // Apply any sensor data that arrived before model loaded
+      if (this.pendingSensorData) {
+        this.headRenderer.setSensorData(this.pendingSensorData.data)
+        this.headRenderer.setTimeOffset(this.pendingSensorData.offset)
+        console.log('Applied queued head sensor data after model load')
+        this.pendingSensorData = null
+      }
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -234,10 +241,16 @@ export class GPSScene {
     this.exitEstimate = est
   }
 
+  private pendingSensorData: { data: HeadSensorPoint[]; offset: number } | null = null
+
   setHeadSensorData(data: HeadSensorPoint[], timeOffset = 0) {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
       this.headRenderer.setTimeOffset(timeOffset)
+    } else {
+      // Head renderer not loaded yet (GLB still loading) — queue for later
+      this.pendingSensorData = { data, offset: timeOffset }
+      console.log('Head sensor data queued (waiting for model load)')
     }
   }
 
@@ -475,4 +488,23 @@ export class GPSScene {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
   }
+
+  // ── Camera accessors for keyframe system ──
+
+  getCameraPosition(): THREE.Vector3 { return this.camera.position.clone() }
+  getCameraZoom(): number { return this.camera.zoom }
+
+  setCameraState(position: THREE.Vector3, zoom: number) {
+    // Temporarily disable damping to prevent momentum carry-over
+    this.controls.enableDamping = false
+    this.camera.position.copy(position)
+    this.camera.zoom = zoom
+    this.camera.updateProjectionMatrix()
+    // Force OrbitControls to adopt new position as rest state
+    this.controls.update()
+    this.controls.enableDamping = true
+  }
+
+  releaseKeyframeOverride() { /* no-op — controls always active */ }
 }
+
