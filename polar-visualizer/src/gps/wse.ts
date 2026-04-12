@@ -127,8 +127,8 @@ export function matchAOABinarySearch(
   observedCL: number,
   observedCD: number,
   evaluate: PolarEvaluator,
-  alphaMin = -5,
-  alphaMax = 30,
+  alphaMin = -3,
+  alphaMax = 50,
   tol = 0.03,
   maxIter = 20,
 ): { alpha_deg: number; residual: number } {

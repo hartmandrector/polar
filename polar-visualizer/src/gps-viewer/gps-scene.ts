@@ -120,6 +120,7 @@ export class GPSScene {
     // Aero overlay (attached to scene root, not worldGroup — stays at vehicle)
     this.aeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
+    this.canopyAeroOverlay.canopyMode = true
 
     // Euler angle axis helper (φ/θ/ψ)
     this.eulerAxis = new EulerAxisHelper()
@@ -506,5 +507,10 @@ export class GPSScene {
   }
 
   releaseKeyframeOverride() { /* no-op — controls always active */ }
+
+  setControlSolverEnabled(enabled: boolean) {
+    this.aeroOverlay.enableControlSolver = enabled
+    this.canopyAeroOverlay.enableControlSolver = enabled
+  }
 }
 

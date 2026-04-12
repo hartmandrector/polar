@@ -102,6 +102,7 @@ export class BodyFrameScene {
     this.aeroOverlay.bodyFrame = true
     this.canopyAeroOverlay = new GPSAeroOverlay(this.scene)
     this.canopyAeroOverlay.bodyFrame = true
+    this.canopyAeroOverlay.canopyMode = true
 
     // Body rate axis helper (p/q/r + gravity)
     this.bodyRateAxis = new BodyRateAxisHelper()
@@ -425,4 +426,9 @@ export class BodyFrameScene {
   }
 
   releaseKeyframeOverride() { /* no-op */ }
+
+  setControlSolverEnabled(enabled: boolean) {
+    this.aeroOverlay.enableControlSolver = enabled
+    this.canopyAeroOverlay.enableControlSolver = enabled
+  }
 }

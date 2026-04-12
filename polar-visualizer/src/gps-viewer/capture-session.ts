@@ -28,6 +28,9 @@ export interface CaptureSessionState {
   /** Show data overlays */
   displayOverlays: boolean
 
+  /** Show control solver output */
+  controlSolver: boolean
+
   /** Axis helpers mode: 'none' | 'frame' | 'all' */
   axisHelpers: string
 
