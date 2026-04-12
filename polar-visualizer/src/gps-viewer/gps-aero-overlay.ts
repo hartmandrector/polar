@@ -22,7 +22,7 @@ import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
 import { CurvedArrow } from '../viewer/curved-arrow'
 import type { AxisMoments } from './moment-inset'
-import { solveControlInputs, type ControlInversionConfig, type ControlInversionResult } from './control-solver'
+import { solveControlInputs, solveCanopyControls, type ControlInversionConfig, type ControlInversionResult, type CanopyControlResult } from './control-solver'
 import type { InertiaComponents } from '../polar/inertia'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -92,6 +92,8 @@ export class GPSAeroOverlay {
 
   /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
   bodyFrame = false
+  /** When true, use canopy brake solver instead of wingsuit throttle solver */
+  canopyMode = false
 
   /** Last computed moment breakdown (for external consumers like MomentInset) */
   lastMoments: AxisMoments = {
@@ -104,8 +106,13 @@ export class GPSAeroOverlay {
   lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
   lastConverged = false
 
+  /** Per-segment results evaluated with solved controls (for CP-adjusted arrow positions) */
+  private controlledPerSegment: import('../polar/aero-segment').SegmentAeroResult[] | null = null
+  /** Last converged controlled per-segment (held through non-converged frames) */
+  private lastConvergedPerSegment: import('../polar/aero-segment').SegmentAeroResult[] | null = null
+
   /** Enable Pass 2 control inversion (requires inertia in config) */
-  enableControlSolver = true
+  enableControlSolver = false
 
   constructor(scene: THREE.Scene) {
     this.group = new THREE.Group()
@@ -248,11 +255,24 @@ export class GPSAeroOverlay {
         mass: cfg.mass,
         inertia: cfg.inertia,
         rho,
+        rollGain: this.canopyMode ? 1.0 : 2.0,
       }
-      const sol = solveControlInputs(pt, solverCfg)
-      this.lastMoments = sol.moments
-      this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
-      this.lastConverged = sol.converged
+
+      // Dispatch to wingsuit or canopy solver
+      let solvedControls: import('../polar/continuous-polar').SegmentControls
+      if (this.canopyMode) {
+        const sol = solveCanopyControls(pt, solverCfg)
+        this.lastMoments = sol.moments
+        this.lastControls = { pitch: (sol.brakeLeft + sol.brakeRight) / 2, roll: (sol.brakeRight - sol.brakeLeft) / 2, yaw: (sol.frontRiserLeft + sol.frontRiserRight) / 2 }
+        this.lastConverged = sol.converged
+        solvedControls = { ...defaultControls(), brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
+      } else {
+        const sol = solveControlInputs(pt, solverCfg)
+        this.lastMoments = sol.moments
+        this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
+        this.lastConverged = sol.converged
+        solvedControls = { ...defaultControls(), pitchThrottle: sol.pitchThrottle, rollThrottle: sol.rollThrottle, yawThrottle: sol.yawThrottle }
+      }
       solverActive = true
 
       // Restore segment state so next frame's neutral eval reads clean positions
@@ -260,6 +280,35 @@ export class GPSAeroOverlay {
         s.position.y = savedState[i].posY
         if (savedState[i].orientation) s.orientation = savedState[i].orientation
       })
+
+      // ── Pass 2b: Re-evaluate with solved controls for CP-adjusted arrow positions ──
+      // Snapshot again, evaluate with solved controls, extract CP positions, restore.
+      const savedState2 = cfg.segments.map(s => ({
+        posY: s.position.y,
+        orientation: s.orientation ? { ...s.orientation } : undefined,
+      }))
+      const controlledResult = evaluateAeroForcesDetailed(
+        cfg.segments, cfg.cgMeters, cfg.height,
+        bodyVel, omega, solvedControls, rho,
+      )
+      // Store controlled per-segment data for arrow positioning
+      this.controlledPerSegment = controlledResult.perSegment
+      // Cache on convergence; hold through non-converged frames
+      if (this.lastConverged) {
+        this.lastConvergedPerSegment = controlledResult.perSegment
+      }
+      cfg.segments.forEach((s, i) => {
+        s.position.y = savedState2[i].posY
+        if (savedState2[i].orientation) s.orientation = savedState2[i].orientation
+      })
+    } else {
+      this.controlledPerSegment = null
+    }
+
+    // For non-converged frames, fall back to last converged CP positions
+    // (avoids jerking arrows back to neutral for 1-2 frame gaps)
+    if (this.controlledPerSegment && !this.lastConverged && this.lastConvergedPerSegment) {
+      this.controlledPerSegment = this.lastConvergedPerSegment
     }
 
     // Body-to-world quaternion for rotating vectors into scene frame
@@ -294,10 +343,20 @@ export class GPSAeroOverlay {
       // Segment position in world space (body NED → Three.js → world)
       // During deployment, scale horizontal plane (X=chord, Y=span in NED) by deploy fraction
       const hScale = this.deployFraction
+      // Use CP offset for aerodynamic surfaces only (not pilot body segments
+      // where pitchOffset=90° maps the offset into vertical, pulling arrows to knees)
+      const isPilotBody = (seg.pitchOffset_deg ?? 0) > 45
+      const cpSrc = (this.controlledPerSegment?.[i]?.forces ?? ps.forces)
+      const cpFrac = isPilotBody ? 0.25 : (cpSrc.cp ?? 0.25)
+      // CP offset along chord in meters (same math as aero-segment.ts)
+      const basePitchRad = -(seg.pitchOffset_deg ?? 0) * Math.PI / 180
+      const cpOffsetM = -(cpFrac - 0.25) * seg.chord
+      const cpOffX = cpOffsetM * Math.cos(basePitchRad)
+      const cpOffZ = cpOffsetM * Math.sin(basePitchRad)
       const segPosNED = {
-        x: ps.positionMeters.x * hScale,
+        x: (ps.positionMeters.x + cpOffX) * hScale,
         y: ps.positionMeters.y * hScale,
-        z: ps.positionMeters.z,
+        z: ps.positionMeters.z + cpOffZ,
       }
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
 

@@ -525,7 +525,11 @@ function findTimeIndex(t: number): number {
 // ─── Moment Inset Update ────────────────────────────────────────────────────
 
 function updateMomentInset() {
-  if (!momentInset || !scene) return
+  if (!momentInset || !scene || !controlSolverToggle.checked) {
+    if (momentInset) momentInset.visible = false
+    return
+  }
+  momentInset.visible = true
   const s = scene.lastOverlayState
   // Use wingsuit overlay by default; canopy when wingsuit moments are empty
   if (s.moments) {
@@ -566,6 +570,14 @@ overlayToggle.addEventListener('change', () => {
     ;(el as HTMLElement).style.display = show ? '' : 'none'
   })
   readoutEl.style.display = show ? '' : 'none'
+})
+
+// ─── Control Solver toggle ──────────────────────────────────────────────────
+const controlSolverToggle = document.getElementById('control-solver-toggle') as HTMLInputElement
+controlSolverToggle.addEventListener('change', () => {
+  const enabled = controlSolverToggle.checked
+  scene?.setControlSolverEnabled(enabled)
+  bodyScene?.setControlSolverEnabled(enabled)
 })
 
 // ─── Axis helper mode ───────────────────────────────────────────────────────
@@ -656,11 +668,13 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">q̄</span><span class="value">${g.qbar.toFixed(0)} Pa</span></div>
     <div class="row"><span class="label">ρ</span><span class="value">${g.rho.toFixed(4)} kg/m³</span></div>
     <div class="row"><span class="label">AOA residual</span><span class="value">${a.aoaResidual.toFixed(4)}</span></div>
+    ${controlSolverToggle.checked ? `
     <div class="section">Control Solver</div>
     <div class="row"><span class="label">Converged</span><span class="value" style="color:${p.solvedControls?.converged ? '#44ff66' : '#ff4444'}">${p.solvedControls?.converged ? 'Yes' : 'No'}</span></div>
     <div class="row"><span class="label">Pitch</span><span class="value">${(p.solvedControls?.pitchThrottle ?? 0).toFixed(3)}</span></div>
     <div class="row"><span class="label">Roll</span><span class="value">${(p.solvedControls?.rollThrottle ?? 0).toFixed(3)}</span></div>
     <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>
+    ` : ''}
   `
 }
 
@@ -935,6 +949,7 @@ function buildCaptureSession(): CaptureSessionState | null {
     trimOffset: parseFloat(trimSlider.value) || 10,
     rollMethod: rollSelect.value,
     displayOverlays: overlayToggle.checked,
+    controlSolver: controlSolverToggle.checked,
     axisHelpers: axisHelperMode.value,
     keyframeEnabled: kfEnabled.checked,
     keyframes: JSON.parse(kfEditor.toJSON()),
@@ -1004,6 +1019,8 @@ async function applyCaptureSession(state: CaptureSessionState) {
   rollSelect.dispatchEvent(new Event('change'))
   overlayToggle.checked = state.displayOverlays
   overlayToggle.dispatchEvent(new Event('change'))
+  controlSolverToggle.checked = state.controlSolver ?? false
+  controlSolverToggle.dispatchEvent(new Event('change'))
   axisHelperMode.value = state.axisHelpers
   axisHelperMode.dispatchEvent(new Event('change'))
 
@@ -1067,6 +1084,12 @@ async function applyCaptureSession(state: CaptureSessionState) {
   if (overlays != null) {
     overlayToggle.checked = overlays !== '0' && overlays !== 'false'
     overlayToggle.dispatchEvent(new Event('change'))
+  }
+
+  const solver = urlParams.get('solver')
+  if (solver != null) {
+    controlSolverToggle.checked = solver !== '0' && solver !== 'false'
+    controlSolverToggle.dispatchEvent(new Event('change'))
   }
 
   const axis = urlParams.get('axis')

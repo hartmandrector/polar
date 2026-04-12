@@ -153,6 +153,7 @@ export class CaptureHandler {
     base.searchParams.set('trim', String(session.trimOffset))
     base.searchParams.set('roll', session.rollMethod)
     base.searchParams.set('overlays', session.displayOverlays ? '1' : '0')
+    base.searchParams.set('solver', session.controlSolver ? '1' : '0')
     base.searchParams.set('axis', session.axisHelpers)
     base.searchParams.set('kf', session.keyframeEnabled ? '1' : '0')
 
