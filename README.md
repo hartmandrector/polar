@@ -50,17 +50,21 @@ The dev server will open at `http://localhost:5173`.
 
 ## How It Works
 
-The entire system is built on two foundational pillars and a real-time simulation layer — if you understand these, every design decision in the project makes sense:
+The entire system is built on two mathematical foundations — if you understand these, every design decision in the project makes sense:
 
 - **[Aerodynamic Model](docs/aero-model-overview.md)** — Kirchhoff separation theory blends attached-flow and flat-plate aerodynamics through a smooth sigmoid, giving every segment physically motivated coefficients at any orientation. [Full spec →](docs/KIRCHHOFF.md)
 
 - **[Reference Frames](docs/frames-overview.md)** — Five coordinate frames (inertial, body, wind, Three.js, GLB) connected by explicit transforms. The rotating-frame derivative produces Coriolis and gyroscopic terms; per-segment ω×r correction generates automatic rate damping. [Full spec →](docs/FRAMES.md)
+
+The real-time simulation extends these foundations forward — composing forces, frames, and equations of motion into a flyable 6DOF world. The GPS flight viewer works in the opposite direction — decomposing real flight data back through the same math to recover what the aerodynamics were doing.
 
 - **[Real-Time Simulation](docs/sim/sim-overview.md)** — 6DOF rigid-body physics at 200Hz with Xbox gamepad control. Vehicle-aware mappings auto-select canopy (brakes/risers) or wingsuit (pitch/roll/yaw) inputs. Full wingsuit-to-canopy deployment sequence: pilot chute toss → bridle tension chain → canopy bag tumbling → line stretch → instant canopy handoff with GLB preloading. Live force vectors and per-segment debug tuning during flight. [Status →](docs/sim/STATUS.md)
 
 ![Orbit camera during wingsuit sim flight](polar-visualizer/docs/gifs/sim-orbit-camera.gif)
 
 <p align="center"><img src="polar-visualizer/docs/gifs/bridal-body-frame.gif" width="720" alt="Bridle chain simulation in vehicle body frame" /></p>
+
+- **[GPS Flight Viewer](docs/GPS-VIEWER.md)** — Post-flight analysis of FlySight GPS data with real-time aerodynamic overlay, control inversion solver, head sensor fusion, and automated PNG capture for video production.
 
 ---
 
