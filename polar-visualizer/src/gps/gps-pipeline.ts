@@ -244,6 +244,12 @@ export function processGNSSData(
       thetaDot: thetaDots[i] * R2D,
       psiDot: psiDots[i] * R2D,
     };
+    // Write SG-smoothed unwrapped angles back so downstream consumers
+    // (renderer, force arrows, fixed orientations) see continuous angles
+    // instead of ±π-wrapped raw values.
+    results[i].aero.roll = smoothPhi[i];
+    results[i].aero.theta = smoothTheta[i];
+    results[i].aero.psi = smoothPsi[i];
   }
 
   // ---- Step 7: LS angular acceleration from body rates (no additional smoothing) ----

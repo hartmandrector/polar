@@ -45,7 +45,7 @@ where $k_L$ and $k_D$ are the lift and drag load factors from the acceleration d
 
 4. **AOA matching.** The observed CL is matched against the segment model via binary search (`matchAOABinarySearch` in `wse.ts`). The search evaluates the full segment model at candidate α values until the predicted CL matches the observed CL within tolerance. Search range: −3° to 50° (covers full flight envelope including flare).
 
-5. **Canopy state estimation.** For canopy flight phases, the estimator computes roll method (transversal vs coordinated turn), brake state, and blended roll transitions at deployment boundaries.
+5. **Canopy state estimation.** For canopy flight phases, the estimator computes roll method (transversal vs coordinated turn — see [Paraglider Roll](PARAGLIDER-ROLL.md)), brake state, and blended roll transitions at deployment boundaries.
 
 ### Pipeline Output
 
@@ -178,6 +178,8 @@ The capture system serializes the complete viewer state into URL parameters for 
 When a track path is provided via URL, the viewer tries to auto-detect the fused sensor CSV in the same folder, checking `SENSOR_fused_fusion.csv`, `fused.csv`, `sensor_fused.csv` in order. A HEAD request with content-type check guards against Vite's SPA fallback returning HTML for missing files.
 
 ## Roll Methods
+
+The roll estimation problem for paragliders and parachutes is non-trivial — the pilot hangs below the wing on long lines, so "roll" isn't directly observable from GPS velocity alone. The full derivation of the transversal and coordinated turn models, including the force decomposition geometry, is in **[Paraglider Roll](PARAGLIDER-ROLL.md)**.
 
 The canopy estimator supports four roll methods:
 
