@@ -327,12 +327,18 @@ export class GPSScene {
 
     if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
       // Exit transition: lerp from standing to flying pose (overrides ground mode)
+      // Standing: roll=0, pitch=90° (on feet), heading = heading at flyingIndex (stable)
+      // Flying: actual aero angles at flyingIndex
       const ex = this.exitEstimate
       const range = ex.flyingIndex - ex.pushOffIndex
       const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
-      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
-      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
-      standingQuat.slerp(flyingQuat, t)
+      const s = t * t * (3 - 2 * t) // smoothstep
+
+      const flyPt = this.data![Math.min(ex.flyingIndex, this.data!.length - 1)]
+      const flyingHeading = flyPt.aero.psi
+      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, flyingHeading)
+      const flyingQuat = bodyToInertialQuat(flyPt.aero.roll, flyPt.aero.theta, flyingHeading)
+      standingQuat.slerp(flyingQuat, s)
       this.model.quaternion.copy(standingQuat)
     } else if (isGround && hasSensor) {
       // Ground mode with sensor data: stand upright, heading from head sensor
@@ -340,9 +346,12 @@ export class GPSScene {
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
     } else if (isGround) {
-      // Ground mode without sensor: stand upright, heading from GPS track
+      // Ground mode without sensor: stand upright, heading from flying index (stable)
       const standingPitch = Math.PI / 2
-      this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, pt.aero.psi))
+      const groundHeading = this.exitEstimate
+        ? this.data![Math.min(this.exitEstimate.flyingIndex, this.data!.length - 1)].aero.psi
+        : pt.aero.psi
+      this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, groundHeading))
     } else if (isPreLineStretch || (isPostLineStretch && !isFullFlight)) {
       // Deployment transition: slerp from wingsuit pose at PC toss → canopy hang
       // Spans from pcTossIndex through lineStretch + TRANSITION_TAIL seconds

@@ -132,6 +132,33 @@ export interface GPSPipelinePoint {
   bodyRates?: BodyRates;
   /** Solved pilot control inputs from control inversion (Pass 2) */
   solvedControls?: SolvedControls;
+  /**
+   * Phase-corrected orientation and derived rates.
+   * Populated by fixOrientations() after exit/deploy detection.
+   * Ground/exit/deployment phases get patched angles; freefall/canopy
+   * pass through from aero extraction. Rates and accelerations are
+   * re-derived from the fixed angle series.
+   */
+  fixed?: FixedOrientation;
+}
+
+/**
+ * Phase-corrected Euler angles with re-derived body rates and accelerations.
+ * These represent the "true" vehicle orientation after patching known-bad
+ * phases (ground, exit, deployment transitions).
+ */
+export interface FixedOrientation {
+  roll: number;            // radians — corrected bank angle
+  theta: number;           // radians — corrected pitch
+  psi: number;             // radians — corrected heading
+  /** Body-axis angular rates re-derived from fixed angles [deg/s] */
+  p: number;
+  q: number;
+  r: number;
+  /** Angular accelerations re-derived from fixed rates [deg/s²] */
+  pDot: number;
+  qDot: number;
+  rDot: number;
 }
 
 /** Flight mode output attached to each pipeline point */

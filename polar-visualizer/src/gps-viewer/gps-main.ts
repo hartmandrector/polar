@@ -22,6 +22,7 @@ import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
+import { fixOrientations } from './fix-orientations'
 import { KeyframeEditor } from './keyframe-editor'
 import type { CaptureSessionState } from './capture-session'
 
@@ -83,6 +84,15 @@ function recalcCanopy() {
   scene.setDeployTimeline(deployTimeline)
   bodyScene.setDeployTimeline(deployTimeline)
   currentDeployTimeline = deployTimeline
+
+  // Re-fix orientations with updated canopy states
+  const exitEstimate = detectExit(result.points)
+  fixOrientations(result.points, {
+    exitEstimate,
+    deployTimeline,
+    canopyStates,
+    accelWindowSize: 21,
+  })
 }
 
 trimSlider.addEventListener('input', () => {
@@ -361,6 +371,15 @@ async function loadFile(file: File) {
   }
   scene.setExitEstimate(exitEstimate)
   bodyScene.setExitEstimate(exitEstimate)
+
+  // ── Fix orientations (phase-corrected angles → re-derived rates & accelerations) ──
+  fixOrientations(result.points, {
+    exitEstimate,
+    deployTimeline,
+    canopyStates,
+    accelWindowSize: 21,  // matches pipeline DEFAULT_CONFIG.accelWindowSize
+  })
+  console.log(`Fixed orientations: ${result.points.filter(p => p.fixed).length}/${result.points.length} points`)
 
   // Initialize replay
   if (!replay) {

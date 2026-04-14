@@ -32,9 +32,7 @@ const FORCE_SCALE = 0.003
 /** Velocity arrow scale: m/s → scene meters */
 const VEL_SCALE = 0.08
 /** Moment arc scale: N·m → radians of arc sweep (matches main viewer) */
-const TORQUE_SCALE = 0.002
-/** Body rate arc scale: rad/s → arc sweep radians (matches main viewer) */
-const RATE_SCALE = 0.6
+const TORQUE_SCALE = 0.002  // (reserved for future torque decomposition)
 /** Minimum arrow length to render (avoids clutter) */
 const MIN_ARROW = 0.02
 
@@ -43,13 +41,13 @@ const COL_LIFT  = 0x00ff88
 const COL_DRAG  = 0xff4444
 const COL_SIDE  = 0xffff44
 const COL_VEL   = 0x44aaff
-const COL_MX    = 0xff6644  // roll moment
-const COL_MY    = 0x44ff66  // pitch moment
-const COL_MZ    = 0x6644ff  // yaw moment
-// Rate arc colors — paler versions of moment colors (matches main viewer)
-const COL_RATE_P = 0xffbb88  // pitch rate (pale orange)
-const COL_RATE_Y = 0x88ffbb  // yaw rate (pale green)
-const COL_RATE_R = 0xbb88ff  // roll rate (pale purple)
+const COL_MX    = 0xff6644  // roll — angular velocity (outer)
+const COL_MY    = 0x44ff66  // pitch — angular velocity (outer)
+const COL_MZ    = 0x6644ff  // yaw — angular velocity (outer)
+// Angular acceleration arc colors — paler versions (inner arcs)
+const COL_ACCEL_P = 0xffbb88  // roll accel (pale orange)
+const COL_ACCEL_Q = 0x88ffbb  // pitch accel (pale green)
+const COL_ACCEL_R = 0xbb88ff  // yaw accel (pale purple)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -139,14 +137,15 @@ export class GPSAeroOverlay {
     this.momentGroup.name = 'moment-arcs'
     this.group.add(this.momentGroup)
 
-    this.pitchArc = new CurvedArrow('x', COL_MY, 'gps-pitch-moment', { radius: 1.2 })
-    this.yawArc   = new CurvedArrow('y', COL_MZ, 'gps-yaw-moment',   { radius: 1.2 })
-    this.rollArc  = new CurvedArrow('z', COL_MX, 'gps-roll-moment',  { radius: 1.2 })
+    // Angular velocity arcs (outer, r=1.2) — what the body is doing rotationally
+    this.pitchArc = new CurvedArrow('x', COL_MY, 'gps-pitch-omega', { radius: 1.2 })
+    this.yawArc   = new CurvedArrow('y', COL_MZ, 'gps-yaw-omega',   { radius: 1.2 })
+    this.rollArc  = new CurvedArrow('z', COL_MX, 'gps-roll-omega',  { radius: 1.2 })
 
-    // Rate arcs — pale colours, slightly larger radius so they don't overlap moment arcs
-    this.pitchRateArc = new CurvedArrow('x', COL_RATE_P, 'gps-pitch-rate', { radius: 1.4 })
-    this.yawRateArc   = new CurvedArrow('y', COL_RATE_Y, 'gps-yaw-rate',   { radius: 1.4 })
-    this.rollRateArc  = new CurvedArrow('z', COL_RATE_R, 'gps-roll-rate',  { radius: 1.4 })
+    // Angular acceleration arcs (inner, r=0.9) — derivative of body rates (ṗ, q̇, ṙ)
+    this.pitchRateArc = new CurvedArrow('x', COL_ACCEL_Q, 'gps-pitch-accel', { radius: 0.9 })
+    this.yawRateArc   = new CurvedArrow('y', COL_ACCEL_R, 'gps-yaw-accel',   { radius: 0.9 })
+    this.rollRateArc  = new CurvedArrow('z', COL_ACCEL_P, 'gps-roll-accel',  { radius: 0.9 })
 
     this.momentGroup.add(
       this.pitchArc, this.yawArc, this.rollArc,
@@ -433,36 +432,44 @@ export class GPSAeroOverlay {
       this.accelBall.visible = false
     }
 
-    // Moment arcs (roll, pitch, yaw) — CurvedArrow at CG, rotated into body frame
+    // Angular velocity arcs (outer) — ω = (p, q, r) from fixed orientation pass
     // Sign conventions match main viewer (vectors.ts): pitch/yaw negated, roll positive
-    const sysMoment = result.system.moment
-    const pitchArcVal = -sysMoment.y * TORQUE_SCALE
-    const yawArcVal   = -sysMoment.z * TORQUE_SCALE
-    const rollArcVal  =  sysMoment.x * TORQUE_SCALE
+    // Scale: 120 deg/s fills 3/4 circle (CurvedArrow max = 1.5π)
+    const RATE_DEG_SCALE = 1.5 * Math.PI / 120  // ≈ 0.0393 rad per deg/s
+    const pSrc = pt.fixed?.p ?? (pt.bodyRates?.p ?? 0)
+    const qSrc = pt.fixed?.q ?? (pt.bodyRates?.q ?? 0)
+    const rSrc = pt.fixed?.r ?? (pt.bodyRates?.r ?? 0)
+    const pArc =  pSrc * RATE_DEG_SCALE
+    const qArc = -qSrc * RATE_DEG_SCALE
+    const rArc = -rSrc * RATE_DEG_SCALE
 
-    this.pitchArc.setAngle(pitchArcVal)
-    this.pitchArc.visible = Math.abs(pitchArcVal) > 0.005
+    this.pitchArc.setAngle(qArc)
+    this.pitchArc.visible = Math.abs(qArc) > 0.005
 
-    this.yawArc.setAngle(yawArcVal)
-    this.yawArc.visible = Math.abs(yawArcVal) > 0.005
+    this.yawArc.setAngle(rArc)
+    this.yawArc.visible = Math.abs(rArc) > 0.005
 
-    this.rollArc.setAngle(rollArcVal)
-    this.rollArc.visible = Math.abs(rollArcVal) > 0.005
+    this.rollArc.setAngle(pArc)
+    this.rollArc.visible = Math.abs(pArc) > 0.005
 
-    // Body rate arcs (angular velocity — what the wingsuit is actually doing)
-    // Sign conventions match main viewer (vectors.ts): pitch/yaw negated, roll positive
-    const pArc =  omega.p * RATE_SCALE
-    const qArc = -omega.q * RATE_SCALE
-    const rArc = -omega.r * RATE_SCALE
+    // Angular acceleration arcs (inner) — ω̇ = (ṗ, q̇, ṙ) from fixed orientation pass
+    // Scale: 200 deg/s² fills 3/4 circle
+    const ACCEL_DEG_SCALE = 1.5 * Math.PI / 200  // ≈ 0.0236 rad per deg/s²
+    const pDotSrc = pt.fixed?.pDot ?? pt.bodyRates?.pDot ?? 0
+    const qDotSrc = pt.fixed?.qDot ?? pt.bodyRates?.qDot ?? 0
+    const rDotSrc = pt.fixed?.rDot ?? pt.bodyRates?.rDot ?? 0
+    const pDotArc =  pDotSrc * ACCEL_DEG_SCALE
+    const qDotArc = -qDotSrc * ACCEL_DEG_SCALE
+    const rDotArc = -rDotSrc * ACCEL_DEG_SCALE
 
-    this.pitchRateArc.setAngle(qArc)
-    this.pitchRateArc.visible = Math.abs(qArc) > 0.01
+    this.pitchRateArc.setAngle(qDotArc)
+    this.pitchRateArc.visible = Math.abs(qDotArc) > 0.005
 
-    this.yawRateArc.setAngle(rArc)
-    this.yawRateArc.visible = Math.abs(rArc) > 0.01
+    this.yawRateArc.setAngle(rDotArc)
+    this.yawRateArc.visible = Math.abs(rDotArc) > 0.005
 
-    this.rollRateArc.setAngle(pArc)
-    this.rollRateArc.visible = Math.abs(pArc) > 0.01
+    this.rollRateArc.setAngle(pDotArc)
+    this.rollRateArc.visible = Math.abs(pDotArc) > 0.005
 
     // Position moment group at CG and rotate to body orientation
     this.momentGroup.position.copy(cgWorld)

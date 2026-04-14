@@ -280,16 +280,24 @@ export class BodyFrameScene {
     const isGround = mode === 1
     if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
       // Exit transition: lerp from standing to flying pose (overrides ground mode)
+      // Standing: roll=0, pitch=90°, heading from flyingIndex (stable)
       const ex = this.exitEstimate
       const range = ex.flyingIndex - ex.pushOffIndex
       const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
-      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
-      const flyingQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
-      standingQuat.slerp(flyingQuat, t)
+      const s = t * t * (3 - 2 * t) // smoothstep
+
+      const flyPt = this.data![Math.min(ex.flyingIndex, this.data!.length - 1)]
+      const flyingHeading = flyPt.aero.psi
+      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, flyingHeading)
+      const flyingQuat = bodyToInertialQuat(flyPt.aero.roll, flyPt.aero.theta, flyingHeading)
+      standingQuat.slerp(flyingQuat, s)
       bodyQuat = standingQuat
     } else if (isGround) {
-      // Ground mode: stand upright
-      bodyQuat = bodyToInertialQuat(0, Math.PI / 2, pt.aero.psi)
+      // Ground mode: stand upright, heading from flying index (stable)
+      const groundHeading = this.exitEstimate
+        ? this.data![Math.min(this.exitEstimate.flyingIndex, this.data!.length - 1)].aero.psi
+        : pt.aero.psi
+      bodyQuat = bodyToInertialQuat(0, Math.PI / 2, groundHeading)
     } else if (isPreLineStretch) {
       // Blend roll toward zero by line stretch
       let roll = pt.aero.roll
