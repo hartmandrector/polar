@@ -130,6 +130,8 @@ export interface GPSPipelinePoint {
   flightMode?: FlightModeOutput;
   /** Body-axis angular rates from Euler angle differentiation */
   bodyRates?: BodyRates;
+  /** Original body rates before fixed-orientation writeback (preserved for comparison) */
+  rawBodyRates?: BodyRates;
   /** Solved pilot control inputs from control inversion (Pass 2) */
   solvedControls?: SolvedControls;
   /**

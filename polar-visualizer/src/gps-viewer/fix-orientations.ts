@@ -75,6 +75,15 @@ export function fixOrientations(
     frozenPsi = pcPt.aero.psi
   }
 
+  /** Shortest-path angular interpolation: lerp through the nearest route */
+  function angleLerp(from: number, to: number, s: number): number {
+    let diff = to - from
+    // Normalize diff to [-π, π]
+    while (diff > Math.PI) diff -= 2 * Math.PI
+    while (diff < -Math.PI) diff += 2 * Math.PI
+    return from + diff * s
+  }
+
   for (let i = 0; i < points.length; i++) {
     const pt = points[i]
     const mode = pt.flightMode?.mode ?? 0
@@ -95,9 +104,9 @@ export function fixOrientations(
       const range = exitEstimate.flyingIndex - exitEstimate.pushOffIndex
       const t = range > 0 ? (i - exitEstimate.pushOffIndex) / range : 1
       const s = t * t * (3 - 2 * t)
-      roll = flyingRoll * s          // 0 → flying roll
-      theta = Math.PI / 2 + (flyingTheta - Math.PI / 2) * s  // π/2 → flying theta
-      psi = flyingHeading             // stable heading throughout
+      roll = angleLerp(0, flyingRoll, s)
+      theta = angleLerp(Math.PI / 2, flyingTheta, s)
+      psi = flyingHeading
     } else if (isGround) {
       // Ground: standing upright, stable heading
       roll = 0
@@ -116,12 +125,12 @@ export function fixOrientations(
       // Target: canopy state if available, else frozen heading with standing pitch
       const cs = canopyStates[i]
       if (cs && cs.valid) {
-        roll = frozenRoll + (cs.phi - frozenRoll) * s
-        theta = frozenTheta + (cs.theta - frozenTheta) * s
-        psi = frozenPsi + (cs.psi - frozenPsi) * s
+        roll = angleLerp(frozenRoll, cs.phi, s)
+        theta = angleLerp(frozenTheta, cs.theta, s)
+        psi = angleLerp(frozenPsi, cs.psi, s)
       } else {
-        roll = frozenRoll * (1 - s)
-        theta = frozenTheta + (Math.PI / 2 - frozenTheta) * s
+        roll = angleLerp(frozenRoll, 0, s)
+        theta = angleLerp(frozenTheta, Math.PI / 2, s)
         psi = frozenPsi
       }
     } else if (mode >= 5 && mode <= 7) {
