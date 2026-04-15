@@ -23,6 +23,7 @@ import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
 import { fixOrientations } from './fix-orientations'
+import { defaultControls } from '../polar/aero-segment'
 import type { GPSPipelinePoint } from '../gps/types'
 
 /** Write fixed orientation rates back into bodyRates (preserving raw in rawBodyRates) */
@@ -284,6 +285,9 @@ async function loadFile(file: File) {
     rho: 1.225,
     inertia: canopyInertia,
   })
+
+  // Set canopy polar for chart swept curve
+  charts.setCanopyPolar(canopyPolar.aeroSegments ?? [], canopyPolar, canopyMassRef)
 
   // Batch-solve control inputs for all points (Pass 2)
   const solverCfg: ControlInversionConfig = {
@@ -590,19 +594,17 @@ function updateMomentInset() {
 /** Push solved controls to chart swept polar (updates every frame) */
 function updateChartPolar() {
   if (!charts) return
-  if (!scene || !controlSolverToggle.checked) {
-    // Solver off — still need to rebuild chart1 for trail updates
-    charts.refreshChart1()
-    return
+  const idx = parseInt(scrubber.value) || 0
+  if (scene && controlSolverToggle.checked) {
+    const s = scene.lastOverlayState
+    const controls = s.solvedSegmentControls ?? s.canopySolvedSegmentControls
+    if (controls) {
+      charts.setSolvedControls(controls, idx)
+      return
+    }
   }
-  const s = scene.lastOverlayState
-  const controls = s.solvedSegmentControls ?? s.canopySolvedSegmentControls
-  if (controls) {
-    const idx = parseInt(scrubber.value) || 0
-    charts.setSolvedControls(controls, idx)
-  } else {
-    charts.refreshChart1()
-  }
+  // Solver off or no controls — still need to sweep with correct polar for flight phase
+  charts.setSolvedControls(defaultControls(), idx)
 }
 
 function updateLegends(index: number) {
