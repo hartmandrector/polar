@@ -67,9 +67,11 @@ export class GPSScene {
       moments: this.aeroOverlay.lastMoments,
       controls: this.aeroOverlay.lastControls,
       converged: this.aeroOverlay.lastConverged,
+      solvedSegmentControls: this.aeroOverlay.lastSolvedSegmentControls,
       canopyMoments: this.canopyAeroOverlay.lastMoments,
       canopyControls: this.canopyAeroOverlay.lastControls,
       canopyConverged: this.canopyAeroOverlay.lastConverged,
+      canopySolvedSegmentControls: this.canopyAeroOverlay.lastSolvedSegmentControls,
     }
   }
 

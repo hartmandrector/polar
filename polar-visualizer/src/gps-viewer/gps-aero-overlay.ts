@@ -104,6 +104,9 @@ export class GPSAeroOverlay {
   lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
   lastConverged = false
 
+  /** Full SegmentControls from last solver pass (for polar sweep) */
+  lastSolvedSegmentControls: SegmentControls = defaultControls()
+
   /** Per-segment results evaluated with solved controls (for CP-adjusted arrow positions) */
   private controlledPerSegment: import('../polar/aero-segment').SegmentAeroResult[] | null = null
   /** Last converged controlled per-segment (held through non-converged frames) */
@@ -272,6 +275,7 @@ export class GPSAeroOverlay {
         this.lastConverged = sol.converged
         solvedControls = { ...defaultControls(), pitchThrottle: sol.pitchThrottle, rollThrottle: sol.rollThrottle, yawThrottle: sol.yawThrottle }
       }
+      this.lastSolvedSegmentControls = solvedControls
       solverActive = true
 
       // Restore segment state so next frame's neutral eval reads clean positions
@@ -486,6 +490,7 @@ export class GPSAeroOverlay {
         yaw:   { aero: mz, pilot: 0, gyro: 0, net: mz },
       }
       this.lastControls = { pitch: 0, roll: 0, yaw: 0 }
+      this.lastSolvedSegmentControls = defaultControls()
       this.lastConverged = true
     }
   }

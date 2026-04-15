@@ -23,6 +23,27 @@ import { detectDeployment } from './deploy-detector'
 import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
 import { fixOrientations } from './fix-orientations'
+import type { GPSPipelinePoint } from '../gps/types'
+
+/** Write fixed orientation rates back into bodyRates (preserving raw in rawBodyRates) */
+function writebackFixedRates(points: GPSPipelinePoint[]) {
+  for (const pt of points) {
+    if (!pt.fixed || !pt.bodyRates) continue
+    // Preserve original
+    pt.rawBodyRates = { ...pt.bodyRates }
+    // Write fixed rates into bodyRates so all downstream consumers use them
+    pt.bodyRates.p = pt.fixed.p
+    pt.bodyRates.q = pt.fixed.q
+    pt.bodyRates.r = pt.fixed.r
+    if (pt.fixed.pDot !== undefined) pt.bodyRates.pDot = pt.fixed.pDot
+    if (pt.fixed.qDot !== undefined) pt.bodyRates.qDot = pt.fixed.qDot
+    if (pt.fixed.rDot !== undefined) pt.bodyRates.rDot = pt.fixed.rDot
+    // Write phase-corrected angles back to aero
+    pt.aero.roll = pt.fixed.roll
+    pt.aero.theta = pt.fixed.theta
+    pt.aero.psi = pt.fixed.psi
+  }
+}
 import { KeyframeEditor } from './keyframe-editor'
 import type { CaptureSessionState } from './capture-session'
 
@@ -93,6 +114,7 @@ function recalcCanopy() {
     canopyStates,
     accelWindowSize: 21,
   })
+  writebackFixedRates(result.points)
 }
 
 trimSlider.addEventListener('input', () => {
@@ -183,6 +205,10 @@ async function loadFile(file: File) {
     charts = new GPSCharts()
   }
   charts.setData(result.points)
+
+  // Set vehicle polar for swept curve on charts
+  const polarForCharts = a5segmentsContinuous
+  charts.setPolar(polarForCharts.aeroSegments ?? [], polarForCharts, 1.875)
 
   // Initialize 3D scene
   if (!scene) {
@@ -379,16 +405,18 @@ async function loadFile(file: File) {
     canopyStates,
     accelWindowSize: 21,  // matches pipeline DEFAULT_CONFIG.accelWindowSize
   })
+  writebackFixedRates(result.points)
   console.log(`Fixed orientations: ${result.points.filter(p => p.fixed).length}/${result.points.length} points`)
 
   // Initialize replay
   if (!replay) {
     replay = new GPSReplay(result.points, (index, t, fraction) => {
-      charts?.setCursor(index)
       scene?.setIndex(index, fraction)
       bodyScene?.setIndex(index, fraction)
+      charts?.setCursor(index)
       updateReadout(index)
       updateMomentInset()
+      updateChartPolar()
       updateLegends(index)
       updateTransport(t, dur)
       applyKeyframeCameras(t)
@@ -416,6 +444,7 @@ async function loadFile(file: File) {
         bodyScene?.setIndex(index, fraction)
         updateReadout(index)
         updateMomentInset()
+        updateChartPolar()
         updateLegends(index)
         // Apply keyframe cameras for capture
         if (result) {
@@ -490,13 +519,13 @@ scrubber.addEventListener('input', () => {
   if (!replay || !result) return
   const idx = parseInt(scrubber.value)
   replay.seekIndex(idx)
-  charts?.setCursor(idx)
   scene?.setIndex(idx)
   bodyScene?.setIndex(idx)
+  charts?.setCursor(idx)
   updateReadout(idx)
   updateMomentInset()
+  updateChartPolar()
   updateLegends(idx)
-  updateReadout(idx)
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
   applyKeyframeCameras(t)
@@ -555,6 +584,24 @@ function updateMomentInset() {
     momentInset.update(s.moments, s.controls, s.converged)
   } else if (s.canopyMoments) {
     momentInset.update(s.canopyMoments, s.canopyControls, s.canopyConverged)
+  }
+}
+
+/** Push solved controls to chart swept polar (updates every frame) */
+function updateChartPolar() {
+  if (!charts) return
+  if (!scene || !controlSolverToggle.checked) {
+    // Solver off — still need to rebuild chart1 for trail updates
+    charts.refreshChart1()
+    return
+  }
+  const s = scene.lastOverlayState
+  const controls = s.solvedSegmentControls ?? s.canopySolvedSegmentControls
+  if (controls) {
+    const idx = parseInt(scrubber.value) || 0
+    charts.setSolvedControls(controls, idx)
+  } else {
+    charts.refreshChart1()
   }
 }
 
