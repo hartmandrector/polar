@@ -74,8 +74,13 @@ export class GPSCharts {
   private polarSegments: AeroSegment[] | null = null
   private polar: ContinuousPolar | null = null
   private massReference = 1.875
+  private canopyPolarSegments: AeroSegment[] | null = null
+  private canopyPolar: ContinuousPolar | null = null
+  private canopyMassReference = 1.875
   private solvedControls: SegmentControls = defaultControls()
   private lastSweep: PolarPoint[] = []
+  /** True when chart is showing canopy polar (for label/color hints) */
+  private sweepIsCanopy = false
 
   /** Sweep config — 1° steps, flight-relevant range (α ≥ 0 keeps sustained speeds positive) */
   private static readonly SWEEP_CFG: Partial<SweepConfig> = {
@@ -133,22 +138,37 @@ export class GPSCharts {
     this.rebuildChart1()
   }
 
+  /** Set the canopy polar model for swept curve during canopy phases */
+  setCanopyPolar(segments: AeroSegment[], polar: ContinuousPolar, massReference: number) {
+    this.canopyPolarSegments = segments
+    this.canopyPolar = polar
+    this.canopyMassReference = massReference
+  }
+
   /** Update the swept polar curve with new solved controls + current flight state */
   setSolvedControls(controls: SegmentControls, pointIndex?: number) {
     this.solvedControls = controls
-    // Extract per-point flight state for the sweep (rho from altitude, airspeed)
     const pt = pointIndex != null ? this.data[pointIndex] : this.data[this.cursorIdx]
     const rho = pt?.processed?.rho ?? 1.095
     const airspeed = pt?.processed?.airspeed ?? 45
-    this.runSweep(controls, { rho, airspeed })
-    // Note: rebuildChart1 is called by setCursor → updateCursors, which runs
-    // before this in the frame callback. So we need to rebuild here to show
-    // the updated sweep. But if called in same frame as setCursor, we accept
-    // the double rebuild — it's a chart destroy+create, not a DOM layout.
+    const mode = pt?.flightMode?.mode ?? 0
+    const isCanopy = mode >= 5 && mode <= 7
+    this.sweepIsCanopy = isCanopy
+
+    // Pick active polar based on flight phase
+    const segs = isCanopy ? this.canopyPolarSegments : this.polarSegments
+    const pol = isCanopy ? this.canopyPolar : this.polar
+    const mRef = isCanopy ? this.canopyMassReference : this.massReference
+
+    if (!segs || !pol) { this.lastSweep = []; this.rebuildChart1(); return }
+    this.lastSweep = sweepSegments(segs, pol, mRef, controls, {
+      ...GPSCharts.SWEEP_CFG,
+      rho, airspeed,
+    })
     this.rebuildChart1()
   }
 
-  /** Run the segment sweep and cache results */
+  /** Run the segment sweep and cache results (wingsuit polar) */
   private runSweep(controls: SegmentControls, overrides?: Partial<SweepConfig>) {
     if (!this.polarSegments || !this.polar) { this.lastSweep = []; return }
     this.lastSweep = sweepSegments(
@@ -310,14 +330,19 @@ export class GPSCharts {
     const xReverse = view === 'polar'
     const yReverse = view === 'speed'
 
+    // Auto-zoom for canopy mode (smaller speed/force envelope)
+    const canopyZoom = this.sweepIsCanopy && (view === 'speed' || view === 'polar')
+    const xMax = canopyZoom ? (view === 'speed' ? 30 : 0.6) : undefined
+    const yMax = canopyZoom ? (view === 'speed' ? 20 : 1.5) : undefined
+
     this.chart1 = new Chart(ctx, {
       type: 'scatter',
       data: { datasets },
       options: {
         ...CHART_OPTS,
         scales: {
-          x: { ...CHART_OPTS.scales.x, reverse: xReverse, title: { display: true, text: xLabel, color: COL_TICK } },
-          y: { ...CHART_OPTS.scales.y, reverse: yReverse, title: { display: true, text: yLabel, color: COL_TICK } },
+          x: { ...CHART_OPTS.scales.x, reverse: xReverse, max: xMax, title: { display: true, text: xLabel, color: COL_TICK } },
+          y: { ...CHART_OPTS.scales.y, reverse: yReverse, max: yMax, title: { display: true, text: yLabel, color: COL_TICK } },
         },
       },
     })
