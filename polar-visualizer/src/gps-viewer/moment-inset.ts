@@ -7,11 +7,23 @@
  *   - Gyroscopic coupling — yellow
  *   - Net residual — white
  *
- * Overlaid legend with live numeric values.
- * Designed as a compact HUD inset on the main 3D scene.
+ * Supports multiple vehicle modes via pluggable legend formatters.
+ * Arc rendering is shared; only the legend (controls + labels) changes per mode.
  */
 
 import * as THREE from 'three'
+import type {
+  AxisMoments,
+  VehicleMode,
+  WingsuitControls,
+  CanopyControls,
+  MomentLegendFormatter,
+} from './moment-types'
+import { WingsuitLegendFormatter } from './moment-wingsuit'
+import { CanopyLegendFormatter } from './moment-canopy'
+
+// Re-export types so existing importers don't break
+export type { MomentBreakdown, AxisMoments } from './moment-types'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -37,7 +49,6 @@ const COLORS = {
 }
 
 // Axis orientations in the mini scene (fixed camera looking at origin)
-// We arrange pitch, roll, yaw as three separate "gauge" clusters
 const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
   pitch: new THREE.Vector3(1.5, 2.2, 0),
   roll:  new THREE.Vector3(-1.3, -1.5, 0),
@@ -46,28 +57,9 @@ const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
 
 // Arc plane normals for each axis (in mini-scene space)
 const AXIS_NORMALS: Record<string, THREE.Vector3> = {
-  pitch: new THREE.Vector3(0, 0, 1),   // arcs in XY plane
+  pitch: new THREE.Vector3(0, 0, 1),
   roll:  new THREE.Vector3(0, 0, 1),
   yaw:   new THREE.Vector3(0, 0, 1),
-}
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export interface MomentBreakdown {
-  /** Aerodynamic moment from segment model [N·m] */
-  aero: number
-  /** Pilot control input moment [N·m] (Pass 2 — 0 until solved) */
-  pilot: number
-  /** Gyroscopic coupling moment [N·m] */
-  gyro: number
-  /** Net / residual [N·m] */
-  net: number
-}
-
-export interface AxisMoments {
-  pitch: MomentBreakdown
-  roll: MomentBreakdown
-  yaw: MomentBreakdown
 }
 
 // ─── Arc Builder ────────────────────────────────────────────────────────────
@@ -80,12 +72,10 @@ function buildArc(
   color: number,
   maxMoment: number,
 ): THREE.Line {
-  // Arc angle proportional to moment, capped at full circle
   const fraction = Math.min(1, Math.abs(moment) / maxMoment)
-  const angle = fraction * Math.PI * 1.8  // max ~324°, leave gap for readability
+  const angle = fraction * Math.PI * 1.8
   const sign = moment >= 0 ? 1 : -1
 
-  // Build perpendicular basis vectors
   const perp1 = new THREE.Vector3()
   if (Math.abs(normal.y) < 0.9) perp1.crossVectors(normal, new THREE.Vector3(0, 1, 0)).normalize()
   else perp1.crossVectors(normal, new THREE.Vector3(1, 0, 0)).normalize()
@@ -104,7 +94,6 @@ function buildArc(
   const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 })
   const line = new THREE.Line(geo, mat)
 
-  // Add arrowhead at end
   if (pts.length >= 2 && angle > 0.1) {
     const tip = pts[pts.length - 1]
     const prev = pts[pts.length - 2]
@@ -145,18 +134,28 @@ export class MomentInset {
   // Axis labels (static meshes)
   private labels: THREE.Sprite[] = []
 
+  // Mode-specific legend formatter
+  private formatter: MomentLegendFormatter
+  private currentMode: VehicleMode = 'wingsuit'
+
+  // Formatter registry
+  private formatters: Record<VehicleMode, MomentLegendFormatter> = {
+    wingsuit: new WingsuitLegendFormatter(),
+    canopy:   new CanopyLegendFormatter(),
+  }
+
   constructor(parentEl: HTMLElement, embedded = false) {
+    this.formatter = this.formatters.wingsuit
+
     // Container
     this.container = document.createElement('div')
     this.container.id = 'moment-inset'
     if (embedded) {
-      // Flow layout — fits inside a sidebar panel
       this.container.style.cssText = `
         width: 100%; aspect-ratio: 480 / 380;
         pointer-events: none;
       `
     } else {
-      // Absolute overlay on a scene panel
       this.container.style.cssText = `
         position: absolute; top: 8px; left: 8px;
         width: 480px; height: 380px;
@@ -187,7 +186,7 @@ export class MomentInset {
     bg.position.z = -0.5
     this.scene.add(bg)
 
-    // Orthographic camera looking at origin
+    // Orthographic camera
     const aspect = 480 / 380
     const viewSize = 4.5
     this.camera = new THREE.OrthographicCamera(
@@ -212,7 +211,6 @@ export class MomentInset {
     `
     this.container.appendChild(this.legend)
 
-    // Initial render
     this.render()
   }
 
@@ -235,12 +233,23 @@ export class MomentInset {
     this.labels.push(sprite)
   }
 
+  /** Switch vehicle mode — changes legend formatting */
+  setMode(mode: VehicleMode) {
+    if (mode === this.currentMode) return
+    this.currentMode = mode
+    this.formatter = this.formatters[mode]
+  }
+
+  /** Get current vehicle mode */
+  get mode(): VehicleMode { return this.currentMode }
+
   /** Update moment breakdown and re-render */
   update(
     moments: AxisMoments,
-    controls?: { pitch: number; roll: number; yaw: number },
+    controls: WingsuitControls | CanopyControls,
     converged?: boolean,
   ) {
+    // Update arcs (shared across all modes)
     for (const axisName of ['pitch', 'roll', 'yaw'] as const) {
       const m = moments[axisName]
       const center = AXIS_OFFSETS[axisName]
@@ -256,14 +265,12 @@ export class MomentInset {
         }
       }
 
-      // Per-axis auto-scale: largest absolute value fills the gauge
       const axisMax = Math.max(
         Math.abs(m.aero), Math.abs(m.pilot),
         Math.abs(m.gyro), Math.abs(m.net),
         MIN_SCALE,
       )
 
-      // Build new arcs
       if (Math.abs(m.aero) > 0.1)
         group.aero = buildArc(center, normal, RADII.aero, m.aero, COLORS.aero, axisMax)
       if (Math.abs(m.pilot) > 0.1)
@@ -273,35 +280,16 @@ export class MomentInset {
       if (Math.abs(m.net) > 0.1)
         group.net = buildArc(center, normal, RADII.net, m.net, COLORS.net, axisMax)
 
-      // Add to scene
       for (const key of ['aero', 'pilot', 'gyro', 'net'] as const) {
         if (group[key]) this.scene.add(group[key]!)
       }
     }
 
-    // Update legend
-    const ctrl = controls ?? { pitch: 0, roll: 0, yaw: 0 }
-    const convStr = converged === false ? ' <span style="color:#f44">✗</span>' : ''
+    // Delegate legend to mode-specific formatter
+    this.formatter.setControls(controls)
     this.legend.innerHTML = [
-      `<span style="color:#ff6644">■</span> Aero`,
-      `<span style="color:#44ff88">■</span> Pilot`,
-      `<span style="color:#ffdd44">■</span> Gyro`,
-      `<span style="color:#ffffff">■</span> I·α`,
-      `─────────`,
-      `<b>Controls</b>${convStr}`,
-      `  Pitch ${fmtCtrl(ctrl.pitch)}`,
-      `  Roll  ${fmtCtrl(ctrl.roll)}`,
-      `  Yaw   ${fmtCtrl(ctrl.yaw)}`,
-      `─────────`,
-      `<b>Pitch</b>`,
-      `  A ${fmt(moments.pitch.aero)} P ${fmt(moments.pitch.pilot)}`,
-      `  G ${fmt(moments.pitch.gyro)} Iα ${fmt(moments.pitch.net)}`,
-      `<b>Roll</b>`,
-      `  A ${fmt(moments.roll.aero)} P ${fmt(moments.roll.pilot)}`,
-      `  G ${fmt(moments.roll.gyro)} Iα ${fmt(moments.roll.net)}`,
-      `<b>Yaw</b>`,
-      `  A ${fmt(moments.yaw.aero)} P ${fmt(moments.yaw.pilot)}`,
-      `  G ${fmt(moments.yaw.gyro)} Iα ${fmt(moments.yaw.net)}`,
+      this.formatter.formatControls(converged !== false),
+      this.formatter.formatMoments(moments),
     ].join('<br>')
 
     this.render()
@@ -312,24 +300,4 @@ export class MomentInset {
   }
 
   set visible(v: boolean) { this.container.style.display = v ? '' : 'none' }
-}
-
-function fmt(v: number): string {
-  const s = v.toFixed(1)
-  return v >= 0 ? `+${s}` : s
-}
-
-/** Format control input as fixed-width percentage bar */
-function fmtCtrl(v: number): string {
-  const pct = Math.round(v * 100)
-  const pctStr = (pct >= 0 ? '+' : '') + String(pct).padStart(pct < 0 ? 3 : 3, ' ') + '%'
-  // Fixed 10-char bar: left half = negative, right half = positive
-  const filled = Math.min(5, Math.round(Math.abs(v) * 5))
-  let bar: string
-  if (v >= 0) {
-    bar = '░░░░░' + '█'.repeat(filled) + '░'.repeat(5 - filled)
-  } else {
-    bar = '░'.repeat(5 - filled) + '█'.repeat(filled) + '░░░░░'
-  }
-  return `${bar} ${pctStr}`
 }
