@@ -20,7 +20,7 @@ import {
 import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { InertiaComponents } from '../polar/inertia'
 import type { GPSPipelinePoint } from '../gps/types'
-import type { MomentBreakdown, AxisMoments } from './moment-inset'
+import type { MomentBreakdown, AxisMoments } from './moment-types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

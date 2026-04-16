@@ -21,7 +21,7 @@ import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
 import { CurvedArrow } from '../viewer/curved-arrow'
-import type { AxisMoments } from './moment-inset'
+import type { AxisMoments } from './moment-types'
 import { solveControlInputs, solveCanopyControls, type ControlInversionConfig, type ControlInversionResult, type CanopyControlResult } from './control-solver'
 import type { InertiaComponents } from '../polar/inertia'
 
@@ -100,8 +100,10 @@ export class GPSAeroOverlay {
     yaw:   { aero: 0, pilot: 0, gyro: 0, net: 0 },
   }
 
-  /** Last solved control inputs (Pass 2) */
+  /** Last solved control inputs (Pass 2) — wingsuit shape */
   lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
+  /** Last solved canopy controls (Pass 2) — brake/riser shape */
+  lastCanopyControls: { brakeLeft: number; brakeRight: number; frontRiserLeft: number; frontRiserRight: number } = { brakeLeft: 0, brakeRight: 0, frontRiserLeft: 0, frontRiserRight: 0 }
   lastConverged = false
 
   /** Full SegmentControls from last solver pass (for polar sweep) */
@@ -266,6 +268,7 @@ export class GPSAeroOverlay {
         const sol = solveCanopyControls(pt, solverCfg)
         this.lastMoments = sol.moments
         this.lastControls = { pitch: (sol.brakeLeft + sol.brakeRight) / 2, roll: (sol.brakeRight - sol.brakeLeft) / 2, yaw: (sol.frontRiserLeft + sol.frontRiserRight) / 2 }
+        this.lastCanopyControls = { brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
         this.lastConverged = sol.converged
         solvedControls = { ...defaultControls(), brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
       } else {

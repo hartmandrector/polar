@@ -583,11 +583,19 @@ function updateMomentInset() {
   }
   momentInset.visible = true
   const s = scene.lastOverlayState
-  // Use wingsuit overlay by default; canopy when wingsuit moments are empty
-  if (s.moments) {
+
+  // Auto-detect mode from current point's flight phase
+  const idx = parseInt(scrubber.value) || 0
+  const pt = result?.points[idx]
+  const fm = pt?.flightMode?.mode ?? 0
+  const isCanopyPhase = fm === 5 || fm === 6 || fm === 7  // DEPLOY, CANOPY, LANDING
+
+  if (isCanopyPhase) {
+    momentInset.setMode('canopy')
+    momentInset.update(s.canopyMoments, s.canopyCanopyControls, s.canopyConverged)
+  } else {
+    momentInset.setMode('wingsuit')
     momentInset.update(s.moments, s.controls, s.converged)
-  } else if (s.canopyMoments) {
-    momentInset.update(s.canopyMoments, s.canopyControls, s.canopyConverged)
   }
 }
 
@@ -597,7 +605,13 @@ function updateChartPolar() {
   const idx = parseInt(scrubber.value) || 0
   if (scene && controlSolverToggle.checked) {
     const s = scene.lastOverlayState
-    const controls = s.solvedSegmentControls ?? s.canopySolvedSegmentControls
+    // Pick controls matching current flight phase
+    const pt = result?.points[idx]
+    const fm = pt?.flightMode?.mode ?? 0
+    const isCanopyPhase = fm === 5 || fm === 6 || fm === 7
+    const controls = isCanopyPhase
+      ? s.canopySolvedSegmentControls
+      : s.solvedSegmentControls
     if (controls) {
       charts.setSolvedControls(controls, idx)
       return
