@@ -170,6 +170,11 @@ export function solveControlInputs(
   const gyroM = (Ixx - Izz) * omega.p * omega.r + Ixz * (omega.p * omega.p - omega.r * omega.r)
   const gyroN = (Iyy - Ixx) * omega.p * omega.q + Ixz * omega.q * omega.r
 
+  // I·α — pure rotational acceleration demand (measured)
+  const IalphaL = Ixx * pDotMeas - Ixz * rDotMeas
+  const IalphaM = Iyy * qDotMeas
+  const IalphaN = Izz * rDotMeas - Ixz * pDotMeas
+
   // Pilot moment = solved total - neutral aero
   const pilotL = Mfinal.x - M0.x
   const pilotM = Mfinal.y - M0.y
@@ -180,9 +185,9 @@ export function solveControlInputs(
     rollThrottle: u[1],
     yawThrottle: u[2],
     moments: {
-      roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: Mfinal.x - Lreq },
-      pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: Mfinal.y - Mreq },
-      yaw:   { aero: M0.z, pilot: pilotN, gyro: gyroN, net: Mfinal.z - Nreq },
+      roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: IalphaL },
+      pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: IalphaM },
+      yaw:   { aero: M0.z, pilot: pilotN, gyro: gyroN, net: IalphaN },
     },
     converged,
     iterations: iter,
@@ -353,6 +358,11 @@ export function solveCanopyControls(
   const gyroM = (Ixx - Izz) * omega.p * omega.r + Ixz * (omega.p * omega.p - omega.r * omega.r)
   const gyroN = (Iyy - Ixx) * omega.p * omega.q + Ixz * omega.q * omega.r
 
+  // I·α — pure rotational acceleration demand (measured)
+  const cIalphaL = Ixx * pDotMeas - Ixz * rDotMeas
+  const cIalphaM = Iyy * qDotMeas
+  const cIalphaN = Izz * rDotMeas - Ixz * pDotMeas
+
   const pilotL = Mfinal.x - M0.x
   const pilotM = Mfinal.y - M0.y
   const pilotN = Mfinal.z - M0.z
@@ -363,9 +373,9 @@ export function solveCanopyControls(
     frontRiserLeft: u[2],
     frontRiserRight: u[3],
     moments: {
-      roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: Mfinal.x - Lreq },
-      pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: Mfinal.y - Mreq },
-      yaw:   { aero: M0.z, pilot: pilotN, gyro: gyroN, net: Mfinal.z - Nreq },
+      roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: cIalphaL },
+      pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: cIalphaM },
+      yaw:   { aero: M0.z, pilot: pilotN, gyro: gyroN, net: cIalphaN },
     },
     converged,
     iterations: iter,
