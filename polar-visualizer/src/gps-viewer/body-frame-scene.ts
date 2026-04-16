@@ -439,4 +439,8 @@ export class BodyFrameScene {
     this.aeroOverlay.enableControlSolver = enabled
     this.canopyAeroOverlay.enableControlSolver = enabled
   }
+
+  setCanopyConstraint(constraint: import('./control-solver').CanopyControlConstraint) {
+    this.canopyAeroOverlay.canopyConstraint = constraint
+  }
 }

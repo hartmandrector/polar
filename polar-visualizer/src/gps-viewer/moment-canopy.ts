@@ -1,8 +1,8 @@
 /**
  * Canopy legend formatter for MomentInset.
  *
- * Shows brake L/R and front riser L/R as unipolar [0–100%] bars.
- * Canopy controls are always non-negative (pull only).
+ * Shows brake L/R and front riser L/R as unipolar [0–100%] bars,
+ * plus a control→axis mapping showing which controls drive which moments.
  */
 
 import type {
@@ -10,8 +10,10 @@ import type {
   AxisMoments,
   WingsuitControls,
   CanopyControls,
+  CanopyControlMap,
+  ControlMomentContrib,
 } from './moment-types'
-import { formatColorKey, formatAxisMoments } from './moment-types'
+import { formatColorKey, formatAxisMoments, fmt } from './moment-types'
 
 // ─── Bar Formatter ──────────────────────────────────────────────────────────
 
@@ -24,6 +26,32 @@ function fmtBrake(v: number, label: string): string {
   return `  ${label} ${bar} ${pctStr}`
 }
 
+// ─── Control Map Formatting ─────────────────────────────────────────────────
+
+const CTRL_LABELS: { key: keyof CanopyControlMap; label: string }[] = [
+  { key: 'brakeLeft',       label: 'BkL' },
+  { key: 'brakeRight',      label: 'BkR' },
+  { key: 'frontRiserLeft',  label: 'FrL' },
+  { key: 'frontRiserRight', label: 'FrR' },
+]
+
+/** Format which controls contribute to an axis, sorted by magnitude */
+function fmtAxisContrib(
+  axis: 'roll' | 'pitch' | 'yaw',
+  map: CanopyControlMap,
+): string {
+  const contribs = CTRL_LABELS
+    .map(({ key, label }) => ({ label, value: map[key][axis] }))
+    .filter(c => Math.abs(c.value) > 0.5)  // only show meaningful contributions
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+
+  if (contribs.length === 0) return '  (none)'
+
+  return contribs
+    .map(c => `  ${c.label} ${fmt(c.value)}`)
+    .join(' ')
+}
+
 // ─── Formatter ──────────────────────────────────────────────────────────────
 
 export class CanopyLegendFormatter implements MomentLegendFormatter {
@@ -31,6 +59,7 @@ export class CanopyLegendFormatter implements MomentLegendFormatter {
     brakeLeft: 0, brakeRight: 0,
     frontRiserLeft: 0, frontRiserRight: 0,
   }
+  private controlMap: CanopyControlMap | null = null
 
   setControls(controls: WingsuitControls | CanopyControls): void {
     const c = controls as CanopyControls
@@ -40,6 +69,11 @@ export class CanopyLegendFormatter implements MomentLegendFormatter {
       frontRiserLeft: c.frontRiserLeft ?? 0,
       frontRiserRight: c.frontRiserRight ?? 0,
     }
+  }
+
+  /** Set the control→axis mapping from the solver */
+  setControlMap(map: CanopyControlMap | null): void {
+    this.controlMap = map
   }
 
   formatControls(converged: boolean): string {
@@ -56,11 +90,26 @@ export class CanopyLegendFormatter implements MomentLegendFormatter {
   }
 
   formatMoments(moments: AxisMoments): string {
-    return [
+    const lines = [
       `─────────`,
       formatAxisMoments('Pitch', moments.pitch),
       formatAxisMoments('Roll', moments.roll),
       formatAxisMoments('Yaw', moments.yaw),
-    ].join('<br>')
+    ]
+
+    // Append control→axis mapping if available, with spacer to clear arc diagrams
+    if (this.controlMap) {
+      lines.push(
+        ``,
+        ``,
+        `─────────`,
+        `<b>Control → Axis</b>`,
+        `<span style="color:#aaf">Pitch:</span>${fmtAxisContrib('pitch', this.controlMap)}`,
+        `<span style="color:#aaf">Roll:</span> ${fmtAxisContrib('roll', this.controlMap)}`,
+        `<span style="color:#aaf">Yaw:</span>  ${fmtAxisContrib('yaw', this.controlMap)}`,
+      )
+    }
+
+    return lines.join('<br>')
   }
 }

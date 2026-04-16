@@ -223,6 +223,10 @@ async function loadFile(file: File) {
   scene.setData(result.points)
   bodyScene.setData(result.points)
 
+  // Apply control solver state from checkbox (handles default-checked on first load)
+  scene.setControlSolverEnabled(controlSolverToggle.checked)
+  bodyScene.setControlSolverEnabled(controlSolverToggle.checked)
+
   // Moment inset in sidebar
   if (!momentInset) {
     const momentContainer = document.getElementById('moment-container')!
@@ -592,9 +596,11 @@ function updateMomentInset() {
 
   if (isCanopyPhase) {
     momentInset.setMode('canopy')
+    momentInset.setControlMap(s.canopyControlMap ?? null)
     momentInset.update(s.canopyMoments, s.canopyCanopyControls, s.canopyConverged)
   } else {
     momentInset.setMode('wingsuit')
+    momentInset.setControlMap(null)
     momentInset.update(s.moments, s.controls, s.converged)
   }
 }

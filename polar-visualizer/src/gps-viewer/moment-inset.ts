@@ -17,6 +17,7 @@ import type {
   VehicleMode,
   WingsuitControls,
   CanopyControls,
+  CanopyControlMap,
   MomentLegendFormatter,
 } from './moment-types'
 import { WingsuitLegendFormatter } from './moment-wingsuit'
@@ -152,13 +153,13 @@ export class MomentInset {
     this.container.id = 'moment-inset'
     if (embedded) {
       this.container.style.cssText = `
-        width: 100%; aspect-ratio: 480 / 380;
+        width: 100%; aspect-ratio: 480 / 460;
         pointer-events: none;
       `
     } else {
       this.container.style.cssText = `
         position: absolute; top: 8px; left: 8px;
-        width: 480px; height: 380px;
+        width: 480px; height: 460px;
         pointer-events: none; z-index: 10;
       `
       parentEl.style.position = 'relative'
@@ -173,7 +174,7 @@ export class MomentInset {
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setSize(480, 380)
+    this.renderer.setSize(480, 460)
     this.renderer.setClearColor(0x000000, 0)
 
     // Scene
@@ -187,8 +188,8 @@ export class MomentInset {
     this.scene.add(bg)
 
     // Orthographic camera
-    const aspect = 480 / 380
-    const viewSize = 4.5
+    const aspect = 480 / 460
+    const viewSize = 5.2
     this.camera = new THREE.OrthographicCamera(
       -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 0.1, 10,
     )
@@ -203,7 +204,7 @@ export class MomentInset {
     // Legend overlay
     this.legend = document.createElement('div')
     this.legend.style.cssText = `
-      position: absolute; top: 4px; left: 4px;
+      position: absolute; top: 28px; left: 4px;
       font-size: 10px; font-family: monospace;
       color: #ccc; line-height: 1.4;
       pointer-events: none;
@@ -242,6 +243,11 @@ export class MomentInset {
 
   /** Get current vehicle mode */
   get mode(): VehicleMode { return this.currentMode }
+
+  /** Update the control→axis mapping (canopy mode only) */
+  setControlMap(map: CanopyControlMap | null) {
+    this.formatter.setControlMap?.(map)
+  }
 
   /** Update moment breakdown and re-render */
   update(
