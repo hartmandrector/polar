@@ -71,6 +71,7 @@ export class GPSScene {
       canopyMoments: this.canopyAeroOverlay.lastMoments,
       canopyControls: this.canopyAeroOverlay.lastControls,
       canopyCanopyControls: this.canopyAeroOverlay.lastCanopyControls,
+      canopyControlMap: this.canopyAeroOverlay.lastCanopyControlMap,
       canopyConverged: this.canopyAeroOverlay.lastConverged,
       canopySolvedSegmentControls: this.canopyAeroOverlay.lastSolvedSegmentControls,
     }
@@ -523,6 +524,10 @@ export class GPSScene {
   setControlSolverEnabled(enabled: boolean) {
     this.aeroOverlay.enableControlSolver = enabled
     this.canopyAeroOverlay.enableControlSolver = enabled
+  }
+
+  setCanopyConstraint(constraint: import('./control-solver').CanopyControlConstraint) {
+    this.canopyAeroOverlay.canopyConstraint = constraint
   }
 }
 

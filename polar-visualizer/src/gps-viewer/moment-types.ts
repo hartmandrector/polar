@@ -47,6 +47,21 @@ export interface CanopyControls {
   frontRiserRight: number
 }
 
+/** Per-control moment contribution to each axis [N·m] */
+export interface ControlMomentContrib {
+  roll: number
+  pitch: number
+  yaw: number
+}
+
+/** Mapping of each canopy control to its moment contributions */
+export interface CanopyControlMap {
+  brakeLeft: ControlMomentContrib
+  brakeRight: ControlMomentContrib
+  frontRiserLeft: ControlMomentContrib
+  frontRiserRight: ControlMomentContrib
+}
+
 // ─── Legend Formatter Interface ─────────────────────────────────────────────
 
 /**
@@ -60,6 +75,8 @@ export interface MomentLegendFormatter {
   formatMoments(moments: AxisMoments): string
   /** Update stored controls from latest solver output */
   setControls(controls: WingsuitControls | CanopyControls): void
+  /** Optional: set per-control → axis moment mapping */
+  setControlMap?(map: CanopyControlMap | null): void
 }
 
 // ─── Shared Helpers ─────────────────────────────────────────────────────────

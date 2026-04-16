@@ -19,6 +19,8 @@ TypeScript + Three.js + Vite + Chart.js + vitest.
 - `docs/WINGSUIT-SEGMENTS.md` — 6-segment wingsuit model: phases, implementation status, tuning notes
 - `docs/CONTINUOUS-POLAR.md` — Continuous polar system architecture and segment math
 - `docs/POLAR-VISUALIZER.md` — Overall visualizer architecture, coordinate systems, rendering pipeline
+- `docs/CONTROL-SOLVER.md` — GPS control inversion: wingsuit/canopy solvers, gravity correction, moment decomposition view
+- `docs/GPS-VIEWER.md` — GPS flight viewer architecture, data pipeline, dual-scene replay
 - `README.md` — Project overview
 - `OPENCLAW-SETUP.md` — OpenClaw setup plan and workflow documentation
 

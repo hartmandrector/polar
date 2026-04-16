@@ -21,8 +21,8 @@ import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
 import { CurvedArrow } from '../viewer/curved-arrow'
-import type { AxisMoments } from './moment-types'
-import { solveControlInputs, solveCanopyControls, type ControlInversionConfig, type ControlInversionResult, type CanopyControlResult } from './control-solver'
+import type { AxisMoments, CanopyControlMap } from './moment-types'
+import { solveControlInputs, solveCanopyControls, type ControlInversionConfig, type ControlInversionResult, type CanopyControlResult, type CanopyControlConstraint } from './control-solver'
 import type { InertiaComponents } from '../polar/inertia'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -92,6 +92,8 @@ export class GPSAeroOverlay {
   bodyFrame = false
   /** When true, use canopy brake solver instead of wingsuit throttle solver */
   canopyMode = false
+  /** Canopy solver control constraint */
+  canopyConstraint: CanopyControlConstraint = 'auto'
 
   /** Last computed moment breakdown (for external consumers like MomentInset) */
   lastMoments: AxisMoments = {
@@ -104,6 +106,8 @@ export class GPSAeroOverlay {
   lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
   /** Last solved canopy controls (Pass 2) — brake/riser shape */
   lastCanopyControls: { brakeLeft: number; brakeRight: number; frontRiserLeft: number; frontRiserRight: number } = { brakeLeft: 0, brakeRight: 0, frontRiserLeft: 0, frontRiserRight: 0 }
+  /** Per-control moment mapping (which controls drive which axes) */
+  lastCanopyControlMap: CanopyControlMap | null = null
   lastConverged = false
 
   /** Full SegmentControls from last solver pass (for polar sweep) */
@@ -260,15 +264,20 @@ export class GPSAeroOverlay {
         inertia: cfg.inertia,
         rho,
         rollGain: this.canopyMode ? 1.0 : 2.0,
+        canopyControlGain: this.canopyMode ? 3.0 : undefined,
+        phi: this.canopyMode ? this.aeroOverrides?.roll : undefined,
+        theta: this.canopyMode ? this.aeroOverrides?.theta : undefined,
+        riserLength: 6.0,
       }
 
       // Dispatch to wingsuit or canopy solver
       let solvedControls: import('../polar/continuous-polar').SegmentControls
       if (this.canopyMode) {
-        const sol = solveCanopyControls(pt, solverCfg)
+        const sol = solveCanopyControls(pt, solverCfg, undefined, this.canopyConstraint)
         this.lastMoments = sol.moments
         this.lastControls = { pitch: (sol.brakeLeft + sol.brakeRight) / 2, roll: (sol.brakeRight - sol.brakeLeft) / 2, yaw: (sol.frontRiserLeft + sol.frontRiserRight) / 2 }
         this.lastCanopyControls = { brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
+        this.lastCanopyControlMap = sol.controlMap
         this.lastConverged = sol.converged
         solvedControls = { ...defaultControls(), brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
       } else {
