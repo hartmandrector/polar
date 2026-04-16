@@ -15,8 +15,8 @@ import * as THREE from 'three'
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-/** Max moment for full-circle arc [N·m] */
-const MAX_MOMENT = 80
+/** Fallback max moment if all values are near zero [N·m] */
+const MIN_SCALE = 5
 /** Arc segments for smooth curves */
 const ARC_PTS = 32
 
@@ -33,7 +33,7 @@ const COLORS = {
   aero:  0xff6644,  // orange-red: suit aero demand
   pilot: 0x44ff88,  // green: pilot control input
   gyro:  0xffdd44,  // yellow: gyroscopic coupling
-  net:   0xffffff,  // white: net residual
+  net:   0xffffff,  // white: I·α (measured rotational acceleration × inertia)
 }
 
 // Axis orientations in the mini scene (fixed camera looking at origin)
@@ -78,9 +78,10 @@ function buildArc(
   radius: number,
   moment: number,
   color: number,
+  maxMoment: number,
 ): THREE.Line {
   // Arc angle proportional to moment, capped at full circle
-  const fraction = Math.min(1, Math.abs(moment) / MAX_MOMENT)
+  const fraction = Math.min(1, Math.abs(moment) / maxMoment)
   const angle = fraction * Math.PI * 1.8  // max ~324°, leave gap for readability
   const sign = moment >= 0 ? 1 : -1
 
@@ -255,15 +256,22 @@ export class MomentInset {
         }
       }
 
+      // Per-axis auto-scale: largest absolute value fills the gauge
+      const axisMax = Math.max(
+        Math.abs(m.aero), Math.abs(m.pilot),
+        Math.abs(m.gyro), Math.abs(m.net),
+        MIN_SCALE,
+      )
+
       // Build new arcs
       if (Math.abs(m.aero) > 0.1)
-        group.aero = buildArc(center, normal, RADII.aero, m.aero, COLORS.aero)
+        group.aero = buildArc(center, normal, RADII.aero, m.aero, COLORS.aero, axisMax)
       if (Math.abs(m.pilot) > 0.1)
-        group.pilot = buildArc(center, normal, RADII.pilot, m.pilot, COLORS.pilot)
+        group.pilot = buildArc(center, normal, RADII.pilot, m.pilot, COLORS.pilot, axisMax)
       if (Math.abs(m.gyro) > 0.1)
-        group.gyro = buildArc(center, normal, RADII.gyro, m.gyro, COLORS.gyro)
+        group.gyro = buildArc(center, normal, RADII.gyro, m.gyro, COLORS.gyro, axisMax)
       if (Math.abs(m.net) > 0.1)
-        group.net = buildArc(center, normal, RADII.net, m.net, COLORS.net)
+        group.net = buildArc(center, normal, RADII.net, m.net, COLORS.net, axisMax)
 
       // Add to scene
       for (const key of ['aero', 'pilot', 'gyro', 'net'] as const) {
@@ -278,7 +286,7 @@ export class MomentInset {
       `<span style="color:#ff6644">■</span> Aero`,
       `<span style="color:#44ff88">■</span> Pilot`,
       `<span style="color:#ffdd44">■</span> Gyro`,
-      `<span style="color:#ffffff">■</span> Net`,
+      `<span style="color:#ffffff">■</span> I·α`,
       `─────────`,
       `<b>Controls</b>${convStr}`,
       `  Pitch ${fmtCtrl(ctrl.pitch)}`,
@@ -287,13 +295,13 @@ export class MomentInset {
       `─────────`,
       `<b>Pitch</b>`,
       `  A ${fmt(moments.pitch.aero)} P ${fmt(moments.pitch.pilot)}`,
-      `  G ${fmt(moments.pitch.gyro)} N ${fmt(moments.pitch.net)}`,
+      `  G ${fmt(moments.pitch.gyro)} Iα ${fmt(moments.pitch.net)}`,
       `<b>Roll</b>`,
       `  A ${fmt(moments.roll.aero)} P ${fmt(moments.roll.pilot)}`,
-      `  G ${fmt(moments.roll.gyro)} N ${fmt(moments.roll.net)}`,
+      `  G ${fmt(moments.roll.gyro)} Iα ${fmt(moments.roll.net)}`,
       `<b>Yaw</b>`,
       `  A ${fmt(moments.yaw.aero)} P ${fmt(moments.yaw.pilot)}`,
-      `  G ${fmt(moments.yaw.gyro)} N ${fmt(moments.yaw.net)}`,
+      `  G ${fmt(moments.yaw.gyro)} Iα ${fmt(moments.yaw.net)}`,
     ].join('<br>')
 
     this.render()
