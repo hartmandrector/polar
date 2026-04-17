@@ -425,7 +425,7 @@ export class GPSCharts {
     const ctx = canvas.getContext('2d')!
     const pts = this.data
 
-    let yData: number[], yLabel: string, y2Data: number[] | null = null, y3Data: number[] | null = null
+    let yData: number[], yLabel: string, y2Data: number[] | null = null, y3Data: number[] | null = null, y4Data: number[] | null = null
     /** Dim raw traces (pre-fix) — shown behind main data for comparison */
     let rawY: number[] | null = null, rawY2: number[] | null = null, rawY3: number[] | null = null
     const xData = pts.map(p => p.processed.t)
@@ -493,10 +493,26 @@ export class GPSCharts {
         yLabel = 'Angular Accel (°/s²)  ṗ=blue q̇=orange ṙ=green  (dim=raw)'
         break
       case 'controls':
-        yData = pts.map(p => (p.solvedControls?.pitchThrottle ?? 0) * 100)
-        y2Data = pts.map(p => (p.solvedControls?.rollThrottle ?? 0) * 100)
-        y3Data = pts.map(p => (p.solvedControls?.yawThrottle ?? 0) * 100)
-        yLabel = 'Control Inputs (%)  pitch=blue roll=orange yaw=green'
+        // Mode-aware: show canopy controls (brake/riser) during canopy phase,
+        // wingsuit controls (pitch/roll/yaw) during wingsuit phase
+        yData = pts.map(p => {
+          if (p.solvedControls?.mode === 'canopy') return (p.solvedControls.brakeLeft ?? 0) * 100
+          return (p.solvedControls?.pitchThrottle ?? 0) * 100
+        })
+        y2Data = pts.map(p => {
+          if (p.solvedControls?.mode === 'canopy') return (p.solvedControls.brakeRight ?? 0) * 100
+          return (p.solvedControls?.rollThrottle ?? 0) * 100
+        })
+        y3Data = pts.map(p => {
+          if (p.solvedControls?.mode === 'canopy') return (p.solvedControls.frontRiserLeft ?? 0) * 100
+          return (p.solvedControls?.yawThrottle ?? 0) * 100
+        })
+        // 4th trace for frontRiserRight (canopy only, 0 during wingsuit)
+        y4Data = pts.map(p => {
+          if (p.solvedControls?.mode === 'canopy') return (p.solvedControls.frontRiserRight ?? 0) * 100
+          return 0
+        })
+        yLabel = 'Control Inputs (%)  pitch/bkL=blue roll/bkR=orange yaw/frL=green frR=purple'
         break
       case 'eulerrates': {
         yData = pts.map(p => p.bodyRates?.phiDot ?? 0)
@@ -557,6 +573,17 @@ export class GPSCharts {
       datasets.push({
         data: xData.map((x, i) => ({ x, y: y3Data![i] })),
         borderColor: COL_TRACE3,
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        borderWidth: 1.5,
+        showLine: true,
+      })
+    }
+
+    if (y4Data) {
+      datasets.push({
+        data: xData.map((x, i) => ({ x, y: y4Data![i] })),
+        borderColor: 'rgba(180, 120, 255, 0.9)',  // purple for frR
         backgroundColor: 'transparent',
         pointRadius: 0,
         borderWidth: 1.5,

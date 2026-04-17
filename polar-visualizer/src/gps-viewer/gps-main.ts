@@ -16,7 +16,7 @@ import { CaptureHandler } from './capture-handler'
 import { parseHeadSensorCSV } from './head-sensor'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
-import { solveControlInputs, type ControlInversionConfig } from './control-solver'
+import { solveControlInputs, solveCanopyControls, type ControlInversionConfig } from './control-solver'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
@@ -319,6 +319,7 @@ async function loadFile(file: File) {
         rollThrottle: sol.rollThrottle,
         yawThrottle: sol.yawThrottle,
         converged: sol.converged,
+        mode: 'wingsuit',
       }
       if (sol.converged) convergeCount++
 
@@ -415,6 +416,46 @@ async function loadFile(file: File) {
   })
   writebackFixedRates(result.points)
   console.log(`Fixed orientations: ${result.points.filter(p => p.fixed).length}/${result.points.length} points`)
+
+  // Batch-solve canopy control inputs (after fixOrientations so rates are corrected)
+  const canopySolverCfg: ControlInversionConfig = {
+    segments: canopyPolar.aeroSegments ?? [],
+    cgMeters: canopyCg,
+    height: canopyMassRef,
+    mass: canopyPolar.m,
+    inertia: canopyInertia,
+    rho: 1.225,
+    canopyControlGain: 3.0,
+    riserLength: 6.0,
+  }
+  let canopyConvergeCount = 0
+  let canopyTotal = 0
+  for (let i = 0; i < result.points.length; i++) {
+    const pt = result.points[i]
+    const fm = pt.flightMode?.mode ?? 0
+    const isCanopyPhase = fm === 5 || fm === 6 || fm === 7
+    if (!isCanopyPhase || pt.bodyRates?.pDot === undefined) continue
+    canopyTotal++
+    const cs = canopyStates[i]
+    if (cs?.valid) {
+      canopySolverCfg.phi = cs.phi
+      canopySolverCfg.theta = cs.theta
+    }
+    const sol = solveCanopyControls(pt, canopySolverCfg)
+    pt.solvedControls = {
+      pitchThrottle: 0,
+      rollThrottle: 0,
+      yawThrottle: 0,
+      converged: sol.converged,
+      brakeLeft: sol.brakeLeft,
+      brakeRight: sol.brakeRight,
+      frontRiserLeft: sol.frontRiserLeft,
+      frontRiserRight: sol.frontRiserRight,
+      mode: 'canopy',
+    }
+    if (sol.converged) canopyConvergeCount++
+  }
+  console.log(`Canopy solver: ${canopyConvergeCount}/${canopyTotal} converged`)
 
   // Initialize replay
   if (!replay) {
@@ -597,11 +638,14 @@ function updateMomentInset() {
   if (isCanopyPhase) {
     momentInset.setMode('canopy')
     momentInset.setControlMap(s.canopyControlMap ?? null)
-    momentInset.update(s.canopyMoments, s.canopyCanopyControls, s.canopyConverged)
+    // Use batch-solved convergence when available (more reliable than per-frame overlay)
+    const batchConverged = pt?.solvedControls?.mode === 'canopy' ? pt.solvedControls.converged : s.canopyConverged
+    momentInset.update(s.canopyMoments, s.canopyCanopyControls, batchConverged)
   } else {
     momentInset.setMode('wingsuit')
     momentInset.setControlMap(null)
-    momentInset.update(s.moments, s.controls, s.converged)
+    const batchConverged = pt?.solvedControls?.mode === 'wingsuit' ? pt.solvedControls.converged : s.converged
+    momentInset.update(s.moments, s.controls, batchConverged)
   }
 }
 
@@ -636,13 +680,32 @@ function updateLegends(index: number) {
 
   if (bodyLegend && scene) {
     const s = scene.lastOverlayState
-    bodyLegend.update({
-      pt,
-      converged: s.converged,
-      controlPitch: s.controls.pitch,
-      controlRoll: s.controls.roll,
-      controlYaw: s.controls.yaw,
-    })
+    const fm = pt.flightMode?.mode ?? 0
+    const isCanopyPhase = fm === 5 || fm === 6 || fm === 7
+    if (isCanopyPhase) {
+      const batchConverged = pt.solvedControls?.mode === 'canopy' ? pt.solvedControls.converged : s.canopyConverged
+      bodyLegend.update({
+        pt,
+        converged: batchConverged,
+        controlPitch: 0,
+        controlRoll: 0,
+        controlYaw: 0,
+        mode: 'canopy',
+        brakeLeft: s.canopyCanopyControls?.brakeLeft ?? pt.solvedControls?.brakeLeft ?? 0,
+        brakeRight: s.canopyCanopyControls?.brakeRight ?? pt.solvedControls?.brakeRight ?? 0,
+        frontRiserLeft: s.canopyCanopyControls?.frontRiserLeft ?? pt.solvedControls?.frontRiserLeft ?? 0,
+        frontRiserRight: s.canopyCanopyControls?.frontRiserRight ?? pt.solvedControls?.frontRiserRight ?? 0,
+      })
+    } else {
+      bodyLegend.update({
+        pt,
+        converged: s.converged,
+        controlPitch: s.controls.pitch,
+        controlRoll: s.controls.roll,
+        controlYaw: s.controls.yaw,
+        mode: 'wingsuit',
+      })
+    }
   }
 }
 
@@ -759,9 +822,16 @@ function updateReadout(index: number) {
     ${controlSolverToggle.checked ? `
     <div class="section">Control Solver</div>
     <div class="row"><span class="label">Converged</span><span class="value" style="color:${p.solvedControls?.converged ? '#44ff66' : '#ff4444'}">${p.solvedControls?.converged ? 'Yes' : 'No'}</span></div>
+    ${p.solvedControls?.mode === 'canopy' ? `
+    <div class="row"><span class="label">Brake L</span><span class="value">${((p.solvedControls?.brakeLeft ?? 0) * 100).toFixed(0)}%</span></div>
+    <div class="row"><span class="label">Brake R</span><span class="value">${((p.solvedControls?.brakeRight ?? 0) * 100).toFixed(0)}%</span></div>
+    <div class="row"><span class="label">F.Riser L</span><span class="value">${((p.solvedControls?.frontRiserLeft ?? 0) * 100).toFixed(0)}%</span></div>
+    <div class="row"><span class="label">F.Riser R</span><span class="value">${((p.solvedControls?.frontRiserRight ?? 0) * 100).toFixed(0)}%</span></div>
+    ` : `
     <div class="row"><span class="label">Pitch</span><span class="value">${(p.solvedControls?.pitchThrottle ?? 0).toFixed(3)}</span></div>
     <div class="row"><span class="label">Roll</span><span class="value">${(p.solvedControls?.rollThrottle ?? 0).toFixed(3)}</span></div>
     <div class="row"><span class="label">Yaw</span><span class="value">${(p.solvedControls?.yawThrottle ?? 0).toFixed(3)}</span></div>
+    `}
     ` : ''}
   `
 }

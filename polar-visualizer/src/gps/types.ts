@@ -188,10 +188,17 @@ export interface BodyRates {
 
 /** Solved pilot control inputs from control inversion */
 export interface SolvedControls {
-  pitchThrottle: number;   // [-1, 1]
-  rollThrottle: number;    // [-1, 1]
-  yawThrottle: number;     // [-1, 1]
+  pitchThrottle: number;   // [-1, 1] (wingsuit)
+  rollThrottle: number;    // [-1, 1] (wingsuit)
+  yawThrottle: number;     // [-1, 1] (wingsuit)
   converged: boolean;
+  /** Canopy-specific solved controls (populated during canopy phase) */
+  brakeLeft?: number;      // [0, 1]
+  brakeRight?: number;     // [0, 1]
+  frontRiserLeft?: number; // [0, 1]
+  frontRiserRight?: number;// [0, 1]
+  /** Which solver mode produced this result */
+  mode?: 'wingsuit' | 'canopy';
 }
 
 // ============================================================================
