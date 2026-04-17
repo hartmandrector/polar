@@ -98,6 +98,12 @@ export interface BodyLegendData {
   controlPitch: number
   controlRoll: number
   controlYaw: number
+  /** Canopy-specific controls (when in canopy mode) */
+  mode?: 'wingsuit' | 'canopy'
+  brakeLeft?: number
+  brakeRight?: number
+  frontRiserLeft?: number
+  frontRiserRight?: number
 }
 
 export class BodyFrameLegend {
@@ -131,9 +137,16 @@ export class BodyFrameLegend {
 
       section('Control Solver'),
       row('Converged', d.converged ? 'Yes' : 'No', convColor, convColor),
-      row('Pitch', `${(d.controlPitch * 100).toFixed(0)}%`, C.pitchM, C.pitchM),
-      row('Roll', `${(d.controlRoll * 100).toFixed(0)}%`, C.rollM, C.rollM),
-      row('Yaw', `${(d.controlYaw * 100).toFixed(0)}%`, C.yawM, C.yawM),
+      ...(d.mode === 'canopy' ? [
+        row('Brake L', `${((d.brakeLeft ?? 0) * 100).toFixed(0)}%`, C.pitchM, C.pitchM),
+        row('Brake R', `${((d.brakeRight ?? 0) * 100).toFixed(0)}%`, C.rollM, C.rollM),
+        row('F.Riser L', `${((d.frontRiserLeft ?? 0) * 100).toFixed(0)}%`, C.yawM, C.yawM),
+        row('F.Riser R', `${((d.frontRiserRight ?? 0) * 100).toFixed(0)}%`, 'rgba(180,120,255,0.9)', 'rgba(180,120,255,0.9)'),
+      ] : [
+        row('Pitch', `${(d.controlPitch * 100).toFixed(0)}%`, C.pitchM, C.pitchM),
+        row('Roll', `${(d.controlRoll * 100).toFixed(0)}%`, C.rollM, C.rollM),
+        row('Yaw', `${(d.controlYaw * 100).toFixed(0)}%`, C.yawM, C.yawM),
+      ]),
     ].join('')
   }
 }
