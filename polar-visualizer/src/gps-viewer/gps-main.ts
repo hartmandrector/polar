@@ -14,6 +14,7 @@ import { MomentInset } from './moment-inset'
 import { InertialLegend, BodyFrameLegend } from './scene-legend'
 import { CaptureHandler } from './capture-handler'
 import { parseHeadSensorCSV } from './head-sensor'
+import { parseCameraSensorCSV, parseSyncResult, type CameraMountOffset, type CameraSyncResult, DEFAULT_MOUNT_OFFSET } from './camera-sensor'
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, solveCanopyControls, type ControlInversionConfig } from './control-solver'
@@ -900,6 +901,237 @@ headTimeOffset.addEventListener('change', () => {
   }
 })
 
+// ─── Camera Head Position Loading ───────────────────────────────────────────
+
+const cameraHeadBtn = document.getElementById('camera-head-btn')!
+const cameraHeadInput = document.getElementById('camera-head-input') as HTMLInputElement
+const cameraHeadStatus = document.getElementById('camera-head-status')!
+const cameraMountControls = document.getElementById('camera-mount-controls')!
+const camOffsetHeading = document.getElementById('cam-offset-heading') as HTMLInputElement
+const camOffsetPitch = document.getElementById('cam-offset-pitch') as HTMLInputElement
+const camOffsetRoll = document.getElementById('cam-offset-roll') as HTMLInputElement
+const camSyncOffset = document.getElementById('cam-sync-offset') as HTMLInputElement
+const camGyroflowPath = document.getElementById('cam-gyroflow-path') as HTMLInputElement
+const cameraConfigSave = document.getElementById('camera-config-save')!
+const cameraConfigLoad = document.getElementById('camera-config-load')!
+
+/** Stored raw CSV text for re-parse on sync offset change */
+let cameraCSVText: string | null = null
+/** Current camera sync offset in ms */
+let cameraSyncOffsetMs = 0
+
+/** Convert absolute filesystem path to Vite /@fs/ URL */
+function fsPathToURL(absolutePath: string): string {
+  const normalized = absolutePath.replace(/\\/g, '/')
+  return '/@fs/' + encodeURI(normalized)
+}
+
+/** Get track folder from loadedTrackPath or URL params */
+function getTrackFolder(): string | null {
+  const track = loadedTrackPath || new URLSearchParams(window.location.search).get('track')
+  if (!track) return null
+  const lastSlash = track.lastIndexOf('/')
+  return lastSlash >= 0 ? track.substring(0, lastSlash) : null
+}
+
+/** Read current mount offset from UI inputs */
+function readMountOffset(): CameraMountOffset {
+  return {
+    headingDeg: parseFloat(camOffsetHeading.value) || 0,
+    pitchDeg: parseFloat(camOffsetPitch.value) || 0,
+    rollDeg: parseFloat(camOffsetRoll.value) || 0,
+  }
+}
+
+/** Apply mount offset to both scenes */
+function applyMountOffset() {
+  const offset = readMountOffset()
+  scene?.setCameraMountOffset(offset)
+  bodyScene?.setCameraMountOffset(offset)
+}
+
+/** Fetch sync-result.json from a track folder in public/ */
+async function fetchSyncResult(trackFolder: string): Promise<CameraSyncResult | null> {
+  try {
+    const resp = await fetch(`/${trackFolder}/sync-result.json`)
+    if (!resp.ok) return null
+    const ct = resp.headers.get('content-type') || ''
+    if (ct.includes('html')) return null  // SPA fallback, not real JSON
+    return parseSyncResult(await resp.text())
+  } catch {
+    return null
+  }
+}
+
+/** Save sync-result.json to public/<trackFolder>/ via dev server API */
+async function saveSyncConfig(trackFolder: string, config: Record<string, unknown>): Promise<boolean> {
+  try {
+    const resp = await fetch('/api/sync-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trackFolder, config }),
+    })
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
+/** Fetch gyroflow CSV from absolute path via Vite /@fs/ */
+async function fetchGyroflowCSV(absolutePath: string): Promise<string | null> {
+  const url = fsPathToURL(absolutePath)
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) {
+      console.error(`Failed to fetch gyroflow CSV from ${url}: ${resp.status}`)
+      return null
+    }
+    return await resp.text()
+  } catch (e) {
+    console.error('Failed to fetch gyroflow CSV:', e)
+    return null
+  }
+}
+
+/** Load camera CSV data with a given sync offset */
+function loadCameraCSVData(text: string, syncOffsetMs: number) {
+  cameraCSVText = text
+  cameraSyncOffsetMs = syncOffsetMs
+  camSyncOffset.value = String(syncOffsetMs)
+  const points = parseCameraSensorCSV(text, syncOffsetMs)
+  if (points.length === 0) {
+    cameraHeadStatus.textContent = 'No valid camera data found'
+    return
+  }
+  scene?.setCameraData(points)
+  bodyScene?.setCameraData(points)
+  applyMountOffset()
+  cameraMountControls.style.display = ''
+  const tStart = points[0].pipelineTimeS.toFixed(1)
+  const tEnd = points[points.length - 1].pipelineTimeS.toFixed(1)
+  cameraHeadStatus.textContent = `${points.length} pts (${tStart}s → ${tEnd}s) sync=${syncOffsetMs}ms`
+}
+
+/** Load camera data from sync-result.json (for URL auto-load or Load Config) */
+async function loadCameraFromSyncResult(trackFolder: string): Promise<boolean> {
+  const syncResult = await fetchSyncResult(trackFolder)
+  if (!syncResult || !syncResult.gyroflow) return false
+
+  camGyroflowPath.value = syncResult.gyroflow
+
+  cameraHeadStatus.textContent = `Loading gyroflow CSV...`
+  const text = await fetchGyroflowCSV(syncResult.gyroflow)
+  if (!text) {
+    cameraHeadStatus.textContent = `Failed to load: ${syncResult.gyroflow}`
+    return false
+  }
+
+  // Apply mount offset from sync result if present
+  if (syncResult.mountOffset) {
+    camOffsetHeading.value = String(syncResult.mountOffset.headingDeg ?? 0)
+    camOffsetPitch.value = String(syncResult.mountOffset.pitchDeg ?? -20)
+    camOffsetRoll.value = String(syncResult.mountOffset.rollDeg ?? 0)
+  }
+
+  loadCameraCSVData(text, syncResult.offsetMs)
+  console.log(`Camera loaded from sync-result.json: ${syncResult.gyroflow} (${syncResult.confidence})`)
+  return true
+}
+
+// Button click → standard file picker for gyroflow CSV
+cameraHeadBtn.addEventListener('click', () => cameraHeadInput.click())
+
+cameraHeadInput.addEventListener('change', async () => {
+  const file = cameraHeadInput.files?.[0]
+  if (!file) return
+  cameraHeadStatus.textContent = `Loading ${file.name}...`
+
+  const text = await file.text()
+
+  // Auto-detect sync offset from sync-result.json in track folder
+  const trackFolder = getTrackFolder()
+  let syncMs = 0
+  if (trackFolder) {
+    const existing = await fetchSyncResult(trackFolder)
+    if (existing) {
+      syncMs = existing.offsetMs
+      console.log(`Auto-detected sync offset: ${syncMs}ms from sync-result.json`)
+      // Also restore gyroflow path if present
+      if (existing.gyroflow) camGyroflowPath.value = existing.gyroflow
+    }
+  }
+
+  loadCameraCSVData(text, syncMs)
+})
+
+// Mount offset live updates
+for (const input of [camOffsetHeading, camOffsetPitch, camOffsetRoll]) {
+  input.addEventListener('change', applyMountOffset)
+  input.addEventListener('input', applyMountOffset)
+}
+
+// Sync offset change → re-parse camera data with new offset
+camSyncOffset.addEventListener('change', () => {
+  const newOffsetMs = parseFloat(camSyncOffset.value) || 0
+  if (cameraCSVText) {
+    loadCameraCSVData(cameraCSVText, newOffsetMs)
+  }
+  cameraSyncOffsetMs = newOffsetMs
+})
+
+// Save config → write sync-result.json to public/<trackFolder>/
+// Prompts for gyroflow path if not already known (needed for auto-load)
+cameraConfigSave.addEventListener('click', async () => {
+  const trackFolder = getTrackFolder()
+  if (!trackFolder) {
+    cameraHeadStatus.textContent = 'No track loaded — cannot save'
+    return
+  }
+
+  // Get gyroflow path — needed so auto-load can fetch the CSV via /@fs/
+  let gyroflowPath = camGyroflowPath.value.trim()
+  if (!gyroflowPath) {
+    const prompted = window.prompt(
+      'Absolute path to Gyroflow CSV (for future auto-load):\n' +
+      'e.g. C:\\Users\\...\\gyroflowcameradatafull.csv',
+    )
+    if (!prompted) return
+    gyroflowPath = prompted
+    camGyroflowPath.value = gyroflowPath
+  }
+
+  // Merge with existing sync-result.json (preserves fields we don't manage)
+  const existing = await fetchSyncResult(trackFolder)
+  const config = {
+    ...(existing || {}),
+    flysight: loadedTrackPath || existing?.flysight || '',
+    gyroflow: gyroflowPath,
+    offsetMs: cameraSyncOffsetMs,
+    mountOffset: readMountOffset(),
+  }
+
+  const ok = await saveSyncConfig(trackFolder, config)
+  if (ok) {
+    cameraHeadStatus.textContent += ' (saved to sync-result.json)'
+    console.log('Sync config saved to', `public/${trackFolder}/sync-result.json`)
+  } else {
+    cameraHeadStatus.textContent += ' (save failed — is dev server running?)'
+  }
+})
+
+// Load config → read sync-result.json and auto-load gyroflow CSV via /@fs/
+cameraConfigLoad.addEventListener('click', async () => {
+  const trackFolder = getTrackFolder()
+  if (!trackFolder) {
+    cameraHeadStatus.textContent = 'No track loaded — cannot load'
+    return
+  }
+  const loaded = await loadCameraFromSyncResult(trackFolder)
+  if (!loaded) {
+    cameraHeadStatus.textContent = 'No sync-result.json found (or no gyroflow field)'
+  }
+})
+
 // ─── Keyframe Editor ────────────────────────────────────────────────────────
 
 const kfEditor = new KeyframeEditor()
@@ -1295,7 +1527,17 @@ async function applyCaptureSession(state: CaptureSessionState) {
     }
   }
 
-  // 4. Load keyframes from URL param (base64 JSON) or file
+  // 4. Auto-detect camera head data from sync-result.json
+  {
+    const trackFolder = autoTrack.substring(0, autoTrack.lastIndexOf('/'))
+    if (trackFolder) {
+      const loaded = await loadCameraFromSyncResult(trackFolder)
+      if (loaded) console.log('Camera head data auto-loaded from sync-result.json')
+      else console.log('No camera head data in sync-result.json (or no sync-result.json)')
+    }
+  }
+
+  // 5. Load keyframes from URL param (base64 JSON) or file
   const kfData = urlParams.get('keyframes')
   if (kfData) {
     try {

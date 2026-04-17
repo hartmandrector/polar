@@ -21,6 +21,7 @@ import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
+import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
 import { GPSDeployRenderer } from './gps-deploy-renderer'
 
 const MODEL_PATH = '/models/WSV9.glb'
@@ -164,6 +165,11 @@ export class GPSScene {
         console.log('Applied queued head sensor data after model load')
         this.pendingSensorData = null
       }
+      if (this.pendingCameraData) {
+        this.headRenderer.setCameraData(this.pendingCameraData)
+        console.log('Applied queued camera head data after model load')
+        this.pendingCameraData = null
+      }
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -257,6 +263,21 @@ export class GPSScene {
       this.pendingSensorData = { data, offset: timeOffset }
       console.log('Head sensor data queued (waiting for model load)')
     }
+  }
+
+  private pendingCameraData: CameraSensorPoint[] | null = null
+
+  setCameraData(data: CameraSensorPoint[]) {
+    if (this.headRenderer) {
+      this.headRenderer.setCameraData(data)
+    } else {
+      this.pendingCameraData = data
+      console.log('Camera head data queued (waiting for model load)')
+    }
+  }
+
+  setCameraMountOffset(offset: CameraMountOffset) {
+    this.headRenderer?.setCameraMountOffset(offset)
   }
 
   /** Convert NED point to Three.js scene coordinates */

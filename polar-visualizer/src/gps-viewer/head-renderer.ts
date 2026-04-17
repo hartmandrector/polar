@@ -23,6 +23,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { HeadSensorPoint } from './head-sensor'
 import { findHeadIndex, lerpSensorPoints } from './head-sensor'
 import { HeadSensorOverlay } from './head-sensor-overlay'
+import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
+import { findCameraIndex, DEFAULT_MOUNT_OFFSET } from './camera-sensor'
 
 const HEAD_MODEL_PATH = '/models/headfs.glb'
 
@@ -52,6 +54,10 @@ export class HeadModelRenderer {
   // Time offset: sensor t=0 vs GPS t=0 (seconds to add to GPS time to get sensor time)
   private timeOffset = 0
 
+  // Camera head position data (alternative orientation source)
+  private cameraData: CameraSensorPoint[] = []
+  private cameraMountOffset: CameraMountOffset = { ...DEFAULT_MOUNT_OFFSET }
+
   // Scene reference for adding/removing headGroup
   private sceneRoot: THREE.Object3D
 
@@ -77,8 +83,8 @@ export class HeadModelRenderer {
       this.sensorOverlay = new HeadSensorOverlay(this.headGroup)
       this.loaded = true
       // Show head if sensor data already loaded, otherwise hide
-      this.headGroup.visible = this.sensorData.length > 0
-      console.log(`Head model loaded (${this.sensorData.length > 0 ? 'visible — sensor data present' : 'hidden until sensor data loaded'})`)
+      this.headGroup.visible = this.hasAnyData
+      console.log(`Head model loaded (${this.hasAnyData ? 'visible — data present' : 'hidden until data loaded'})`)
     } catch (e) {
       console.error('Failed to load head model:', e)
     }
@@ -102,6 +108,78 @@ export class HeadModelRenderer {
   /** Returns true if fused sensor CSV data has been loaded */
   get hasSensorData(): boolean {
     return this.sensorData.length > 0
+  }
+
+  /** Returns true if camera head position data has been loaded */
+  get hasCameraData(): boolean {
+    return this.cameraData.length > 0
+  }
+
+  /** Returns true if any orientation source is available */
+  get hasAnyData(): boolean {
+    return this.hasSensorData || this.hasCameraData
+  }
+
+  setCameraData(data: CameraSensorPoint[]) {
+    this.cameraData = data
+    // Show head model if we have data from either source
+    this.headGroup.visible = this.hasAnyData
+    console.log(`Camera head data: ${data.length} points, ${data[0]?.pipelineTimeS.toFixed(1)}s → ${data[data.length - 1]?.pipelineTimeS.toFixed(1)}s`)
+  }
+
+  setCameraMountOffset(offset: CameraMountOffset) {
+    this.cameraMountOffset = { ...offset }
+  }
+
+  /**
+   * Convert camera quaternion from Gyroflow to Three.js world quaternion.
+   *
+   * Gyroflow org_quat convention: best-guess is gravity-aligned earth frame.
+   * We apply the same NWU→Three.js remap as the fused sensor initially,
+   * then apply the camera mount offset (heading/pitch/roll) to compensate
+   * for selfie stick mounting angle.
+   *
+   * The mount offset is applied as a post-multiplication in camera body frame:
+   *   head_quat = camera_quat × inverse(mount_rotation)
+   */
+  private getCameraHeadThreeQuat(gpsTime: number): THREE.Quaternion | null {
+    if (this.cameraData.length === 0) return null
+
+    const { index, fraction } = findCameraIndex(this.cameraData, gpsTime)
+    const pt = this.cameraData[index]
+
+    let qw: number, qx: number, qy: number, qz: number
+
+    if (fraction > 0 && index < this.cameraData.length - 1) {
+      const pt2 = this.cameraData[index + 1]
+      const q1 = new THREE.Quaternion(pt.qx, pt.qy, pt.qz, pt.qw)
+      const q2 = new THREE.Quaternion(pt2.qx, pt2.qy, pt2.qz, pt2.qw)
+      if (q1.dot(q2) < 0) q2.set(-q2.x, -q2.y, -q2.z, -q2.w)
+      q1.slerp(q2, fraction)
+      qx = q1.x; qy = q1.y; qz = q1.z; qw = q1.w
+    } else {
+      qx = pt.qx; qy = pt.qy; qz = pt.qz; qw = pt.qw
+    }
+
+    // Apply camera mount offset as body-frame post-rotation
+    // mount_quat = Euler(heading, pitch, roll) in ZYX order
+    // head_quat = camera_quat × inverse(mount_quat)
+    const d2r = Math.PI / 180
+    const mountQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(
+        this.cameraMountOffset.pitchDeg * d2r,
+        this.cameraMountOffset.headingDeg * d2r,
+        this.cameraMountOffset.rollDeg * d2r,
+        'ZYX',
+      ),
+    )
+    // Hamilton product: camera_quat × inverse(mount_quat)
+    const invMount = mountQuat.invert()
+    const corrected = new THREE.Quaternion(qx, qy, qz, qw).multiply(invMount)
+
+    // Remap to Three.js — using same NWU→Three.js as fused sensor initially
+    // This may need adjustment once we verify the Gyroflow convention empirically
+    return new THREE.Quaternion(-corrected.y, corrected.z, -corrected.x, corrected.w)
   }
 
   /**
@@ -191,9 +269,12 @@ export class HeadModelRenderer {
    *   Use this in body-frame scenes where the model is at identity orientation.
    */
   update(gpsTime: number, wingsuitWorldPos: THREE.Vector3, wingsuitWorldQuat: THREE.Quaternion, modelScale: number, bodyToInertial?: THREE.Quaternion) {
-    if (!this.loaded || !this.visible || this.sensorData.length === 0) return
+    if (!this.loaded || !this.visible || !this.hasAnyData) return
 
-    let headQuat = this.getHeadThreeQuat(gpsTime)
+    // Camera data takes priority for head model orientation
+    let headQuat = this.cameraData.length > 0
+      ? this.getCameraHeadThreeQuat(gpsTime)
+      : this.getHeadThreeQuat(gpsTime)
     if (!headQuat) return
 
     // If body-to-inertial provided, compute relative rotation for body-frame view

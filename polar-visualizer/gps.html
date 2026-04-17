@@ -214,6 +214,43 @@
                   Time offset (s): <input id="head-time-offset" type="number" value="0" step="0.1" style="width:60px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;">
                 </label>
               </div>
+
+              <!-- Camera Head Position -->
+              <div style="margin-top:10px;border-top:1px solid #334;padding-top:8px;">
+                <button id="camera-head-btn" style="width:100%;padding:6px 12px;background:#ff9800;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Load Camera Head Position</button>
+                <input type="file" id="camera-head-input" accept=".csv" style="display:none">
+                <div style="margin-top:6px;font-size:11px;color:#8090a0;">
+                  <span id="camera-head-status">No camera data</span>
+                </div>
+
+                <!-- Camera Mount Offset -->
+                <div id="camera-mount-controls" style="margin-top:6px;display:none;">
+                  <div style="font-size:11px;color:#9aa;font-weight:600;margin-bottom:4px;">Camera Mount Offset</div>
+                  <div style="display:flex;flex-direction:column;gap:3px;">
+                    <label style="font-size:11px;color:#8090a0;display:flex;align-items:center;gap:4px;">
+                      Heading: <input id="cam-offset-heading" type="number" value="0" step="1" style="width:55px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;"> °
+                    </label>
+                    <label style="font-size:11px;color:#8090a0;display:flex;align-items:center;gap:4px;">
+                      Pitch: <input id="cam-offset-pitch" type="number" value="-20" step="1" style="width:55px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;"> °
+                    </label>
+                    <label style="font-size:11px;color:#8090a0;display:flex;align-items:center;gap:4px;">
+                      Roll: <input id="cam-offset-roll" type="number" value="0" step="1" style="width:55px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;"> °
+                    </label>
+                  </div>
+                  <div style="font-size:11px;color:#8090a0;margin-top:4px;">
+                    <label>Sync offset (ms): <input id="cam-sync-offset" type="number" value="0" step="50" style="width:80px;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:11px;"></label>
+                  </div>
+                  <div style="font-size:11px;color:#8090a0;margin-top:4px;">
+                    <label>Gyroflow CSV path: <input id="cam-gyroflow-path" type="text" placeholder="(set on save for auto-load)" style="width:100%;box-sizing:border-box;background:#1a1a2e;color:#e0e0e0;border:1px solid #334;border-radius:3px;padding:2px 4px;font-size:10px;margin-top:2px;"></label>
+                  </div>
+                </div>
+
+                <!-- Save / Load Config -->
+                <div style="margin-top:6px;display:flex;gap:4px;">
+                  <button id="camera-config-save" style="flex:1;padding:4px 8px;background:#2e4a2e;color:#adc;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Save Config</button>
+                  <button id="camera-config-load" style="flex:1;padding:4px 8px;background:#2e3a4a;color:#acd;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Load Config</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
