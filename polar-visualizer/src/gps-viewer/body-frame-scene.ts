@@ -20,6 +20,7 @@ import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
+import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
 
 const MODEL_PATH = '/models/WSV8.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -134,6 +135,10 @@ export class BodyFrameScene {
         this.headRenderer.setTimeOffset(this.pendingSensorData.offset)
         this.pendingSensorData = null
       }
+      if (this.pendingCameraData) {
+        this.headRenderer.setCameraData(this.pendingCameraData)
+        this.pendingCameraData = null
+      }
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -212,6 +217,20 @@ export class BodyFrameScene {
     } else {
       this.pendingSensorData = { data, offset: timeOffset }
     }
+  }
+
+  private pendingCameraData: CameraSensorPoint[] | null = null
+
+  setCameraData(data: CameraSensorPoint[]) {
+    if (this.headRenderer) {
+      this.headRenderer.setCameraData(data)
+    } else {
+      this.pendingCameraData = data
+    }
+  }
+
+  setCameraMountOffset(offset: CameraMountOffset) {
+    this.headRenderer?.setCameraMountOffset(offset)
   }
 
   private nedToScene(p: GPSPipelinePoint): THREE.Vector3 {

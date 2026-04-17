@@ -1,0 +1,17 @@
+{
+  "flysight": "07-29-25/TRACK.CSV",
+  "video": "C:/Users/hartm/OneDrive/Wingsuit Science/Squaw/2025-07-29/VID_20250729_091919_00_034.insv",
+  "gyroflow": "C:/Users/hartm/OneDrive/Wingsuit Science/Squaw/2025-07-29/gyroflowcameradatafull.csv",
+  "offsetMs": -63050,
+  "method": "epoch",
+  "confidence": "coarse",
+  "videoStartEpochMs": 1753802359000,
+  "gpsStartEpochMs": 1753802422050,
+  "overlapDurationS": 124.27,
+  "generatedAt": "2026-04-16T01:54:45.639Z",
+  "mountOffset": {
+    "headingDeg": 0,
+    "pitchDeg": -180,
+    "rollDeg": 90
+  }
+}
