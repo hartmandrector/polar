@@ -252,7 +252,7 @@ export class BodyFrameScene {
     this.trailPositions = this.data.map(p => this.nedToScene(p))
 
     const geometry = new THREE.BufferGeometry().setFromPoints(this.trailPositions)
-    const material = new THREE.LineBasicMaterial({ color: 0x3060a0, opacity: 0.3, transparent: true })
+    const material = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true })
     this.trail = new THREE.Line(geometry, material)
     this.worldGroup.add(this.trail)
   }
