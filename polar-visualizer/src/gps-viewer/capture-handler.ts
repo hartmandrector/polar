@@ -65,13 +65,21 @@ export class CaptureHandler {
   }
 
   private handleInit(d: any) {
-    this.frameRate = d.frameRate || 60
+    // Priority: CAPTURE_INIT message → URL params → getFlightBounds() auto-detect
+    const url = new URL(window.location.href)
+    const urlStart = url.searchParams.get('startTime')
+    const urlEnd = url.searchParams.get('endTime')
+    const urlRate = url.searchParams.get('frameRate')
+    const urlFrames = url.searchParams.get('totalFrames')
 
-    // Use provided times or auto-detect from flight computer
+    this.frameRate = d.frameRate || (urlRate ? Number(urlRate) : 60)
+
     const bounds = this.callbacks.getFlightBounds()
-    this.startTime = d.startTime ?? bounds.startTime
-    this.endTime = d.endTime ?? bounds.endTime
-    this.totalFrames = Math.ceil((this.endTime - this.startTime) * this.frameRate)
+    this.startTime = d.startTime ?? (urlStart ? Number(urlStart) : bounds.startTime)
+    this.endTime = d.endTime ?? (urlEnd ? Number(urlEnd) : bounds.endTime)
+    this.totalFrames = urlFrames
+      ? Number(urlFrames)
+      : Math.ceil((this.endTime - this.startTime) * this.frameRate)
     this.active = true
 
     this.updateStatus('Ready')
@@ -157,10 +165,18 @@ export class CaptureHandler {
     base.searchParams.set('axis', session.axisHelpers)
     base.searchParams.set('kf', session.keyframeEnabled ? '1' : '0')
 
-    // Keyframes as base64 JSON
+    // Keyframes as base64 JSON (includes captureStart/captureEnd)
     if (session.keyframes) {
       const kfJson = JSON.stringify(session.keyframes)
       base.searchParams.set('keyframes', btoa(kfJson))
+    }
+
+    // Explicit start/end times for Playwright (from keyframe capture range or flight bounds)
+    if (session.capture) {
+      base.searchParams.set('startTime', String(session.capture.startTime))
+      base.searchParams.set('endTime', String(session.capture.endTime))
+      base.searchParams.set('frameRate', String(session.capture.frameRate))
+      base.searchParams.set('totalFrames', String(session.capture.totalFrames))
     }
 
     return base.toString()

@@ -53,7 +53,10 @@ const CHART_OPTS = {
   responsive: true,
   maintainAspectRatio: false,
   animation: false as const,
-  plugins: { legend: { display: false }, tooltip: { enabled: false } },
+  plugins: {
+    legend: { display: false },
+    tooltip: { enabled: false },
+  },
   scales: {
     x: { grid: { color: COL_GRID }, ticks: { color: COL_TICK, font: { size: 10 } } },
     y: { grid: { color: COL_GRID }, ticks: { color: COL_TICK, font: { size: 10 } } },
@@ -103,7 +106,7 @@ export class GPSCharts {
 
   constructor() {
     // Wire dropdown selects
-    const s1 = document.getElementById('chart1-select') as HTMLSelectElement
+    const s1 = document.getElementById('polar-curve-select') as HTMLSelectElement
     const s2 = document.getElementById('chart2-select') as HTMLSelectElement
     const s3 = document.getElementById('chart3-select') as HTMLSelectElement
 

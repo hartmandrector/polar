@@ -180,9 +180,9 @@ export class MomentInset {
     // Scene
     this.scene = new THREE.Scene()
 
-    // Semi-transparent background
+    // Background plane (transparent for Playwright capture)
     const bgGeo = new THREE.PlaneGeometry(12, 9)
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1a, transparent: true, opacity: 0.75 })
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1a, transparent: true, opacity: 0 })
     const bg = new THREE.Mesh(bgGeo, bgMat)
     bg.position.z = -0.5
     this.scene.add(bg)
