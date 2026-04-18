@@ -492,6 +492,8 @@ async function loadFile(file: File) {
       renderFrame: (index, fraction) => {
         scene?.setIndex(index, fraction)
         bodyScene?.setIndex(index, fraction)
+        scrubber.value = String(index)          // sync scrubber so updateChartPolar reads correct index
+        charts?.setCursor(index)                // move chart cursors to current frame
         updateReadout(index)
         updateMomentInset()
         updateChartPolar()

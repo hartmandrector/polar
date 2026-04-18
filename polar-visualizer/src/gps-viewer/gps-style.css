@@ -228,7 +228,7 @@ html, body {
   min-width: 520px;
   height: 100%;
   overflow-y: auto;
-  background: #16213e;
+  background: transparent;
   border-left: 1px solid #0f3460;
   padding: 8px;
   display: flex;
@@ -289,6 +289,26 @@ html, body {
   left: 0;
   right: 0;
   bottom: 0;
+}
+
+/* ─── Transparent capture panels ─────────────────────────────── */
+#speed-polar-chart,
+#moment-panel,
+#readout-panel {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+#speed-polar-chart .chart-header,
+#moment-panel .chart-header,
+#readout-panel .chart-header {
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+}
+
+#speed-polar-chart canvas,
+#readout-panel #readout {
+  background: transparent !important;
 }
 
 /* ─── Readout Panel ─────────────────────────────────────────── */
