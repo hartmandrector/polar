@@ -311,7 +311,7 @@ gps.html?track=TRACK.CSV&startTime=767.126&endTime=778.154&frameRate=60&totalFra
 
 The capture handler already supports `startTime`, `endTime`, `frameRate`, `totalFrames` as URL params. No code changes needed for basic capture. For session state (overlays, keyframes, solver settings), pass full URL with `capture-session.ts` params.
 
-### Step 3: Enhanced Blender VSE Import (`blender-vse-import.py`)
+### Step 3: Enhanced Blender VSE Import (`blender-vse-import.py`) → see Step 5
 
 Extend the existing script to:
 1. Import the MP4 video on **Channel 1** (currently reserved)
@@ -319,19 +319,48 @@ Extend the existing script to:
 3. The MP4 and PNGs are already synced (both cover the same time range) — just align frame 1 of each
 4. Optionally import keyframe data from `.insprj` as Blender markers or camera keyframes
 
+### Step 5: Blender Combined Import Script (`blender-vse-combined.py`)
+
+New script that handles the complete video + overlay import in a single operation:
+
+1. **Prompt for folder** → user selects edit folder containing MP4 + polar-* subfolders
+2. **Channel 1**: Import the `*.(1).mp4` video file
+   - Scale: 0.28× (maps 4000×3000 MP4 → 1080×1920 portrait output)
+   - Position: origin (0, 0)
+   - No alpha — this is the background layer
+3. **Channels 2-5**: Import polar overlay PNGs (existing transform presets)
+4. **Alignment**: Frame 1 of overlays = Frame 1 of video (both cover the same capture range)
+5. **Timeline**: Set project length to match the shorter of video/overlays
+
+**Video Transform** (4000×3000 → 1080×1920):
+- Scale X: 0.28, Scale Y: 0.28
+- Position: (0, 0) — centered
+- This assumes 4K×3K export from Insta360 Studio with 4:3 aspect ratio
+- Different export resolutions would need different scale factors
+
+**Key Files**:
+- `scripts/blender-vse-combined.py` — the combined import script
+- `scripts/blender-vse-import.py` — overlay-only import (existing, still works standalone)
+
 ### Step 4: GPS Viewer UI — Insta360 Sync Panel
 
 New sidebar section below the existing Head Position panel. Reads `sync-result.json` (output of `calc-timing.js --json`) and provides two actions:
 
-#### Button 1: "Set Capture Range"
+#### Button 1: "Set Capture Range" ✅ IMPLEMENTED & VERIFIED
 Sets `captureStart` and `captureEnd` in the existing `KeyframeSet` from the sync result's `pipeline_start_s` / `pipeline_end_s`. This defines the Playwright capture window without touching camera keyframes.
 
 - Writes to existing `kfEditor.captureStart` / `kfEditor.captureEnd`
 - Timeline immediately shows the capture range markers
 - Ready for Playwright capture with no further configuration
+- **Tested**: Playwright capture with range-only (no keyframes) works correctly
 
-#### Button 2: "Import Keyframes"
+#### Button 2: "Import Keyframes" ✅ IMPLEMENTED & VERIFIED
 Creates GPS viewer `CameraKeyframe` entries from Insta360 keyframe timing. Each Insta360 keyframe's `pipeline_time_s` becomes the `t` value in a new `CameraKeyframe`.
+
+- **Tested**: 5 keyframes imported from Clip2 scheme at correct pipeline times (767.98–779.14s)
+- **Tested**: Playwright capture with range + keyframes works correctly
+- Phase 1 only — imports timing, uses current camera position as placeholder
+- Saved JSON output verified: [keyframesall.json](../polar-visualizer/public/05-03-2025-1/keyframesall.json)
 
 **Keyframe mapping challenge**: Insta360 keyframes describe 360° camera orientation (`pan`, `tilt`, `roll`, `fov`, `distance` in equirectangular space), while GPS viewer keyframes describe Three.js orbit camera state (`position: [x,y,z]`, `zoom`). These are fundamentally different coordinate systems:
 
@@ -348,6 +377,24 @@ Creates GPS viewer `CameraKeyframe` entries from Insta360 keyframe timing. Each 
 **Phase 2 — Camera mapping**: Map Insta360 pan/tilt/fov/distance to Three.js orbit controls. The 3JS orbit camera uses spherical coordinates (`theta`, `phi`, `radius`) which may have a reasonable mapping from Insta360's `pan`/`tilt`/`distance`. The head position system's pan/tilt interpretation (already in `camera-sensor.ts`) may provide a reference for coordinate conversion.
 
 **Phase 3 — Round-trip editing**: After import, keyframes can be fine-tuned in the GPS viewer's existing keyframe editor (add/delete/reposition) and saved back via the existing JSON save/load system. The `KeyframeSet` JSON format already supports everything needed.
+
+#### Generate Sync Button (Server API) ✅ IMPLEMENTED
+The "Generate Sync" button in the GPS viewer sidebar calls `calc-timing.js` on the server via a Vite dev server middleware plugin:
+
+```
+[Browser]  POST /api/calc-timing { editFolder: "C:\\...\\edit\\25-05-03\\05-03-2025-1" }
+    ↓
+[Vite plugin: calcTimingPlugin()]  execFile('node', ['tools/calc-timing.js', folder, '--json'])
+    ↓
+[calc-timing.js]  discovers INSV, TRACK.CSV, .insprj → writes sync-result.json to edit folder
+    ↓
+[Vite plugin]  reads back sync-result.json → returns as JSON response
+    ↓
+[Browser]  applyInsta360Sync(data) → enables Set Capture Range / Import Keyframes buttons
+```
+
+**Input**: Absolute Windows path pasted into text input. Surrounding quotes are auto-stripped.
+**Fallback**: "Load JSON" button opens a file picker for manually selecting a sync-result.json.
 
 #### Data Flow
 ```

@@ -1311,6 +1311,148 @@ kfClearRange.addEventListener('click', () => {
   console.log('Capture range cleared')
 })
 
+// ─── Insta360 Sync Import ───────────────────────────────────────────────────
+
+interface Insta360Keyframe {
+  id: string
+  pipeline_time_s: number
+  pan: number
+  tilt: number
+  roll: number
+  fov: number
+  distance: number
+}
+
+interface Insta360SyncData {
+  scheme?: string
+  pipeline_start_s?: number
+  pipeline_end_s?: number
+  keyframes?: Insta360Keyframe[]
+}
+
+let cachedInsta360Sync: Insta360SyncData | null = null
+
+const kfImportFolder = document.getElementById('kf-import-folder') as HTMLInputElement
+const kfImportGenerate = document.getElementById('kf-import-generate')!
+const kfImportLoad = document.getElementById('kf-import-load')!
+const kfImportInput = document.getElementById('kf-import-input') as HTMLInputElement
+const kfImportRange = document.getElementById('kf-import-range') as HTMLButtonElement
+const kfImportKfs = document.getElementById('kf-import-kfs') as HTMLButtonElement
+const kfImportStatus = document.getElementById('kf-import-status')!
+
+/** Apply parsed Insta360 sync data to cached state and update UI */
+function applyInsta360Sync(data: Insta360SyncData) {
+  if (!data.pipeline_start_s && !data.keyframes?.length) {
+    kfImportStatus.textContent = 'No Insta360 data in result'
+    return
+  }
+  cachedInsta360Sync = data
+  const parts: string[] = []
+  if (data.scheme) parts.push(data.scheme)
+  if (data.pipeline_start_s != null && data.pipeline_end_s != null) {
+    parts.push(`range: ${data.pipeline_start_s.toFixed(1)}–${data.pipeline_end_s.toFixed(1)}s`)
+  }
+  if (data.keyframes?.length) parts.push(`${data.keyframes.length} keyframes`)
+  kfImportStatus.textContent = `Loaded: ${parts.join(', ')}`
+  kfImportRange.disabled = (data.pipeline_start_s == null || data.pipeline_end_s == null)
+  kfImportKfs.disabled = !data.keyframes?.length
+  kfImportRange.style.color = kfImportRange.disabled ? '#68a' : '#8cf'
+  kfImportKfs.style.color = kfImportKfs.disabled ? '#68a' : '#8cf'
+  console.log('Insta360 sync loaded:', data.scheme, data.keyframes?.length, 'keyframes')
+}
+
+// Generate Sync — runs calc-timing.js on the server via /api/calc-timing
+kfImportGenerate.addEventListener('click', async () => {
+  const folder = kfImportFolder.value.trim().replace(/^["']+|["']+$/g, '')
+  kfImportFolder.value = folder  // reflect cleaned path back to input
+  if (!folder) {
+    kfImportStatus.textContent = 'Enter an edit folder path'
+    return
+  }
+  kfImportStatus.textContent = 'Generating...'
+  kfImportGenerate.setAttribute('disabled', '')
+  try {
+    const resp = await fetch('/api/calc-timing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editFolder: folder }),
+    })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }))
+      kfImportStatus.textContent = `Error: ${err.error || resp.statusText}`
+      console.error('calc-timing error:', err)
+      return
+    }
+    const data: Insta360SyncData = await resp.json()
+    applyInsta360Sync(data)
+  } catch (e) {
+    kfImportStatus.textContent = `Failed: ${e instanceof Error ? e.message : String(e)}`
+    console.error('calc-timing fetch error:', e)
+  } finally {
+    kfImportGenerate.removeAttribute('disabled')
+  }
+})
+
+// Load JSON — file picker fallback
+kfImportLoad.addEventListener('click', () => kfImportInput.click())
+
+kfImportInput.addEventListener('change', async () => {
+  const file = kfImportInput.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data: Insta360SyncData = JSON.parse(text)
+    applyInsta360Sync(data)
+  } catch (e) {
+    kfImportStatus.textContent = 'Failed to parse JSON'
+    console.error('Insta360 sync parse error:', e)
+  }
+})
+
+kfImportRange.addEventListener('click', () => {
+  if (!cachedInsta360Sync?.pipeline_start_s || !cachedInsta360Sync?.pipeline_end_s) return
+  kfEditor.setCaptureStart(cachedInsta360Sync.pipeline_start_s)
+  kfEditor.setCaptureEnd(cachedInsta360Sync.pipeline_end_s)
+  // Enable keyframe mode so timeline is visible
+  if (!kfEnabled.checked) {
+    kfEnabled.checked = true
+    kfEditor.setEnabled(true)
+    kfTimeline.style.display = 'block'
+  }
+  kfImportStatus.textContent = `Range set: ${cachedInsta360Sync.pipeline_start_s.toFixed(1)}–${cachedInsta360Sync.pipeline_end_s.toFixed(1)}s`
+  console.log(`Insta360 capture range: ${cachedInsta360Sync.pipeline_start_s.toFixed(2)}–${cachedInsta360Sync.pipeline_end_s.toFixed(2)}s`)
+})
+
+kfImportKfs.addEventListener('click', () => {
+  const kfs = cachedInsta360Sync?.keyframes
+  if (!kfs?.length) return
+  if (!scene) { kfImportStatus.textContent = 'Scene not ready'; return }
+  // Phase 1: import timing only — use current inertial camera position.
+  // Phase 2 (future): map Insta360 pan/tilt/fov/distance to Three.js orbit:
+  //   pan → spherical theta (with reference-frame offset)
+  //   tilt → spherical phi (elevation)
+  //   fov → PerspectiveCamera.zoom (inverse relationship)
+  //   distance → orbit radius
+  // See docs/INSTA360-DATA-SYNC.md "Coordinate System Mapping" for details.
+  const pos = scene.getCameraPosition()
+  const zoom = scene.getCameraZoom()
+  let count = 0
+  for (const kf of kfs) {
+    if (typeof kf.pipeline_time_s === 'number') {
+      kfEditor.addInertialKeyframe(kf.pipeline_time_s, pos, zoom)
+      count++
+    }
+  }
+  // Enable keyframe mode so timeline is visible
+  if (!kfEnabled.checked) {
+    kfEnabled.checked = true
+    kfEditor.setEnabled(true)
+    kfTimeline.style.display = 'block'
+  }
+  kfImportStatus.textContent = `Imported ${count} inertial keyframes (timing only)`
+  console.log(`Imported ${count} Insta360 keyframes as inertial (timing only)`)
+})
+
 // ─── Session State for Playwright Capture ───────────────────────────────────
 
 const axisHelperMode = document.getElementById('axis-helper-mode') as HTMLSelectElement

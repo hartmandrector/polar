@@ -195,6 +195,22 @@
                   <button id="kf-clear-range" style="padding:4px 6px;background:#403030;color:#ccc;border:none;border-radius:3px;cursor:pointer;font-size:10px;" title="Clear capture range">✕</button>
                 </div>
                 <div style="font-size:10px;color:#6a7a8a;" id="kf-status">No keyframes</div>
+
+                <!-- Insta360 Import -->
+                <div style="margin-top:8px;border-top:1px solid #2a3040;padding-top:6px;">
+                  <div style="font-size:11px;color:#9aa;font-weight:600;margin-bottom:4px;">Insta360 Import</div>
+                  <input type="text" id="kf-import-folder" placeholder="Edit folder path (or paste)" style="width:100%;box-sizing:border-box;padding:4px 6px;background:#1a1e2e;color:#d0d8e0;border:1px solid #2a3040;border-radius:3px;font-size:10px;margin-bottom:4px;">
+                  <div style="display:flex;gap:4px;margin-bottom:4px;">
+                    <button id="kf-import-generate" style="flex:2;padding:4px 6px;background:#2a5040;color:#8c8;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Generate Sync</button>
+                    <button id="kf-import-load" style="flex:1;padding:4px 6px;background:#2a4040;color:#8cc;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Load JSON</button>
+                    <input type="file" id="kf-import-input" accept=".json" style="display:none">
+                  </div>
+                  <div style="display:flex;gap:4px;margin-bottom:4px;">
+                    <button id="kf-import-range" style="flex:1;padding:4px 6px;background:#2a4060;color:#68a;border:none;border-radius:3px;cursor:pointer;font-size:10px;" disabled>Set Capture Range</button>
+                    <button id="kf-import-kfs" style="flex:1;padding:4px 6px;background:#2a5060;color:#68a;border:none;border-radius:3px;cursor:pointer;font-size:10px;" disabled>Import Keyframes</button>
+                  </div>
+                  <div style="font-size:10px;color:#6a7a8a;" id="kf-import-status">No sync data</div>
+                </div>
               </div>
             </div>
           </div>

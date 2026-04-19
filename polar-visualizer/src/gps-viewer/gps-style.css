@@ -313,6 +313,11 @@ html, body {
 
 /* ─── Readout Panel ─────────────────────────────────────────── */
 
+#capture-panel {
+  height: auto;
+  max-height: none;
+}
+
 #readout-panel {
   height: auto;
   max-height: none;
