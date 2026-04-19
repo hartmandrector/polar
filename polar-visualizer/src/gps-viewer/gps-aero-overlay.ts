@@ -431,6 +431,9 @@ export class GPSAeroOverlay {
     this.netForceArrow.visible = false
 
     // Acceleration ball — fixed radius, position offset from CG by acceleration vector
+    // accelN/E/D is inertial NED from GPS pipeline. In body-frame mode we must
+    // rotate it into body frame so the ball direction is consistent with the
+    // body-fixed view (all other arrows are already body-frame native).
     const ACCEL_BALL_RADIUS = 0.1    // fixed scene-meters radius
     const ACCEL_POS_SCALE  = 0.08   // m/s² → scene meters offset
     const accelNED: Vec3NED = {
@@ -439,6 +442,15 @@ export class GPSAeroOverlay {
       z: pt.processed.accelD,
     }
     const accelThree = nedToThreeJS(accelNED)
+    if (this.bodyFrame) {
+      // Rotate inertial acceleration into body frame: q_inv = inverse(body→inertial)
+      const inertialToBody = bodyToInertialQuat(
+        ov?.roll ?? pt.aero.roll,
+        ov?.theta ?? pt.aero.theta,
+        ov?.psi ?? pt.aero.psi,
+      ).invert()
+      accelThree.applyQuaternion(inertialToBody)
+    }
     const offsetLen = accelThree.length() * ACCEL_POS_SCALE
     if (offsetLen > 0.005) {
       this.accelBall.scale.setScalar(ACCEL_BALL_RADIUS)
