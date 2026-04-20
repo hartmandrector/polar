@@ -85,9 +85,9 @@ export class GPSCharts {
   /** True when chart is showing canopy polar (for label/color hints) */
   private sweepIsCanopy = false
 
-  /** Sweep config — 1° steps, flight-relevant range (α ≥ 0 keeps sustained speeds positive) */
+  /** Sweep config — 1° steps, flight-relevant range (start at 1° to avoid sparse spacing near 0°) */
   private static readonly SWEEP_CFG: Partial<SweepConfig> = {
-    minAlpha: 0,
+    minAlpha: 1,
     maxAlpha: 45,
     step: 1,
   }
