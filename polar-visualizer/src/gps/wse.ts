@@ -110,6 +110,13 @@ export interface SystemPolarPoint {
 export type PolarEvaluator = (alpha_deg: number) => { cl: number; cd: number };
 
 /**
+ * Factory that creates a PolarEvaluator for specific flight conditions.
+ * Called per-point so the evaluator uses the same rho/airspeed as the
+ * kl/kd → CL/CD conversion, ensuring consistent normalization.
+ */
+export type PolarEvaluatorFactory = (rho: number, airspeed: number) => PolarEvaluator;
+
+/**
  * Find AOA via binary search with on-demand segment model evaluation.
  *
  * Bisects on CL error (more sensitive to α than CD). Falls back to
@@ -237,8 +244,9 @@ export function matchAOAFromTable(
  * 
  * @param sRef  System reference area (m²)
  * @param mRef  Pilot mass (kg)
- * @param polarEvaluator  On-demand segment model evaluator (preferred — binary search)
- * @param polarTable  Pre-built system polar table (fallback — exhaustive search)
+ * @param polarEvaluatorFactory  Factory for per-point evaluator (preferred — uses matching rho/airspeed)
+ * @param polarEvaluator  Fixed evaluator (fallback if no factory)
+ * @param polarTable  Pre-built system polar table (legacy fallback — exhaustive search)
  */
 export function extractAero(
   vN: number, vE: number, vD: number,
@@ -246,6 +254,7 @@ export function extractAero(
   rho: number,
   sRef: number,
   mRef: number,
+  polarEvaluatorFactory?: PolarEvaluatorFactory,
   polarEvaluator?: PolarEvaluator,
   polarTable?: SystemPolarPoint[],
   prevKl = 0.01, prevKd = 0.01, prevRoll = 0,
@@ -259,11 +268,15 @@ export function extractAero(
   const cl = k > 1e-12 ? kl * GRAVITY / k : 0;
   const cd = k > 1e-12 ? kd * GRAVITY / k : 0;
 
+  // Build per-point evaluator with matching flight conditions
+  const airspeed = Math.sqrt(vN * vN + vE * vE + vD * vD);
+  const evaluator = polarEvaluatorFactory ? polarEvaluatorFactory(rho, airspeed) : polarEvaluator;
+
   let aoa = 0;
   let residual = Infinity;
 
-  if (polarEvaluator) {
-    const match = matchAOABinarySearch(cl, cd, polarEvaluator);
+  if (evaluator) {
+    const match = matchAOABinarySearch(cl, cd, evaluator);
     aoa = match.alpha_deg * Math.PI / 180;
     residual = match.residual;
   } else if (polarTable && polarTable.length > 0) {

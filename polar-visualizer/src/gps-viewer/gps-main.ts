@@ -5,7 +5,7 @@
  */
 
 import { processGPSFile, type PipelineResult } from '../gps/gps-pipeline'
-import { buildSystemPolarTable, buildPolarEvaluator } from './gps-polar-table'
+import { buildSystemPolarTable, buildPolarEvaluatorFactory } from './gps-polar-table'
 import { GPSCharts } from './gps-charts'
 import { GPSReplay } from './gps-replay'
 import { GPSScene } from './gps-scene'
@@ -178,13 +178,13 @@ async function loadFile(file: File) {
     flightDateStr = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-]/g, '_')
   }
 
-  // Build polar evaluator for binary search AOA matching
-  const polarEvaluator = buildPolarEvaluator()
+  // Build polar evaluator factory for per-point binary search AOA matching
+  const polarEvaluatorFactory = buildPolarEvaluatorFactory()
 
   // Run pipeline
   const t0 = performance.now()
   result = processGPSFile(text, {
-    polarEvaluator,
+    polarEvaluatorFactory,
     pilotMass: 77.5,
     sRef: 2.0,
   })

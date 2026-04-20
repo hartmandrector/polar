@@ -16,7 +16,7 @@ import { calculateDerivative } from './math-utils';
 import { unwrapAngles } from './math-utils';
 import { getRho, dynamicPressure } from './atmosphere';
 import { geodeticToNED } from './geo-utils';
-import { extractAero, SystemPolarPoint, applyInverseDKE, type PolarEvaluator } from './wse';
+import { extractAero, SystemPolarPoint, applyInverseDKE, type PolarEvaluator, type PolarEvaluatorFactory } from './wse';
 import { zeroWind, applyWindCorrection } from './wind-model';
 import { FlightComputer } from './flight-computer';
 import type { FlightComputerInput } from './flight-computer';
@@ -44,7 +44,9 @@ export interface PipelineConfig {
   wind: WindVector;
   /** Pre-built system polar table for AOA estimation (fallback) */
   polarTable?: SystemPolarPoint[];
-  /** On-demand segment model evaluator for binary search AOA (preferred) */
+  /** Factory for per-point evaluator — uses matching rho/airspeed (preferred) */
+  polarEvaluatorFactory?: PolarEvaluatorFactory;
+  /** Fixed evaluator for binary search AOA (fallback if no factory) */
   polarEvaluator?: PolarEvaluator;
   /** Pilot mass (kg) — for kl/kd → CL/CD conversion */
   pilotMass: number;
@@ -163,6 +165,7 @@ export function processGNSSData(
       rho,
       config.sRef,
       config.pilotMass,
+      config.polarEvaluatorFactory,
       config.polarEvaluator,
       config.polarTable,
       prevKl, prevKd, prevRoll,

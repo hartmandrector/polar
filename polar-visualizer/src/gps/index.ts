@@ -26,7 +26,7 @@ export { geodeticToNED, nedToGeodetic } from './geo-utils';
 export {
   extractAero, calculateWingsuitParameters, calculateSustainedSpeeds, coeffToSustainedSpeeds,
   matchAOAFromTable, matchAOABinarySearch, computeBodyRates, applyInverseDKE,
-  type PolarEvaluator,
+  type PolarEvaluator, type PolarEvaluatorFactory,
 } from './wse';
 export type { SystemPolarPoint } from './wse';
 

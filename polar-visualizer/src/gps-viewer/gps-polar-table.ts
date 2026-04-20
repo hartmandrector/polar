@@ -7,7 +7,7 @@
 import { a5segmentsContinuous } from '../polar/polar-data'
 import { defaultControls, computeSegmentForce, computeWindFrameNED, sumAllSegments } from '../polar/aero-segment'
 import { computeCenterOfMass } from '../polar/inertia'
-import type { SystemPolarPoint, PolarEvaluator } from '../gps/wse'
+import type { SystemPolarPoint, PolarEvaluator, PolarEvaluatorFactory } from '../gps/wse'
 
 const A5_REF_LENGTH = 1.93
 const DEFAULT_AIRSPEED = 40  // m/s — reference speed for coefficient normalization
@@ -36,6 +36,15 @@ export function buildPolarEvaluator(
   airspeed = DEFAULT_AIRSPEED,
   rho = DEFAULT_RHO,
 ): PolarEvaluator {
+  return buildPolarEvaluatorFactory()(rho, airspeed)
+}
+
+/**
+ * Build a factory that creates per-point PolarEvaluators with matching rho/airspeed.
+ * The factory captures the segment model geometry once; rho and airspeed are supplied
+ * per GPS point so the CL/CD normalization matches the kl/kd → CL/CD conversion.
+ */
+export function buildPolarEvaluatorFactory(): PolarEvaluatorFactory {
   const polar = a5segmentsContinuous
   const segments = polar.aeroSegments ?? []
   const controls = defaultControls()
@@ -44,25 +53,27 @@ export function buildPolarEvaluator(
   const sRef = polar.s
   const beta_deg = 0
 
-  return (alpha_deg: number) => {
-    const q = 0.5 * rho * airspeed * airspeed
-    const qS = q * sRef
+  return (rho: number, airspeed: number): PolarEvaluator => {
+    return (alpha_deg: number) => {
+      const q = 0.5 * rho * airspeed * airspeed
+      const qS = q * sRef
 
-    const segForces = segments.map(seg =>
-      computeSegmentForce(seg, alpha_deg, beta_deg, controls, rho, airspeed)
-    )
-    const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha_deg, beta_deg)
-    const system = sumAllSegments(
-      segments, segForces, cgMeters, polar.referenceLength,
-      windDir, liftDir, sideDir, controls, massRef,
-    )
+      const segForces = segments.map(seg =>
+        computeSegmentForce(seg, alpha_deg, beta_deg, controls, rho, airspeed)
+      )
+      const { windDir, liftDir, sideDir } = computeWindFrameNED(alpha_deg, beta_deg)
+      const system = sumAllSegments(
+        segments, segForces, cgMeters, polar.referenceLength,
+        windDir, liftDir, sideDir, controls, massRef,
+      )
 
-    const totalLift = liftDir.x * system.force.x + liftDir.y * system.force.y + liftDir.z * system.force.z
-    const totalDrag = -(windDir.x * system.force.x + windDir.y * system.force.y + windDir.z * system.force.z)
+      const totalLift = liftDir.x * system.force.x + liftDir.y * system.force.y + liftDir.z * system.force.z
+      const totalDrag = -(windDir.x * system.force.x + windDir.y * system.force.y + windDir.z * system.force.z)
 
-    const cl = qS > 1e-10 ? totalLift / qS : 0
-    const cd = qS > 1e-10 ? totalDrag / qS : 0
+      const cl = qS > 1e-10 ? totalLift / qS : 0
+      const cd = qS > 1e-10 ? totalDrag / qS : 0
 
-    return { cl, cd }
+      return { cl, cd }
+    }
   }
 }
