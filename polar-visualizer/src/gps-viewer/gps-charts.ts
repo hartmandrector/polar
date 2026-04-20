@@ -399,7 +399,7 @@ export class GPSCharts {
     }
   }
 
-  /** Find the point on the swept polar closest to current AOA */
+  /** Find the interpolated point on the swept polar at current AOA */
   private findPolarCursor(): { x: number; y: number } | null {
     if (this.lastSweep.length === 0) return null
     const view = this.chart1View
@@ -408,18 +408,40 @@ export class GPSCharts {
     const pt = this.data[this.cursorIdx]
     if (!pt) return null
     const currentAOA = pt.aero.aoa * R2D // degrees
+    const sweep = this.lastSweep
 
-    // Find nearest α in the sweep
-    let best = this.lastSweep[0]
-    let bestDist = Math.abs(best.alpha - currentAOA)
-    for (const sp of this.lastSweep) {
-      const d = Math.abs(sp.alpha - currentAOA)
-      if (d < bestDist) { best = sp; bestDist = d }
+    // Clamp to sweep endpoints
+    if (currentAOA <= sweep[0].alpha) {
+      return view === 'polar'
+        ? { x: sweep[0].cd, y: sweep[0].cl }
+        : { x: sweep[0].vxs, y: sweep[0].vys }
+    }
+    const last = sweep[sweep.length - 1]
+    if (currentAOA >= last.alpha) {
+      return view === 'polar'
+        ? { x: last.cd, y: last.cl }
+        : { x: last.vxs, y: last.vys }
     }
 
-    return view === 'polar'
-      ? { x: best.cd, y: best.cl }
-      : { x: best.vxs, y: best.vys }
+    // Find bracketing pair and interpolate
+    for (let i = 0; i < sweep.length - 1; i++) {
+      if (sweep[i].alpha <= currentAOA && currentAOA < sweep[i + 1].alpha) {
+        const t = (currentAOA - sweep[i].alpha) / (sweep[i + 1].alpha - sweep[i].alpha)
+        if (view === 'polar') {
+          return {
+            x: sweep[i].cd + t * (sweep[i + 1].cd - sweep[i].cd),
+            y: sweep[i].cl + t * (sweep[i + 1].cl - sweep[i].cl),
+          }
+        } else {
+          return {
+            x: sweep[i].vxs + t * (sweep[i + 1].vxs - sweep[i].vxs),
+            y: sweep[i].vys + t * (sweep[i + 1].vys - sweep[i].vys),
+          }
+        }
+      }
+    }
+
+    return null
   }
 
   private rebuildChart2() {
