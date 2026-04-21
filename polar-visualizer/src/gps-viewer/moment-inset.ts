@@ -34,17 +34,16 @@ const MIN_SCALE = 5
 const ARC_PTS = 32
 
 // Radii for concentric arcs (innermost → outermost)
+// Aero+Pilot are combined into the innermost arc; 3 rings total
 const RADII = {
-  aero:  0.6,
-  pilot: 0.8,
-  gyro:  1.0,
-  net:   1.15,
+  aero:  0.6,  // combined aero + pilot (innermost)
+  gyro:  0.9,  // gyroscopic coupling (middle)
+  net:   1.15, // I·α net (outermost)
 }
 
 // Colors
 const COLORS = {
-  aero:  0xff6644,  // orange-red: suit aero demand
-  pilot: 0x44ff88,  // green: pilot control input
+  aero:  0xff6644,  // orange-red: aero + pilot combined demand
   gyro:  0xffdd44,  // yellow: gyroscopic coupling
   net:   0xffffff,  // white: I·α (measured rotational acceleration × inertia)
 }
@@ -205,8 +204,8 @@ export class MomentInset {
     this.legend = document.createElement('div')
     this.legend.style.cssText = `
       position: absolute; top: 28px; left: 4px;
-      font-size: 10px; font-family: monospace;
-      color: #ccc; line-height: 1.4;
+      font-size: 13px; font-family: monospace;
+      color: #ccc; line-height: 1.55;
       pointer-events: none;
       white-space: pre;
     `
@@ -271,16 +270,16 @@ export class MomentInset {
         }
       }
 
+      // Combine aero + pilot into one arc (total controlled aero demand)
+      const combined = m.aero + m.pilot
       const axisMax = Math.max(
-        Math.abs(m.aero), Math.abs(m.pilot),
-        Math.abs(m.gyro), Math.abs(m.net),
+        Math.abs(combined), Math.abs(m.gyro), Math.abs(m.net),
         MIN_SCALE,
       )
 
-      if (Math.abs(m.aero) > 0.1)
-        group.aero = buildArc(center, normal, RADII.aero, m.aero, COLORS.aero, axisMax)
-      if (Math.abs(m.pilot) > 0.1)
-        group.pilot = buildArc(center, normal, RADII.pilot, m.pilot, COLORS.pilot, axisMax)
+      if (Math.abs(combined) > 0.1)
+        group.aero = buildArc(center, normal, RADII.aero, combined, COLORS.aero, axisMax)
+      // pilot arc always null (folded into aero)
       if (Math.abs(m.gyro) > 0.1)
         group.gyro = buildArc(center, normal, RADII.gyro, m.gyro, COLORS.gyro, axisMax)
       if (Math.abs(m.net) > 0.1)

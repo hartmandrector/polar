@@ -17,21 +17,21 @@ import { formatColorKey, formatAxisMoments } from './moment-types'
 /** Build one cell of the HTML bar (filled or empty) */
 function cell(on: boolean): string {
   const bg = on ? '#ccc' : 'rgba(255,255,255,0.15)'
-  return `<span style="display:inline-block;width:6px;height:8px;background:${bg};margin:0 0.5px;"></span>`
+  return `<span style="display:inline-block;width:11px;height:16px;background:${bg};margin:0 1px;"></span>`
 }
 
 /** Format control input as HTML bar (bipolar: -100% to +100%) */
 function fmtCtrl(v: number): string {
   const pct = Math.round(v * 100)
   const pctStr = (pct >= 0 ? '+' : '') + String(pct).padStart(3, ' ') + '%'
-  const filled = Math.min(5, Math.round(Math.abs(v) * 5))
+  const filled = Math.min(8, Math.round(Math.abs(v) * 8))
   let bar = ''
   if (v >= 0) {
-    for (let i = 0; i < 5; i++) bar += cell(false)
-    for (let i = 0; i < 5; i++) bar += cell(i < filled)
+    for (let i = 0; i < 8; i++) bar += cell(false)
+    for (let i = 0; i < 8; i++) bar += cell(i < filled)
   } else {
-    for (let i = 0; i < 5; i++) bar += cell(i >= 5 - filled)
-    for (let i = 0; i < 5; i++) bar += cell(false)
+    for (let i = 0; i < 8; i++) bar += cell(i >= 8 - filled)
+    for (let i = 0; i < 8; i++) bar += cell(false)
   }
   return `${bar} ${pctStr}`
 }

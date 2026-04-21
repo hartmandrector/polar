@@ -20,16 +20,16 @@ import { formatColorKey, formatAxisMoments, fmt } from './moment-types'
 /** Build one cell of the HTML bar (filled or empty) */
 function cell(on: boolean): string {
   const bg = on ? '#ccc' : 'rgba(255,255,255,0.15)'
-  return `<span style="display:inline-block;width:6px;height:8px;background:${bg};margin:0 0.5px;"></span>`
+  return `<span style="display:inline-block;width:11px;height:16px;background:${bg};margin:0 1px;"></span>`
 }
 
 /** Format canopy control as unipolar bar [0–100%] (pull amount) */
 function fmtBrake(v: number, label: string): string {
   const pct = Math.round(Math.max(0, Math.min(1, v)) * 100)
   const pctStr = String(pct).padStart(3, ' ') + '%'
-  const filled = Math.min(10, Math.round(v * 10))
+  const filled = Math.min(12, Math.round(v * 12))
   let bar = ''
-  for (let i = 0; i < 10; i++) bar += cell(i < filled)
+  for (let i = 0; i < 12; i++) bar += cell(i < filled)
   return `  ${label} ${bar} ${pctStr}`
 }
 

@@ -90,8 +90,7 @@ export function fmt(v: number): string {
 /** Color key header lines (shared across all modes) */
 export function formatColorKey(): string {
   return [
-    `<span style="color:#ff6644">■</span> Aero`,
-    `<span style="color:#44ff88">■</span> Pilot`,
+    `<span style="color:#ff6644">■</span> Aero+Pilot`,
     `<span style="color:#ffdd44">■</span> Gyro`,
     `<span style="color:#ffffff">■</span> I·α`,
   ].join('<br>')
