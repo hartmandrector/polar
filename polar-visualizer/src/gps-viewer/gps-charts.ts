@@ -96,6 +96,9 @@ export class GPSCharts {
   private chart2View: Chart2View = 'altitude'
   private chart3View: Chart3View = 'position'
 
+  /** Whether speed axes show mph (true) or m/s (false) */
+  private speedMph = true
+
   // ─── X-axis zoom state for chart2 (time series) ────────────────────────
 
   /** Current visible x-range [min, max] in seconds. null = auto (full range) */
@@ -113,6 +116,12 @@ export class GPSCharts {
     s1.addEventListener('change', () => { this.chart1View = s1.value as Chart1View; this.rebuildChart1() })
     s2.addEventListener('change', () => { this.chart2View = s2.value as Chart2View; this.rebuildChart2() })
     s3.addEventListener('change', () => { this.chart3View = s3.value as Chart3View; this.rebuildChart3() })
+
+    const mphBox = document.getElementById('speed-mph') as HTMLInputElement | null
+    if (mphBox) {
+      mphBox.checked = this.speedMph
+      mphBox.addEventListener('change', () => { this.speedMph = mphBox.checked; this.rebuildChart1() })
+    }
   }
 
   setData(points: GPSPipelinePoint[]) {
@@ -189,7 +198,7 @@ export class GPSCharts {
     const data = this.lastSweep.map(p =>
       view === 'polar'
         ? { x: p.cd, y: p.cl }
-        : { x: p.vxs, y: p.vys }
+        : { x: p.vxs * (this.speedMph ? 2.237 : 1), y: p.vys * (this.speedMph ? 2.237 : 1) }
     )
     const colors = this.lastSweep.map(p => p.color)
 
@@ -227,7 +236,7 @@ export class GPSCharts {
 
     switch (view) {
       case 'polar': xLabel = 'CD'; yLabel = 'CL'; break
-      case 'speed': xLabel = 'Vxs'; yLabel = 'Vys'; break
+      case 'speed': xLabel = this.speedMph ? 'Horiz Speed (mph)' : 'Horiz Speed (m/s)'; yLabel = this.speedMph ? 'Sink Rate (mph)' : 'Sink Rate (m/s)'; break
       case 'ld':    xLabel = 'Airspeed (mph)'; yLabel = 'L/D'; break
       default:      xLabel = ''; yLabel = ''
     }
@@ -236,12 +245,13 @@ export class GPSCharts {
 
     // ── Glide ratio lines (speed polar and CL/CD polar) ──
     if (view === 'speed' || view === 'polar') {
+      const spd = (view === 'speed' && this.speedMph) ? 2.237 : 1
       for (let g = 0; g < GLIDE_RATIOS.length; g++) {
         const ratio = GLIDE_RATIOS[g]
         const lineData: { x: number; y: number }[] = []
         if (view === 'speed') {
           // Line from origin: Vys = Vxs / ratio → slope 1/ratio through origin
-          lineData.push({ x: 0, y: 0 }, { x: 80, y: 80 / ratio })
+          lineData.push({ x: 0, y: 0 }, { x: 80 * spd, y: (80 / ratio) * spd })
         } else {
           // CL/CD polar: CL = CD * ratio
           lineData.push({ x: 0, y: 0 }, { x: 2, y: 2 * ratio })
@@ -276,8 +286,10 @@ export class GPSCharts {
 
     // ── Dynamic speed trail + point (actual Vx, Vy) — speed view only ──
     if (view === 'speed') {
+      const spd = this.speedMph ? 2.237 : 1  // m/s → mph conversion factor
+
       // 8-second trail for dynamic speeds (dark purple)
-      const dynTrail = this.buildDynamicTrail()
+      const dynTrail = this.buildDynamicTrail(spd)
       if (dynTrail.length > 0) {
         datasets.push({
           data: dynTrail,
@@ -289,10 +301,31 @@ export class GPSCharts {
         })
       }
 
-      // Current point (green triangle)
+      // Acceleration ball — white circle offset from current speed by linear accel
+      // Position = current speed + accel (m/s²) projected onto chart axes
       const cp = pts[this.cursorIdx]
-      const dynX = cp ? cp.processed.groundSpeed : 0
-      const dynY = cp ? cp.processed.velD : 0
+      if (cp) {
+        const vN = cp.processed.velN, vE = cp.processed.velE
+        const gs = cp.processed.groundSpeed
+        const aN = cp.processed.accelN, aE = cp.processed.accelE, aD = cp.processed.accelD
+        // Project horizontal accel onto flight heading (along groundSpeed vector)
+        const horizAccel = gs > 0.1 ? (vN * aN + vE * aE) / gs : 0
+        const ballX = (cp.processed.groundSpeed + horizAccel) * spd
+        const ballY = (cp.processed.velD + aD) * spd
+        datasets.push({
+          data: [{ x: ballX, y: ballY }],
+          borderColor: 'rgba(255,255,255,0.9)',
+          backgroundColor: 'rgba(255,255,255,0.9)',
+          pointRadius: 6,
+          pointStyle: 'circle',
+          showLine: false,
+          order: 1,  // behind triangle (order: -1) and trail (order: 0)
+        })
+      }
+
+      // Current point (green triangle)
+      const dynX = cp ? cp.processed.groundSpeed * spd : 0
+      const dynY = cp ? cp.processed.velD * spd : 0
       datasets.push({
         data: [{ x: dynX, y: dynY }],
         borderColor: COL_DYNAMIC,
@@ -333,10 +366,13 @@ export class GPSCharts {
     const xReverse = view === 'polar'
     const yReverse = view === 'speed'
 
-    // Auto-zoom for canopy mode (smaller speed/force envelope)
+    // Speed view: fixed max at 70 m/s (or 157 mph); canopy mode uses smaller range
+    const spd = this.speedMph ? 2.237 : 1
     const canopyZoom = this.sweepIsCanopy && (view === 'speed' || view === 'polar')
-    const xMax = canopyZoom ? (view === 'speed' ? 30 : 0.6) : undefined
-    const yMax = canopyZoom ? (view === 'speed' ? 20 : 1.5) : undefined
+    const speedXMax = canopyZoom ? 30 * spd : 70 * spd
+    const speedYMax = canopyZoom ? 20 * spd : 70 * spd
+    const xMax = view === 'speed' ? speedXMax : (view === 'polar' && canopyZoom ? 0.6 : undefined)
+    const yMax = view === 'speed' ? speedYMax : (view === 'polar' && canopyZoom ? 1.5 : undefined)
 
     this.chart1 = new Chart(ctx, {
       type: 'scatter',
@@ -364,7 +400,7 @@ export class GPSCharts {
       if (p.processed.t < minT) continue
       switch (view) {
         case 'polar': result.push({ x: p.aero.cd, y: p.aero.cl }); break
-        case 'speed': result.push({ x: p.aero.sustainedX, y: p.aero.sustainedY }); break
+        case 'speed': result.push({ x: p.aero.sustainedX * (this.speedMph ? 2.237 : 1), y: p.aero.sustainedY * (this.speedMph ? 2.237 : 1) }); break
         case 'ld':    result.push({ x: p.processed.airspeed * 2.237, y: p.aero.cd > 0.001 ? p.aero.cl / p.aero.cd : 0 }); break
       }
     }
@@ -372,7 +408,7 @@ export class GPSCharts {
   }
 
   /** Build dynamic speed trail: groundSpeed vs velD for last TRAIL_SECONDS (speed view) */
-  private buildDynamicTrail(): { x: number; y: number }[] {
+  private buildDynamicTrail(spd = 1): { x: number; y: number }[] {
     const pts = this.data
     if (pts.length === 0) return []
     const curT = pts[this.cursorIdx]?.processed.t ?? 0
@@ -382,7 +418,7 @@ export class GPSCharts {
     for (let i = 0; i <= this.cursorIdx && i < pts.length; i++) {
       const p = pts[i]
       if (p.processed.t < minT) continue
-      result.push({ x: p.processed.groundSpeed, y: p.processed.velD })
+      result.push({ x: p.processed.groundSpeed * spd, y: p.processed.velD * spd })
     }
     return result
   }
@@ -393,7 +429,7 @@ export class GPSCharts {
     if (!p) return { x: 0, y: 0 }
     switch (view) {
       case 'polar': return { x: p.aero.cd, y: p.aero.cl }
-      case 'speed': return { x: p.aero.sustainedX, y: p.aero.sustainedY }
+      case 'speed': return { x: p.aero.sustainedX * (this.speedMph ? 2.237 : 1), y: p.aero.sustainedY * (this.speedMph ? 2.237 : 1) }
       case 'ld':    return { x: p.processed.airspeed * 2.237, y: p.aero.cd > 0.001 ? p.aero.cl / p.aero.cd : 0 }
       default:      return { x: 0, y: 0 }
     }
@@ -409,18 +445,19 @@ export class GPSCharts {
     if (!pt) return null
     const currentAOA = pt.aero.aoa * R2D // degrees
     const sweep = this.lastSweep
+    const spd = (view === 'speed' && this.speedMph) ? 2.237 : 1
 
     // Clamp to sweep endpoints
     if (currentAOA <= sweep[0].alpha) {
       return view === 'polar'
         ? { x: sweep[0].cd, y: sweep[0].cl }
-        : { x: sweep[0].vxs, y: sweep[0].vys }
+        : { x: sweep[0].vxs * spd, y: sweep[0].vys * spd }
     }
     const last = sweep[sweep.length - 1]
     if (currentAOA >= last.alpha) {
       return view === 'polar'
         ? { x: last.cd, y: last.cl }
-        : { x: last.vxs, y: last.vys }
+        : { x: last.vxs * spd, y: last.vys * spd }
     }
 
     // Find bracketing pair and interpolate
@@ -434,8 +471,8 @@ export class GPSCharts {
           }
         } else {
           return {
-            x: sweep[i].vxs + t * (sweep[i + 1].vxs - sweep[i].vxs),
-            y: sweep[i].vys + t * (sweep[i + 1].vys - sweep[i].vys),
+            x: (sweep[i].vxs + t * (sweep[i + 1].vxs - sweep[i].vxs)) * spd,
+            y: (sweep[i].vys + t * (sweep[i + 1].vys - sweep[i].vys)) * spd,
           }
         }
       }
