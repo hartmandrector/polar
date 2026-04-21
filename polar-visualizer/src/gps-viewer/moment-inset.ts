@@ -35,10 +35,11 @@ const ARC_PTS = 32
 
 // Radii for concentric arcs (innermost → outermost)
 // Aero+Pilot are combined into the innermost arc; 3 rings total
+// Must be < y-spacing/2 (0.75) to avoid inter-axis overlap
 const RADII = {
-  aero:  0.6,  // combined aero + pilot (innermost)
-  gyro:  0.9,  // gyroscopic coupling (middle)
-  net:   1.15, // I·α net (outermost)
+  aero:  0.35,  // combined aero + pilot (innermost)
+  gyro:  0.52,  // gyroscopic coupling (middle)
+  net:   0.65,  // I·α net (outermost)
 }
 
 // Colors
@@ -50,10 +51,11 @@ const COLORS = {
 
 // Axis orientations in the mini scene (fixed camera looking at origin)
 // Arcs stacked vertically: pitch top, roll middle, yaw bottom
+// x=1.0 shifts arcs to right portion of the canvas
 const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
-  pitch: new THREE.Vector3(0,  3.0, 0),
-  roll:  new THREE.Vector3(0,  0.0, 0),
-  yaw:   new THREE.Vector3(0, -3.0, 0),
+  pitch: new THREE.Vector3(1.0,  1.5, 0),
+  roll:  new THREE.Vector3(1.0,  0.0, 0),
+  yaw:   new THREE.Vector3(1.0, -1.5, 0),
 }
 
 // Arc plane normals for each axis (in mini-scene space)
@@ -119,6 +121,7 @@ export class MomentInset {
   private camera: THREE.OrthographicCamera
   private container: HTMLDivElement
   private legend: HTMLDivElement
+  private arcCanvas: HTMLCanvasElement
 
   // Arc groups per axis (pilot folded into aero; 3 arcs per axis)
   private arcGroups: Record<string, {
@@ -144,28 +147,26 @@ export class MomentInset {
   constructor(parentEl: HTMLElement, embedded = false) {
     this.formatter = this.formatters.wingsuit
 
-    // Outer container — flex row: [text legend | arc canvas]
+    // Outer container — relative-positioned so arc canvas can anchor bottom-right absolutely
     this.container = document.createElement('div')
     this.container.id = 'moment-inset'
     if (embedded) {
       this.container.style.cssText = `
-        width: 100%; display: flex; flex-direction: row; align-items: stretch;
+        position: relative; width: 100%;
         pointer-events: none;
       `
     } else {
       this.container.style.cssText = `
         position: absolute; top: 8px; left: 8px;
-        display: flex; flex-direction: row; align-items: stretch;
         pointer-events: none; z-index: 10;
       `
       parentEl.style.position = 'relative'
     }
     parentEl.appendChild(this.container)
 
-    // Left column: text legend
+    // Left column: text legend (normal flow, drives container height)
     this.legend = document.createElement('div')
     this.legend.style.cssText = `
-      flex: 1 1 auto;
       font-size: 13px; font-family: monospace;
       color: #ccc; line-height: 1.55;
       pointer-events: none;
@@ -174,35 +175,29 @@ export class MomentInset {
     `
     this.container.appendChild(this.legend)
 
-    // Right column: arc canvas wrapper (fixed width, flex column for 3 arc rows)
-    const arcCol = document.createElement('div')
-    arcCol.style.cssText = `
-      flex: 0 0 120px; display: flex; flex-direction: column;
-      align-items: center; justify-content: space-around;
+    // Arc canvas — absolutely pinned, offset differs per mode
+    const canvas = document.createElement('canvas')
+    this.arcCanvas = canvas
+    canvas.style.cssText = `
+      position: absolute; inset: auto 227px -15px auto;
+      width: 160px; height: 200px;
       pointer-events: none;
     `
-    this.container.appendChild(arcCol)
+    this.container.appendChild(canvas)
 
-    // Canvas — sized to the arc column
-    const canvas = document.createElement('canvas')
-    canvas.style.cssText = 'width: 120px; height: 360px; flex: 0 0 auto;'
-    arcCol.appendChild(canvas)
-
-    // Renderer — internal resolution 120×360
+    // Renderer — internal resolution 160×200
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setSize(120, 360)
+    this.renderer.setSize(160, 200)
     this.renderer.setClearColor(0x000000, 0)
 
     // Scene
     this.scene = new THREE.Scene()
 
-    // Orthographic camera — narrow view, tall enough to see all 3 arc rows
-    // AXIS_OFFSETS are at y=+3, 0, -3; arcs have max radius ~1.15
-    // So scene height needed ≈ 2*(3+1.3) = 8.6; width ≈ 2*(1.3) = 2.6
-    const canvasW = 120, canvasH = 360
-    const aspect = canvasW / canvasH  // 1/3
-    const viewH = 4.5  // half-height: covers ±4.5 → full range -3-1.3 to +3+1.3
+    // Orthographic camera — covers arcs at x=0.5±0.65, y=±(1.5+0.65)
+    const canvasW = 160, canvasH = 200
+    const aspect = canvasW / canvasH  // 0.8
+    const viewH = 2.3  // half-height: 1.5+0.65=2.15, add small margin
     this.camera = new THREE.OrthographicCamera(
       -viewH * aspect, viewH * aspect, viewH, -viewH, 0.1, 10,
     )
@@ -219,6 +214,10 @@ export class MomentInset {
     if (mode === this.currentMode) return
     this.currentMode = mode
     this.formatter = this.formatters[mode]
+    // Reposition arc canvas — canopy has more rows above the pitch/roll/yaw section
+    this.arcCanvas.style.inset = mode === 'canopy'
+      ? 'auto 227px 131px auto'
+      : 'auto 227px -15px auto'
   }
 
   /** Get current vehicle mode */
