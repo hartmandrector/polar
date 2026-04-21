@@ -269,10 +269,28 @@ class POLAR_OT_combined_import(bpy.types.Operator):
         scene.frame_start = 1
         scene.frame_end = max_end_frame - 1
 
+        # ── Configure Render Output ─────────────────────────────────────
+        # Output to same edit folder, named after the source video
+        if mp4_path:
+            stem = os.path.splitext(os.path.basename(mp4_path))[0]
+            # Clean up Insta360 naming: "VID_20260419_123456_(1)" → keep as-is
+            out_name = f"edit-{stem}"
+        else:
+            out_name = "edit-output"
+
+        scene.render.filepath = os.path.join(parent, out_name)
+        scene.render.image_settings.file_format = 'FFMPEG'
+        scene.render.ffmpeg.format = 'MPEG4'
+        scene.render.ffmpeg.codec = 'H264'
+        scene.render.ffmpeg.constant_rate_factor = 'MEDIUM'
+        scene.render.ffmpeg.audio_codec = 'AAC'
+
         duration_sec = (max_end_frame - 1) / PROJECT_FPS
         self.report({'INFO'},
             f"Imported {imported_count} strips: "
             f"{max_end_frame - 1} frames ({duration_sec:.1f}s at {PROJECT_FPS}fps)")
+        self.report({'INFO'},
+            f"Output: {os.path.join(parent, out_name + '.mp4')}")
 
         return {'FINISHED'}
 

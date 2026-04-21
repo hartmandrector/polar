@@ -112,8 +112,9 @@ export function runOrientationEKF(
       continue
     }
 
-    // Set airspeed for this timestep (used by aero model in prediction)
+    // Set airspeed and rho for this timestep (used by aero model in prediction)
     ekf.setAirspeed(pt.processed.airspeed)
+    ekf.setRho(pt.processed.rho)
 
     // Feed measurement
     ekf.update(meas)

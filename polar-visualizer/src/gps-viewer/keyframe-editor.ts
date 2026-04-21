@@ -142,6 +142,23 @@ export class KeyframeEditor {
     this.notify()
   }
 
+  /** Update an existing keyframe by index (for popup editor). Does not re-sort. */
+  updateInertialKeyframe(index: number, position: THREE.Vector3, zoom: number) {
+    if (index >= 0 && index < this.data.inertial.length) {
+      const kf = this.data.inertial[index]
+      this.data.inertial[index] = { t: kf.t, position: [position.x, position.y, position.z], zoom }
+      this.notify()
+    }
+  }
+
+  updateBodyKeyframe(index: number, position: THREE.Vector3, zoom: number) {
+    if (index >= 0 && index < this.data.body.length) {
+      const kf = this.data.body[index]
+      this.data.body[index] = { t: kf.t, position: [position.x, position.y, position.z], zoom }
+      this.notify()
+    }
+  }
+
   private upsertKeyframe(arr: CameraKeyframe[], t: number, position: THREE.Vector3, zoom: number) {
     const SNAP_THRESHOLD = 0.05 // snap to existing keyframe within 50ms
     const existing = arr.findIndex(kf => Math.abs(kf.t - t) < SNAP_THRESHOLD)

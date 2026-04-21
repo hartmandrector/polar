@@ -208,7 +208,7 @@ export class GPSAeroOverlay {
     }
 
     const cfg = this.config
-    const rho = cfg.rho ?? 1.225
+    const rho = pt.processed.rho ?? cfg.rho ?? 1.225
 
     // Build body velocity from GPS airspeed + orientation
     // u = V·cos(α)·cos(β), v = V·sin(β), w = V·sin(α)·cos(β)

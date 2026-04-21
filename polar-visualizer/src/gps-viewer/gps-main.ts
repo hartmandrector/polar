@@ -18,6 +18,7 @@ import { parseCameraSensorCSV, parseSyncResult, type CameraMountOffset, type Cam
 import { a5segmentsContinuous, ibexulContinuous } from '../polar/polar-data'
 import { computeCenterOfMass, computeInertia } from '../polar/inertia'
 import { solveControlInputs, solveCanopyControls, type ControlInversionConfig } from './control-solver'
+import * as THREE from 'three'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
@@ -253,7 +254,6 @@ async function loadFile(file: File) {
     cgMeters,
     height: aeroRef,
     mass: polar.m,
-    rho: 1.225,
     inertia,
   })
   bodyScene.setAeroConfig({
@@ -261,7 +261,6 @@ async function loadFile(file: File) {
     cgMeters,
     height: aeroRef,
     mass: polar.m,
-    rho: 1.225,
     inertia,
   })
 
@@ -279,7 +278,6 @@ async function loadFile(file: File) {
     cgMeters: canopyCg,
     height: canopyMassRef,
     mass: canopyPolar.m,
-    rho: 1.225,
     inertia: canopyInertia,
   })
   bodyScene.setCanopyAeroConfig({
@@ -287,7 +285,6 @@ async function loadFile(file: File) {
     cgMeters: canopyCg,
     height: canopyMassRef,
     mass: canopyPolar.m,
-    rho: 1.225,
     inertia: canopyInertia,
   })
 
@@ -301,7 +298,6 @@ async function loadFile(file: File) {
     height: aeroRef,
     mass: polar.m,
     inertia,
-    rho: 1.225,
   }
   let convergeCount = 0
   let wingsuitCount = 0
@@ -360,7 +356,6 @@ async function loadFile(file: File) {
       cgMeters,
       height: massRef,
       inertia,
-      rho: 1.225,
     },
   })
   const ekfElapsed = ((performance.now() - ekfT0) / 1000).toFixed(3)
@@ -425,7 +420,6 @@ async function loadFile(file: File) {
     height: canopyMassRef,
     mass: canopyPolar.m,
     inertia: canopyInertia,
-    rho: 1.225,
     canopyControlGain: 3.0,
     riserLength: 6.0,
   }
@@ -1226,19 +1220,23 @@ function renderKfTimeline() {
   const markers = kfTimeline.querySelectorAll('.kf-marker')
   markers.forEach(m => m.remove())
 
-  const addMarkers = (keyframes: readonly { t: number }[], color: string) => {
-    for (const kf of keyframes) {
+  const addMarkers = (keyframes: readonly { t: number }[], color: string, type: 'inertial' | 'body') => {
+    keyframes.forEach((kf, idx) => {
       const pct = dur > 0 ? (kf.t / dur) * 100 : 0
       const marker = document.createElement('div')
       marker.className = 'kf-marker'
-      marker.style.cssText = `position:absolute;left:${pct}%;top:1px;width:8px;height:8px;background:${color};transform:translateX(-4px) rotate(45deg);cursor:pointer;z-index:1;`
-      marker.title = `t=${kf.t.toFixed(1)}s`
+      marker.style.cssText = `position:absolute;left:${pct}%;top:50%;width:12px;height:12px;background:${color};transform:translate(-6px,-50%) rotate(45deg);cursor:pointer;z-index:1;box-shadow:0 0 0 2px #000,0 0 4px rgba(0,0,0,0.6);`
+      marker.title = `${type} t=${kf.t.toFixed(2)}s — click to edit`
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation()
+        openKfEditPopup(type, idx, marker)
+      })
       kfTimeline.appendChild(marker)
-    }
+    })
   }
 
-  addMarkers(kfEditor.inertialKeyframes, '#4488ff')
-  addMarkers(kfEditor.bodyKeyframes, '#ff8844')
+  addMarkers(kfEditor.inertialKeyframes, '#4488ff', 'inertial')
+  addMarkers(kfEditor.bodyKeyframes, '#ff8844', 'body')
 
   // Capture range markers (vertical bars)
   const addRangeMarker = (t: number | null, color: string, label: string) => {
@@ -1246,13 +1244,142 @@ function renderKfTimeline() {
     const pct = (t / dur) * 100
     const marker = document.createElement('div')
     marker.className = 'kf-marker'
-    marker.style.cssText = `position:absolute;left:${pct}%;top:0;width:2px;height:12px;background:${color};transform:translateX(-1px);cursor:pointer;z-index:2;`
+    marker.style.cssText = `position:absolute;left:${pct}%;top:0;bottom:0;width:4px;background:${color};transform:translateX(-2px);cursor:default;z-index:2;box-shadow:1px 0 0 1px rgba(0,0,0,0.7),-1px 0 0 1px rgba(0,0,0,0.7);`
     marker.title = `${label}: ${t.toFixed(1)}s`
     kfTimeline.appendChild(marker)
   }
   addRangeMarker(kfEditor.captureStart, '#44ffaa', 'Capture start')
   addRangeMarker(kfEditor.captureEnd, '#ff4466', 'Capture end')
 }
+
+// ─── Keyframe Edit Popup ────────────────────────────────────────────────────
+
+interface KfEditState {
+  type: 'inertial' | 'body'
+  index: number
+  originalPosition: [number, number, number]
+  originalZoom: number
+  unsubscribe: () => void
+}
+let kfEditState: KfEditState | null = null
+
+const kfEditPopup = document.getElementById('kf-edit-popup') as HTMLDivElement
+const kfEditTitle = document.getElementById('kf-edit-title')!
+const kfEditTime = document.getElementById('kf-edit-time')!
+const kfEditPos = document.getElementById('kf-edit-pos')!
+const kfEditZoom = document.getElementById('kf-edit-zoom')!
+const kfEditSave = document.getElementById('kf-edit-save')!
+const kfEditCancel = document.getElementById('kf-edit-cancel')!
+
+/** Convert GPS time (seconds) to nearest scrubber index */
+function tToIndex(t: number): number {
+  if (!result) return 0
+  let best = 0
+  let bestDelta = Infinity
+  result.points.forEach((pt, i) => {
+    const d = Math.abs(pt.processed.t - t)
+    if (d < bestDelta) { bestDelta = d; best = i }
+  })
+  return best
+}
+
+function updatePopupReadout() {
+  if (!kfEditState) return
+  const activeScene = kfEditState.type === 'inertial' ? scene : bodyScene
+  if (!activeScene) return
+  const pos = activeScene.getCameraPosition()
+  const zoom = activeScene.getCameraZoom()
+  kfEditPos.textContent = `${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}`
+  kfEditZoom.textContent = zoom.toFixed(2)
+}
+
+function openKfEditPopup(type: 'inertial' | 'body', index: number, markerEl: HTMLElement) {
+  // Close any existing popup first (cancel without saving)
+  closeKfEditPopup(false)
+
+  const keyframes = type === 'inertial' ? kfEditor.inertialKeyframes : kfEditor.bodyKeyframes
+  const kf = keyframes[index]
+  if (!kf) return
+
+  const activeScene = type === 'inertial' ? scene : bodyScene
+  if (!activeScene) return
+
+  // Seek to keyframe time
+  const idx = tToIndex(kf.t)
+  scrubber.value = String(idx)
+  replay?.seekIndex(idx)
+  scene?.setIndex(idx)
+  bodyScene?.setIndex(idx)
+  charts?.setCursor(idx)
+  updateReadout(idx)
+  updateTransport(kf.t, result?.duration ?? 0)
+
+  // Subscribe to live camera changes
+  const unsubscribe = activeScene.onCameraChange(updatePopupReadout)
+
+  kfEditState = {
+    type,
+    index,
+    originalPosition: [...kf.position] as [number, number, number],
+    originalZoom: kf.zoom,
+    unsubscribe,
+  }
+
+  // Populate popup
+  const color = type === 'inertial' ? '#4488ff' : '#ff8844'
+  kfEditTitle.textContent = `${type === 'inertial' ? 'Inertial' : 'Body'} Keyframe`
+  kfEditTitle.style.color = color
+  kfEditTime.textContent = `${kf.t.toFixed(2)}s`
+  updatePopupReadout()
+
+  // Position popup near the marker element — anchor to #scene-panel
+  const scenePanel = document.getElementById('scene-panel')!
+  const panelRect = scenePanel.getBoundingClientRect()
+  const markerRect = markerEl.getBoundingClientRect()
+  const popupW = 230
+  const popupH = 110 // approximate
+  let left = markerRect.left - panelRect.left - popupW / 2
+  let top = markerRect.top - panelRect.top - popupH - 8
+  // Clamp to panel bounds
+  left = Math.max(4, Math.min(left, panelRect.width - popupW - 4))
+  top = Math.max(4, Math.min(top, panelRect.height - popupH - 4))
+  kfEditPopup.style.left = `${left}px`
+  kfEditPopup.style.top = `${top}px`
+  kfEditPopup.style.display = 'block'
+}
+
+function closeKfEditPopup(save: boolean) {
+  if (!kfEditState) return
+  const { type, index, originalPosition, originalZoom, unsubscribe } = kfEditState
+
+  unsubscribe()
+
+  if (save) {
+    const activeScene = type === 'inertial' ? scene : bodyScene
+    if (activeScene) {
+      const pos = activeScene.getCameraPosition()
+      const zoom = activeScene.getCameraZoom()
+      if (type === 'inertial') {
+        kfEditor.updateInertialKeyframe(index, pos, zoom)
+      } else {
+        kfEditor.updateBodyKeyframe(index, pos, zoom)
+      }
+    }
+  } else {
+    // Restore original camera position (cancel)
+    const activeScene = type === 'inertial' ? scene : bodyScene
+    activeScene?.setCameraState(
+      new THREE.Vector3(...originalPosition),
+      originalZoom,
+    )
+  }
+
+  kfEditState = null
+  kfEditPopup.style.display = 'none'
+}
+
+kfEditSave.addEventListener('click', () => closeKfEditPopup(true))
+kfEditCancel.addEventListener('click', () => closeKfEditPopup(false))
 
 kfEditor.onChange(() => {
   updateKfStatus()

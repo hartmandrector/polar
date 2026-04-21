@@ -79,7 +79,7 @@ export function solveControlInputs(
   config: ControlInversionConfig,
   prevControls?: [number, number, number],
 ): ControlInversionResult {
-  const rho = config.rho ?? 1.225
+  const rho = pt.processed.rho ?? config.rho ?? 1.225
 
   // Measured angular acceleration [rad/s²]
   const pDotMeas = (pt.bodyRates?.pDot ?? 0) * D2R
@@ -292,7 +292,7 @@ export function solveCanopyControls(
     }
     return winner
   }
-  const rho = config.rho ?? 1.225
+  const rho = pt.processed.rho ?? config.rho ?? 1.225
 
   const pDotMeas = (pt.bodyRates?.pDot ?? 0) * D2R
   const qDotMeas = (pt.bodyRates?.qDot ?? 0) * D2R

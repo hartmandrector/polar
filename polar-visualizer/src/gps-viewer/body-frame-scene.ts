@@ -59,6 +59,9 @@ export class BodyFrameScene {
 
   private ekf: OrientationEKF | null = null
 
+  // Camera change callbacks (for keyframe popup editor)
+  private _onCameraChangeCallbacks: (() => void)[] = []
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
 
@@ -96,6 +99,11 @@ export class BodyFrameScene {
     this.controls.addEventListener('end', () => {
       const p = this.camera.position
       console.log(`[Body Camera] position: [${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}], zoom: ${this.camera.zoom.toFixed(2)}`)
+    })
+
+    // Camera change callback — used by keyframe popup editor to get live updates
+    this.controls.addEventListener('change', () => {
+      this._onCameraChangeCallbacks.forEach(cb => cb())
     })
 
     // Aero overlay (body frame — vectors stay in native frame)
@@ -442,6 +450,14 @@ export class BodyFrameScene {
 
   getCameraPosition(): THREE.Vector3 { return this.camera.position.clone() }
   getCameraZoom(): number { return this.camera.zoom }
+
+  /** Subscribe to live camera orbit changes (for keyframe popup live-update). */
+  onCameraChange(cb: () => void): () => void {
+    this._onCameraChangeCallbacks.push(cb)
+    return () => {
+      this._onCameraChangeCallbacks = this._onCameraChangeCallbacks.filter(x => x !== cb)
+    }
+  }
 
   setCameraState(position: THREE.Vector3, zoom: number) {
     this.controls.enableDamping = false

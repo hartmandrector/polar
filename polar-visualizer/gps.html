@@ -36,7 +36,14 @@
         <!-- Transport bar -->
         <div id="transport">
           <button id="btn-play" title="Play/Pause">▶</button>
-          <input type="range" id="scrubber" min="0" max="1000" value="0" />
+          <!-- Scrubber wrapper: kf-timeline overlays the scrubber track exactly -->
+          <div id="scrubber-wrap">
+            <input type="range" id="scrubber" min="0" max="1000" value="0" />
+            <!-- Keyframe timeline — overlays the scrubber track, markers aligned by % -->
+            <div id="kf-timeline" style="display:none;">
+              <!-- Markers injected dynamically -->
+            </div>
+          </div>
           <span id="time-display">0:00.0 / 0:00.0</span>
           <select id="speed-select">
             <option value="0.25">0.25×</option>
@@ -47,10 +54,22 @@
           </select>
           <button id="btn-load-new" title="Load new file">📂</button>
         </div>
-        <!-- Keyframe timeline (diamonds on a thin track below scrubber) -->
-        <div id="kf-timeline" style="height:12px;position:relative;margin:0 60px 0 36px;display:none;">
-          <div style="position:absolute;top:5px;left:0;right:0;height:2px;background:#2a3040;border-radius:1px;"></div>
-          <!-- Keyframe markers are injected dynamically -->
+
+        <!-- Keyframe edit popup (shown when a marker is clicked) -->
+        <div id="kf-edit-popup" style="display:none;">
+          <div id="kf-edit-header">
+            <span id="kf-edit-title">Keyframe</span>
+            <div style="display:flex;gap:4px;">
+              <button id="kf-edit-save" title="Save changes">✓ Save</button>
+              <button id="kf-edit-cancel" title="Cancel / close">✕</button>
+            </div>
+          </div>
+          <div id="kf-edit-body">
+            <div class="kf-edit-row"><span class="kf-edit-label">Time</span><span id="kf-edit-time">—</span></div>
+            <div class="kf-edit-row"><span class="kf-edit-label">Position</span><span id="kf-edit-pos">—</span></div>
+            <div class="kf-edit-row"><span class="kf-edit-label">Zoom</span><span id="kf-edit-zoom">—</span></div>
+            <div id="kf-edit-hint">Orbit the camera, then Save.</div>
+          </div>
         </div>
       </div>
 

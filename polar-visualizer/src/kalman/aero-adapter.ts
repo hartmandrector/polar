@@ -100,7 +100,7 @@ export class AeroMomentAdapter implements AeroMomentModel {
   private readonly cgMeters: Vec3NED
   private readonly height: number
   private readonly inertiaData: InertiaComponents
-  private readonly rho: number
+  private rho: number
   private readonly mapControls: (dp: number, dr: number, dy: number) => SegmentControls
 
   constructor(config: AeroAdapterConfig) {
@@ -110,6 +110,11 @@ export class AeroMomentAdapter implements AeroMomentModel {
     this.inertiaData = config.inertia
     this.rho = config.rho ?? 1.225
     this.mapControls = config.controlMapper ?? wingsuitControlMapper
+  }
+
+  /** Update air density for the current point */
+  setRho(rho: number): void {
+    this.rho = rho
   }
 
   evaluateMoments(

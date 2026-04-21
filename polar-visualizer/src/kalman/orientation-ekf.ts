@@ -101,6 +101,13 @@ export class OrientationEKF {
     this.airspeed = V
   }
 
+  /** Set current air density (kg/m³) — called externally from GPS pipeline */
+  setRho(rho: number): void {
+    if (this.aeroModel && 'setRho' in this.aeroModel) {
+      (this.aeroModel as any).setRho(rho)
+    }
+  }
+
   /** Process a new GPS-derived orientation measurement */
   update(meas: OrientationMeasurement): void {
     if (this.lastT === undefined) {
