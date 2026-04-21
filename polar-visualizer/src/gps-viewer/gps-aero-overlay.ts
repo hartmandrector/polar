@@ -263,7 +263,7 @@ export class GPSAeroOverlay {
         mass: cfg.mass,
         inertia: cfg.inertia,
         rho,
-        rollGain: this.canopyMode ? 1.0 : 2.0,
+        rollGain: this.canopyMode ? 1.0 : 1.0,
         canopyControlGain: this.canopyMode ? 3.0 : undefined,
         phi: this.canopyMode ? this.aeroOverrides?.roll : undefined,
         theta: this.canopyMode ? this.aeroOverrides?.theta : undefined,

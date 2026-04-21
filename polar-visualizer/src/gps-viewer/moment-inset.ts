@@ -49,10 +49,11 @@ const COLORS = {
 }
 
 // Axis orientations in the mini scene (fixed camera looking at origin)
+// Arcs stacked vertically: pitch top, roll middle, yaw bottom
 const AXIS_OFFSETS: Record<string, THREE.Vector3> = {
-  pitch: new THREE.Vector3(1.5, 2.2, 0),
-  roll:  new THREE.Vector3(-1.3, -1.5, 0),
-  yaw:   new THREE.Vector3(4.0, -1.5, 0),
+  pitch: new THREE.Vector3(0,  3.0, 0),
+  roll:  new THREE.Vector3(0,  0.0, 0),
+  yaw:   new THREE.Vector3(0, -3.0, 0),
 }
 
 // Arc plane normals for each axis (in mini-scene space)
@@ -119,20 +120,16 @@ export class MomentInset {
   private container: HTMLDivElement
   private legend: HTMLDivElement
 
-  // Arc groups per axis
+  // Arc groups per axis (pilot folded into aero; 3 arcs per axis)
   private arcGroups: Record<string, {
     aero: THREE.Line | null
-    pilot: THREE.Line | null
     gyro: THREE.Line | null
-    net: THREE.Line | null
+    net:  THREE.Line | null
   }> = {
-    pitch: { aero: null, pilot: null, gyro: null, net: null },
-    roll:  { aero: null, pilot: null, gyro: null, net: null },
-    yaw:   { aero: null, pilot: null, gyro: null, net: null },
+    pitch: { aero: null, gyro: null, net: null },
+    roll:  { aero: null, gyro: null, net: null },
+    yaw:   { aero: null, gyro: null, net: null },
   }
-
-  // Axis labels (static meshes)
-  private labels: THREE.Sprite[] = []
 
   // Mode-specific legend formatter
   private formatter: MomentLegendFormatter
@@ -147,90 +144,74 @@ export class MomentInset {
   constructor(parentEl: HTMLElement, embedded = false) {
     this.formatter = this.formatters.wingsuit
 
-    // Container
+    // Outer container — flex row: [text legend | arc canvas]
     this.container = document.createElement('div')
     this.container.id = 'moment-inset'
     if (embedded) {
       this.container.style.cssText = `
-        width: 100%; aspect-ratio: 480 / 460;
+        width: 100%; display: flex; flex-direction: row; align-items: stretch;
         pointer-events: none;
       `
     } else {
       this.container.style.cssText = `
         position: absolute; top: 8px; left: 8px;
-        width: 480px; height: 460px;
+        display: flex; flex-direction: row; align-items: stretch;
         pointer-events: none; z-index: 10;
       `
       parentEl.style.position = 'relative'
     }
     parentEl.appendChild(this.container)
 
-    // Canvas
-    const canvas = document.createElement('canvas')
-    canvas.style.cssText = 'width: 100%; height: 100%; border-radius: 8px;'
-    this.container.appendChild(canvas)
+    // Left column: text legend
+    this.legend = document.createElement('div')
+    this.legend.style.cssText = `
+      flex: 1 1 auto;
+      font-size: 13px; font-family: monospace;
+      color: #ccc; line-height: 1.55;
+      pointer-events: none;
+      white-space: pre;
+      padding: 4px 6px 4px 4px;
+    `
+    this.container.appendChild(this.legend)
 
-    // Renderer
+    // Right column: arc canvas wrapper (fixed width, flex column for 3 arc rows)
+    const arcCol = document.createElement('div')
+    arcCol.style.cssText = `
+      flex: 0 0 120px; display: flex; flex-direction: column;
+      align-items: center; justify-content: space-around;
+      pointer-events: none;
+    `
+    this.container.appendChild(arcCol)
+
+    // Canvas — sized to the arc column
+    const canvas = document.createElement('canvas')
+    canvas.style.cssText = 'width: 120px; height: 360px; flex: 0 0 auto;'
+    arcCol.appendChild(canvas)
+
+    // Renderer — internal resolution 120×360
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
-    this.renderer.setSize(480, 460)
+    this.renderer.setSize(120, 360)
     this.renderer.setClearColor(0x000000, 0)
 
     // Scene
     this.scene = new THREE.Scene()
 
-    // Background plane (transparent for Playwright capture)
-    const bgGeo = new THREE.PlaneGeometry(12, 9)
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1a, transparent: true, opacity: 0 })
-    const bg = new THREE.Mesh(bgGeo, bgMat)
-    bg.position.z = -0.5
-    this.scene.add(bg)
-
-    // Orthographic camera
-    const aspect = 480 / 460
-    const viewSize = 5.2
+    // Orthographic camera — narrow view, tall enough to see all 3 arc rows
+    // AXIS_OFFSETS are at y=+3, 0, -3; arcs have max radius ~1.15
+    // So scene height needed ≈ 2*(3+1.3) = 8.6; width ≈ 2*(1.3) = 2.6
+    const canvasW = 120, canvasH = 360
+    const aspect = canvasW / canvasH  // 1/3
+    const viewH = 4.5  // half-height: covers ±4.5 → full range -3-1.3 to +3+1.3
     this.camera = new THREE.OrthographicCamera(
-      -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 0.1, 10,
+      -viewH * aspect, viewH * aspect, viewH, -viewH, 0.1, 10,
     )
     this.camera.position.z = 5
     this.camera.lookAt(0, 0, 0)
 
-    // Axis labels
-    this.addLabel('PITCH', AXIS_OFFSETS.pitch)
-    this.addLabel('ROLL', AXIS_OFFSETS.roll)
-    this.addLabel('YAW', AXIS_OFFSETS.yaw)
-
-    // Legend overlay
-    this.legend = document.createElement('div')
-    this.legend.style.cssText = `
-      position: absolute; top: 28px; left: 4px;
-      font-size: 13px; font-family: monospace;
-      color: #ccc; line-height: 1.55;
-      pointer-events: none;
-      white-space: pre;
-    `
-    this.container.appendChild(this.legend)
+    // No 3D sprite labels — axis names rendered in HTML legend rows
 
     this.render()
-  }
-
-  private addLabel(text: string, position: THREE.Vector3) {
-    const canvas = document.createElement('canvas')
-    canvas.width = 128
-    canvas.height = 32
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#888'
-    ctx.font = 'bold 18px monospace'
-    ctx.textAlign = 'center'
-    ctx.fillText(text, 64, 22)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true })
-    const sprite = new THREE.Sprite(mat)
-    sprite.position.copy(position).add(new THREE.Vector3(0, -0.15, 0.1))
-    sprite.scale.set(1.5, 0.4, 1)
-    this.scene.add(sprite)
-    this.labels.push(sprite)
   }
 
   /** Switch vehicle mode — changes legend formatting */
@@ -262,7 +243,7 @@ export class MomentInset {
       const group = this.arcGroups[axisName]
 
       // Remove old arcs
-      for (const key of ['aero', 'pilot', 'gyro', 'net'] as const) {
+      for (const key of ['aero', 'gyro', 'net'] as const) {
         if (group[key]) {
           this.scene.remove(group[key]!)
           group[key]!.geometry.dispose()
@@ -285,7 +266,7 @@ export class MomentInset {
       if (Math.abs(m.net) > 0.1)
         group.net = buildArc(center, normal, RADII.net, m.net, COLORS.net, axisMax)
 
-      for (const key of ['aero', 'pilot', 'gyro', 'net'] as const) {
+      for (const key of ['aero', 'gyro', 'net'] as const) {
         if (group[key]) this.scene.add(group[key]!)
       }
     }
