@@ -407,6 +407,76 @@ At `dirty = 1.0`, the effective polar becomes:
 
 ---
 
+### Wingsuit Throttle Controls
+
+The wingsuit responds to three simultaneous **throttle axes** — pitch, roll, and yaw — that morph the aerodynamics of every lifting segment in real time. Each throttle input (range -1 to +1) shifts segment parameters according to tunable control constants, allowing smooth blending from aggressive to relaxed body positions.
+
+#### Pitch Throttle
+
+![Wingsuit pitch throttle effect](polar-visualizer/docs/gifs/pitch_throttle.gif)
+
+**Input:** Right stick Y (forward = nose-down pitch)
+
+**Effect:** Shifts angle of attack symmetrically across all lifting segments:
+
+$$\alpha_{eff} = \alpha + \text{pitchThrottle} \times \text{PITCH\_ALPHA\_MAX\_DEG}$$
+
+Default `PITCH_ALPHA_MAX_DEG = ±1.5°`. Also shifts the center of pressure aft with pitch-down input (stabilizing) and forward with pitch-up (destabilizing):
+
+$$\text{CP}_{eff} = \text{CP} + \text{pitchThrottle} \times \text{PITCH\_CP\_SHIFT}$$
+
+Default `PITCH_CP_SHIFT = ±0.05` (chord fraction). This models the pilot arching (increasing α, CP aft) and de-arching (decreasing α, CP forward).
+
+#### Roll Throttle
+
+![Wingsuit roll throttle effect](polar-visualizer/docs/gifs/roll_throttle.gif)
+
+**Input:** Right stick X (right = right roll)
+
+**Effect:** Differential angle of attack across left and right wings:
+
+$$\Delta\alpha_{roll} = \text{rollThrottle} \times \text{ROLL\_ALPHA\_MAX\_DEG} \times \text{rollSensitivity} \times \text{sideSign}$$
+
+Segments have graduated `rollSensitivity` values (outer wings 1.0, inner 0.6, body 0.3) so outer surfaces respond more strongly. This models asymmetric shoulder height — right shoulder up increases α on right wing and decreases it on left, generating roll moment and adverse yaw drag.
+
+Code: [src/polar/segment-factories.ts#L873](src/polar/segment-factories.ts#L873) in `makeWingsuitSegment()`.
+
+#### Yaw Throttle
+
+![Wingsuit yaw throttle effect](polar-visualizer/docs/gifs/yaw_throttle.gif)
+
+**Input:** Triggers (RT − LT, right trigger = yaw right)
+
+**Effect:** Lateral body shift and coupled differential roll moment. The yaw throttle moves the body segment left/right:
+
+$$\text{bodyY} = \text{baseY} + \text{yawThrottle} \times \text{YAW\_BODY\_Y\_SHIFT}$$
+
+and induces differential α on the wings via body twist coupling:
+
+$$\Delta\alpha_{yaw} = \text{yawThrottle} \times \text{YAW\_ROLL\_COUPLING\_DEG} \times \text{sideSign}$$
+
+This models the pilot leaning left/right to yaw the body while maintaining pitch — a core technique for precision steering in wingsuit flying.
+
+#### Control Constants
+
+All throttle response is tuned via a single interface, `WingsuitControlConstants` ([src/polar/segment-factories.ts#L722](src/polar/segment-factories.ts#L722)), with parameters like:
+
+| Constant | Default | Meaning |
+|----------|---------|----------|
+| `PITCH_ALPHA_MAX_DEG` | ±1.5° | Max LE angle of attack shift |
+| `PITCH_CP_SHIFT` | ±0.05 | Max center-of-pressure shift |
+| `ROLL_ALPHA_MAX_DEG` | ±2.0° | Differential α per wing at full roll |
+| `YAW_BODY_Y_SHIFT` | varies | Lateral body position range |
+| `YAW_ROLL_COUPLING_DEG` | ±1.2° | Differential α from body twist |
+
+Changing these constants reshapes how aggressively the throttles affect aerodynamics — useful for tuning per-wingsuit feel or replicating different pilot sizes.
+
+#### Unified Control Path
+
+The same throttle mechanism is used in both the **interactive polar visualizer** (UI sliders) and the **real-time simulation** (gamepad input). The throttle values are clamped to [-1, +1], then passed through `SegmentControls` to `makeWingsuitSegment().getCoeffs()`, where they morph segment parameters frame-by-frame. This ensures the visualizer and simulator have identical aerodynamic behavior.
+
+---
+
 ### Canopy Brake Controls & Flap Segments
 
 ![Effect of canopy brakes on per-segment forces](polar-visualizer/docs/gifs/effect-canopy%20brakes.gif)

@@ -33,6 +33,7 @@ export class BodyFrameScene {
   private controls: OrbitControls
   private model: THREE.Group | null = null
   private canopyModel: THREE.Group | null = null
+  private glbHidden = false
   private canopyStates: CanopyState[] = []
   private deployTimeline: DeployReplayTimeline | null = null
     private lastValidCanopyState: CanopyState | null = null
@@ -205,6 +206,12 @@ export class BodyFrameScene {
 
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  /** Hide the canopy GLB (overlays / helpers remain visible). */
+  setGlbHidden(hidden: boolean) {
+    this.glbHidden = hidden
+    if (hidden && this.canopyModel) this.canopyModel.visible = false
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -405,6 +412,11 @@ export class BodyFrameScene {
       } else {
         this.canopyModel.visible = false
       }
+    }
+
+    // Global "Hide GLB" override.
+    if (this.glbHidden && this.canopyModel) {
+      this.canopyModel.visible = false
     }
 
     // Aero overlay at origin (body frame — vectors are native)

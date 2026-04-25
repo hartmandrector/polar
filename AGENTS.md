@@ -5,6 +5,10 @@
 6DOF flight dynamics visualizer for paragliders, wingsuits, and skydivers.
 TypeScript + Three.js + Vite + Chart.js + vitest.
 
+## Skills
+
+- **`.github/skills/browser-dev/SKILL.md`** — Running, inspecting, and iterating on the Polar Visualizer and GPS Flight Viewer in a real browser. Read this before attempting any visual debugging, screenshot capture, slider manipulation, or GPS-track replay. Update it when you discover new URL params, slider indices, or gotchas.
+
 ## Key Documents (read these first)
 
 **Architecture & Refactoring:**

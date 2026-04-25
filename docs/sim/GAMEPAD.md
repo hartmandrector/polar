@@ -41,18 +41,25 @@ Deadzone: 0.08 (values below this magnitude → 0)
 
 ## Wingsuit Mapping
 
-![Wingsuit yaw control via triggers](../../polar-visualizer/docs/gifs/sim-wingsuit-yaw.gif)
-
 | Control | Input | Range | Direction |
-|---------|-------|-------|-----------|
+|---------|-------|-------|----------|
 | Pitch throttle | Right stick Y (axis 3) | -1 to +1 | Forward (push) = steeper/nose-down |
 | Roll throttle | Right stick X (axis 2) | -1 to +1 | Right = right roll |
 | Yaw throttle | Triggers (RT−LT) | -1 to +1 | RT = yaw right, LT = yaw left |
 | Orbit camera | Left stick | Spherical | Azimuthal + polar orbit around model |
 
-![Wingsuit roll](../../polar-visualizer/docs/gifs/sim-wingsuit-roll.gif)
+**How throttles work:** Each throttle input morphs wingsuit segment aerodynamics in real time — shifting angle of attack, center of pressure, and body position. See [**Wingsuit Throttle Controls**](../../README.md#wingsuit-throttle-controls) in the README for detailed mechanics, tuning constants, and effect GIFs.
 
 **Pitch inversion:** Raw gamepad Y is inverted — forward (negative raw) maps to nose-down (positive pitch input). This matches flight intuition: push stick forward to dive.
+
+---
+
+## Throttle Control GIFs
+
+Detailed effect visualizations are in the README:
+- **Pitch Throttle:** Forward/back de-arch behavior
+- **Roll Throttle:** Asymmetric wing α and roll moment
+- **Yaw Throttle:** Body lean and coupled roll dynamics
 
 ---
 

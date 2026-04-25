@@ -28,6 +28,7 @@ import type { SegmentForceResult, SegmentAeroResult } from '../polar/aero-segmen
 import { computeCenterOfMass } from '../polar/inertia.ts'
 import { ShadedArrow } from './shaded-arrow.ts'
 import { CurvedArrow } from './curved-arrow.ts'
+import { CMArrow } from './cm-arrow.ts'
 import { windDirectionBody, nedToThreeJS } from './frames.ts'
 
 const DEG2RAD = Math.PI / 180
@@ -75,6 +76,7 @@ export interface SegmentArrows {
   drag: THREE.ArrowHelper
   side: THREE.ArrowHelper
   velocity: THREE.ArrowHelper
+  cmArrow: CMArrow
   group: THREE.Group
 }
 
@@ -133,6 +135,7 @@ function ensureSegmentArrows(
       sa.drag.dispose()
       sa.side.dispose()
       sa.velocity.dispose()
+      sa.cmArrow.dispose()
       existing.delete(name)
     }
   }
@@ -150,11 +153,12 @@ function ensureSegmentArrows(
       const side = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, colors.side, 0.06, 0.03)
       const velocity = new THREE.ArrowHelper(dir, origin, SEGMENT_ARROW_LENGTH, 0x00cccc, 0.06, 0.03)
       velocity.visible = false
+      const cmArrow = new CMArrow(`seg-${seg.name}-cm`)
       const group = new THREE.Group()
       group.name = `seg-${seg.name}`
-      group.add(lift, drag, side, velocity)
+      group.add(lift, drag, side, velocity, cmArrow)
       vectors.group.add(group)
-      sa = { name: seg.name, lift, drag, side, velocity, group }
+      sa = { name: seg.name, lift, drag, side, velocity, cmArrow, group }
     }
     result.push(sa)
   }
@@ -469,6 +473,35 @@ export function updateForceVectors(
         }
       } else {
         sa.velocity.visible = false
+      }
+
+      // CM arrow — positioned at the segment's aerodynamic center (quarter chord, cp=0.25).
+      // When cp=0.25 the cpOffset formula gives 0, so the AC position is just the
+      // scaled segment position with the pitchOffset rotation but no cp displacement.
+      {
+        const acOffsetNorm = 0  // quarter chord = zero offset from segment AC reference position
+        let acOffX = acOffsetNorm * Math.cos(basePitchRad)
+        let acOffZ = acOffsetNorm * Math.sin(basePitchRad)
+        const cRot2 = (seg as any)._chordRotationRad ?? 0
+        if (Math.abs(cRot2) > 1e-6) {
+          const cos_d = Math.cos(cRot2)
+          const sin_d = Math.sin(cRot2)
+          const ox = acOffX, oz = acOffZ
+          acOffX = ox * cos_d - oz * sin_d
+          acOffZ = ox * sin_d + oz * cos_d
+        }
+        const acNED = { x: segPosX + acOffX, y: segPosY, z: segPosZ + acOffZ }
+        const acThree = nedToThreeJS(acNED).multiplyScalar(pilotScale * massReference_m)
+        const acWorld = applyFramePos(shiftPos(acThree))
+        sa.cmArrow.position.copy(acWorld)
+        sa.cmArrow.setMoment(sf.moment)
+        // Match inertial-frame attitude so the pitch arc rotates with the body
+        // (same convention as pitchArc/yawArc/rollArc at the CG).
+        if (rotationMatrix) {
+          sa.cmArrow.quaternion.setFromRotationMatrix(rotationMatrix)
+        } else {
+          sa.cmArrow.quaternion.identity()
+        }
       }
     }
 

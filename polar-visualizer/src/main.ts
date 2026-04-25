@@ -29,6 +29,7 @@ import { computeInertia, ZERO_INERTIA, computeCenterOfMass } from './polar/inert
 import type { InertiaComponents } from './polar/inertia.ts'
 import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
+import { createWingsuitWireframes, WingsuitWireframes } from './viewer/wingsuit-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
 import { setupSimUI, updateGamepadOrbit, tickDeployZoom } from './sim/sim-ui.ts'
@@ -43,6 +44,7 @@ let flightState: FlightState
 let loadingModel = false
 let massOverlay: MassOverlay
 let cellWireframes: CellWireframes | null = null
+let wingsuitWireframes: WingsuitWireframes | null = null
 let deployRenderer: DeployRenderer | null = null
 let preloadedCanopyModel: LoadedModel | null = null
 let preloadedCanopyPolarKey: string | null = null
@@ -114,6 +116,21 @@ async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number 
       currentModel.canopyModel.add(cellWireframes.group)
     } else {
       if (cellWireframes) { cellWireframes.dispose(); cellWireframes = null }
+    }
+
+    // Wingsuit wireframes — per-segment bounding boxes added to the scene
+    // (body-frame coordinates, positioned via pilotScale · massReference_m).
+    if (modelType === 'wingsuit' && polar?.aeroSegments && polar.aeroSegments.length > 0) {
+      if (!wingsuitWireframes) {
+        wingsuitWireframes = createWingsuitWireframes()
+        sceneCtx.scene.add(wingsuitWireframes.group)
+      }
+      const massRef = massReference_m ?? getVehicleMassReference(vehicle, polar)
+      wingsuitWireframes.update(polar.aeroSegments, currentModel.pilotScale, massRef)
+    } else if (wingsuitWireframes) {
+      sceneCtx.scene.remove(wingsuitWireframes.group)
+      wingsuitWireframes.dispose()
+      wingsuitWireframes = null
     }
   } catch (err) {
     console.error(`Failed to load model ${modelType}:`, err)
@@ -389,6 +406,12 @@ function updateVisualization(state: FlightState): void {
         if (cellWireframes) cellWireframes.dispose()
         cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
         currentModel.canopyModel.add(cellWireframes.group)
+      }
+      // Dispose wingsuit wireframes (no longer applicable after canopy switch)
+      if (wingsuitWireframes) {
+        sceneCtx.scene.remove(wingsuitWireframes.group)
+        wingsuitWireframes.dispose()
+        wingsuitWireframes = null
       }
       // Re-parent mass overlay
       currentModel.group.add(massOverlay.group)
@@ -860,20 +883,28 @@ function updateVisualization(state: FlightState): void {
       massOverlay.updateCP(cpFraction, polar.cg, polar.chord, polar.referenceLength, currentModel.pilotScale, polar.massSegments, segReadout?.cpNED, currentModel.canopyScaleRatio)
     }
 
-    // Cell wireframes visibility
+    // Wireframes visibility (canopy cells + wingsuit segments)
     if (cellWireframes) {
-      cellWireframes.setVisible(state.showCellWireframes)
+      cellWireframes.setVisible(state.showWireframes)
+    }
+    if (wingsuitWireframes) {
+      wingsuitWireframes.setVisible(state.showWireframes)
     }
 
     // Deploy renderer: always visible when active (models show as they spawn)
 
-    // Hide canopy GLB meshes (keep wireframes/overlays visible)
+    // Hide GLB meshes (keep wireframes/overlays visible).
+    //   Canopy: iterate canopyModel.children, skip the cell-wireframes child.
+    //   Wingsuit: wingsuit wireframes live in the scene root, not under the
+    //   model, so we can toggle the whole model group.
     if (currentModel.canopyModel) {
       for (const child of currentModel.canopyModel.children) {
         if (child.name !== 'cell-wireframes') {
-          child.visible = !state.hideCanopyGlb
+          child.visible = !state.hideGlb
         }
       }
+    } else {
+      currentModel.model.visible = !state.hideGlb
     }
   }
 
@@ -911,6 +942,15 @@ async function init(): Promise<void> {
   // Create Three.js scene
   sceneCtx = createScene(canvas)
   resizeRenderer(sceneCtx, viewport)
+
+  // Dev hook: expose camera + controls + scene for browser-dev tooling
+  // (used by `.github/skills/browser-dev` for screenshot composition)
+  ;(window as unknown as { __polar?: unknown }).__polar = {
+    camera: sceneCtx.camera,
+    controls: sceneCtx.controls,
+    scene: sceneCtx.scene,
+    renderer: sceneCtx.renderer,
+  }
 
   // Create force vectors
   forceVectors = createForceVectors()

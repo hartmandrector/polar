@@ -728,6 +728,14 @@ controlSolverToggle.addEventListener('change', () => {
   bodyScene?.setControlSolverEnabled(enabled)
 })
 
+// ─── Hide GLB toggle ────────────────────────────────────────────────────────
+const hideGlbToggle = document.getElementById('hide-glb') as HTMLInputElement
+hideGlbToggle.addEventListener('change', () => {
+  const hidden = hideGlbToggle.checked
+  scene?.setGlbHidden(hidden)
+  bodyScene?.setGlbHidden(hidden)
+})
+
 // ─── Axis helper mode ───────────────────────────────────────────────────────
 const axisHelperSelect = document.getElementById('axis-helper-mode') as HTMLSelectElement
 axisHelperSelect.addEventListener('change', () => {

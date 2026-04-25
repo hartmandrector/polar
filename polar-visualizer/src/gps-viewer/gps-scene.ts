@@ -36,6 +36,7 @@ export class GPSScene {
   private controls: OrbitControls
   private model: THREE.Group | null = null
   private canopyModel: THREE.Group | null = null
+  private glbHidden = false
   private canopyStates: CanopyState[] = []
   private deployTimeline: DeployReplayTimeline | null = null
     /** Last valid canopy state — used during landing when airspeed drops below estimator threshold */
@@ -247,6 +248,12 @@ export class GPSScene {
   /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+  }
+
+  /** Hide the canopy GLB (wireframes / overlays remain visible). */
+  setGlbHidden(hidden: boolean) {
+    this.glbHidden = hidden
+    if (hidden && this.canopyModel) this.canopyModel.visible = false
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -483,6 +490,12 @@ export class GPSScene {
           this.canopyModel.visible = false
         }
       }
+    }
+
+    // Global "Hide GLB" override — forces canopy model off regardless of
+    // deploy phase.  Wireframes / overlays / helpers are unaffected.
+    if (this.glbHidden && this.canopyModel) {
+      this.canopyModel.visible = false
     }
 
     // ── Update body rate axes in inertial scene (for "all" mode) ──

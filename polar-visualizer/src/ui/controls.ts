@@ -26,8 +26,8 @@ export interface FlightState {
   attitudeMode: 'body' | 'wind'
   showMassOverlay: boolean
   showAccelArcs: boolean
-  showCellWireframes: boolean
-  hideCanopyGlb: boolean
+  showWireframes: boolean
+  hideGlb: boolean
   canopyPilotType: 'wingsuit' | 'slick'
   // ── Euler rates (deg/s) ──
   phiDot_degps: number    // φ̇ — roll Euler rate
@@ -85,8 +85,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const attitudeModeCheck = document.getElementById('attitude-mode') as HTMLInputElement
   const showMassOverlayCheck = document.getElementById('show-mass-overlay') as HTMLInputElement
   const showAccelArcsCheck = document.getElementById('show-accel-arcs') as HTMLInputElement
-  const showCellWireframesCheck = document.getElementById('show-cell-wireframes') as HTMLInputElement
-  const hideCanopyGlbCheck = document.getElementById('hide-canopy-glb') as HTMLInputElement
+  const showWireframesCheck = document.getElementById('show-wireframes') as HTMLInputElement
+  const hideGlbCheck = document.getElementById('hide-glb') as HTMLInputElement
 
   // Euler rate sliders
   const phiDotSlider = document.getElementById('phi-dot-slider') as HTMLInputElement
@@ -377,8 +377,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       attitudeMode,
       showMassOverlay: showMassOverlayCheck.checked,
       showAccelArcs: showAccelArcsCheck.checked,
-      showCellWireframes: showCellWireframesCheck.checked,
-      hideCanopyGlb: hideCanopyGlbCheck.checked,
+      showWireframes: showWireframesCheck.checked,
+      hideGlb: hideGlbCheck.checked,
       canopyPilotType,
       phiDot_degps: phiDot,
       thetaDot_degps: thetaDot,
@@ -449,8 +449,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   attitudeModeCheck.addEventListener('change', onInput)
   showMassOverlayCheck.addEventListener('change', onInput)
   showAccelArcsCheck.addEventListener('change', onInput)
-  showCellWireframesCheck.addEventListener('change', onInput)
-  hideCanopyGlbCheck.addEventListener('change', onInput)
+  showWireframesCheck.addEventListener('change', onInput)
+  hideGlbCheck.addEventListener('change', onInput)
 
   // Return initial state
   return readState()

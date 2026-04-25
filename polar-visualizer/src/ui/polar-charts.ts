@@ -28,7 +28,7 @@ Chart.register(ScatterController, LineElement, PointElement, LinearScale, Title,
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type Chart1View = 'cl' | 'cd' | 'cp' | 'ld'
+export type Chart1View = 'cl' | 'cd' | 'cp' | 'ld' | 'cm'
 export type Chart2View = 'polar' | 'speed'
 
 interface ChartState {
@@ -231,6 +231,7 @@ const CHART1_LABELS: Record<Chart1View, { title: string, yLabel: string }> = {
   cd: { title: 'Drag Coefficient', yLabel: 'CD' },
   cp: { title: 'Center of Pressure', yLabel: 'CP (% chord)' },
   ld: { title: 'Glide Ratio', yLabel: 'L/D' },
+  cm: { title: 'Pitching Moment', yLabel: 'CM' },
 }
 
 const MS_TO_MPH = 2.23694
@@ -247,6 +248,7 @@ function chart1Data(view: Chart1View, points: PolarPoint[]): { x: number, y: num
     cd: p => p.cd,
     cp: p => p.cp,
     ld: p => p.ld,
+    cm: p => p.cm,
   }
   const fn = getter[view]
   return points.map(p => ({ x: p.alpha, y: fn(p) }))
@@ -266,6 +268,7 @@ function legacyChart1Data(view: Chart1View, points: LegacyPoint[]): { x: number,
     cd: p => p.cd,
     cp: p => p.cp,
     ld: p => p.ld,
+    cm: p => (p as any).cm ?? 0,
   }
   const fn = getter[view]
   return points.map(p => ({ x: p.alpha, y: fn(p) }))
