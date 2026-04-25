@@ -14,6 +14,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { EulerAxisHelper, BodyRateAxisHelper } from './axis-helper'
+import { createWingsuitWireframes, type WingsuitWireframes } from '../viewer/wingsuit-wireframes'
+import { createCellWireframes, type CellWireframes } from '../viewer/cell-wireframes'
+import { CANOPY_GEOMETRY } from '../viewer/model-registry'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -60,6 +63,8 @@ export class GPSScene {
   // Aero overlay
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
+  private wingsuitWireframes: WingsuitWireframes | null = null
+  private cellWireframes: CellWireframes | null = null
   private eulerAxis: EulerAxisHelper
   private bodyRateAxis: BodyRateAxisHelper  // shown in "all" mode
 
@@ -201,6 +206,12 @@ export class GPSScene {
         }
       })
       this.scene.add(this.canopyModel)
+      // Cell wireframes — parented to canopy mesh so they inherit transform.
+      // LineSegments are not Mesh, so they survive the mesh-only Hide GLB toggle.
+      this.cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
+      this.canopyModel.add(this.cellWireframes.group)
+      this.cellWireframes.setVisible(this.glbHidden)
+      this.applyGlbHide()
     } catch (e) {
       console.error('Failed to load canopy model:', e)
     }
@@ -215,6 +226,17 @@ export class GPSScene {
   /** Set the aero model config for force vector overlay */
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
+    // Build/refresh wingsuit segment wireframes (inertial-frame reference).
+    // pilotScale = 1.0 because the wingsuit GLB is rendered at MODEL_SCALE so
+    // its body becomes 1.875 scene units (≈ 1 metre per scene unit).
+    if (config.segments.length > 0) {
+      if (!this.wingsuitWireframes) {
+        this.wingsuitWireframes = createWingsuitWireframes()
+        this.scene.add(this.wingsuitWireframes.group)
+      }
+      this.wingsuitWireframes.update(config.segments, 1.0, config.height)
+      this.wingsuitWireframes.setVisible(this.glbHidden)
+    }
   }
 
   /** Set the canopy aero model config */
@@ -250,10 +272,26 @@ export class GPSScene {
     this.canopyStates = states
   }
 
-  /** Hide the canopy GLB (wireframes / overlays remain visible). */
+  /** Hide the wingsuit + canopy GLB meshes (overlays / helpers / wireframes remain). */
   setGlbHidden(hidden: boolean) {
     this.glbHidden = hidden
-    if (hidden && this.canopyModel) this.canopyModel.visible = false
+    this.applyGlbHide()
+    if (this.wingsuitWireframes) this.wingsuitWireframes.setVisible(hidden)
+    if (this.cellWireframes) this.cellWireframes.setVisible(hidden)
+  }
+
+  /** Toggle visibility of every Mesh inside the wingsuit + canopy GLBs.
+   * Group .visible is left alone so wireframe children parented to the canopy
+   * group continue to render. */
+  private applyGlbHide() {
+    const hideMeshes = (root: THREE.Object3D | null) => {
+      if (!root) return
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) child.visible = !this.glbHidden
+      })
+    }
+    hideMeshes(this.model)
+    hideMeshes(this.canopyModel)
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -492,10 +530,16 @@ export class GPSScene {
       }
     }
 
-    // Global "Hide GLB" override — forces canopy model off regardless of
-    // deploy phase.  Wireframes / overlays / helpers are unaffected.
-    if (this.glbHidden && this.canopyModel) {
-      this.canopyModel.visible = false
+    // Note: We deliberately do NOT touch canopyModel.visible / model.visible here.
+    // setGlbHidden() does a one-shot mesh-only hide via applyGlbHide(); the
+    // per-frame canopy logic above toggles the *group* visibility, so wireframes
+    // parented to canopyModel correctly appear only during canopy phase.
+
+    // Wingsuit wireframes follow model pose (identity in cruise, hangPitch /
+    // standing under canopy/ground) so they remain registered to the GLB.
+    if (this.wingsuitWireframes) {
+      this.wingsuitWireframes.group.position.copy(this.model.position)
+      this.wingsuitWireframes.group.quaternion.copy(this.model.quaternion)
     }
 
     // ── Update body rate axes in inertial scene (for "all" mode) ──

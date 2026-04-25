@@ -14,6 +14,8 @@ import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { BodyRateAxisHelper, EulerAxisHelper } from './axis-helper'
 import { createWingsuitWireframes, type WingsuitWireframes } from '../viewer/wingsuit-wireframes'
+import { createCellWireframes, type CellWireframes } from '../viewer/cell-wireframes'
+import { CANOPY_GEOMETRY } from '../viewer/model-registry'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -57,6 +59,7 @@ export class BodyFrameScene {
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
   private wingsuitWireframes: WingsuitWireframes | null = null
+  private cellWireframes: CellWireframes | null = null
   private bodyRateAxis: BodyRateAxisHelper
   private eulerAxis: EulerAxisHelper  // shown in "all" mode
 
@@ -172,6 +175,14 @@ export class BodyFrameScene {
         }
       })
       this.scene.add(this.canopyModel)
+      // Cell wireframes — parented to canopy mesh so they inherit transform/scale.
+      // Visibility toggled via setGlbHidden (cells are LineSegments, not Mesh — they
+      // stay visible when we mesh-hide the canopy GLB).
+      this.cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
+      this.canopyModel.add(this.cellWireframes.group)
+      this.cellWireframes.setVisible(this.glbHidden)
+      // Re-apply hide state so the meshes inside the freshly loaded GLB respect it
+      this.applyGlbHide()
     } catch (e) {
       console.error('Failed to load canopy model:', e)
     }
@@ -180,13 +191,15 @@ export class BodyFrameScene {
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
     // Build/refresh wingsuit segment wireframes (body-frame reference geometry).
-    // pilotScale matches the GLB scale (MODEL_SCALE = 1.875 / 3.55).
+    // The wingsuit GLB is rendered at MODEL_SCALE so its 3.55-unit body becomes
+    // 1.875 scene units (1 scene unit ≈ 1 metre). Wireframe geometry is authored
+    // in NED metres, so pilotScale = 1.0 to match the GLB's physical extent.
     if (config.segments.length > 0) {
       if (!this.wingsuitWireframes) {
         this.wingsuitWireframes = createWingsuitWireframes()
         this.scene.add(this.wingsuitWireframes.group)
       }
-      this.wingsuitWireframes.update(config.segments, MODEL_SCALE, config.height)
+      this.wingsuitWireframes.update(config.segments, 1.0, config.height)
       this.wingsuitWireframes.setVisible(this.glbHidden)
     }
   }
@@ -220,13 +233,26 @@ export class BodyFrameScene {
     this.canopyStates = states
   }
 
-  /** Hide the wingsuit + canopy GLBs (overlays / helpers / wireframes remain visible). */
+  /** Hide the wingsuit + canopy GLB meshes (overlays / helpers / wireframes remain visible). */
   setGlbHidden(hidden: boolean) {
     this.glbHidden = hidden
-    if (this.model) this.model.visible = !hidden
-    if (hidden && this.canopyModel) this.canopyModel.visible = false
-    // Show wingsuit wireframes when GLB is hidden (body-frame reference).
+    this.applyGlbHide()
     if (this.wingsuitWireframes) this.wingsuitWireframes.setVisible(hidden)
+    if (this.cellWireframes) this.cellWireframes.setVisible(hidden)
+  }
+
+  /** Toggle visibility of every Mesh inside the wingsuit + canopy GLBs.
+   * We deliberately do NOT toggle the group's own .visible so that wireframe
+   * children parented to the canopy GLB (cell wireframes) remain visible. */
+  private applyGlbHide() {
+    const hideMeshes = (root: THREE.Object3D | null) => {
+      if (!root) return
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) child.visible = !this.glbHidden
+      })
+    }
+    hideMeshes(this.model)
+    hideMeshes(this.canopyModel)
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -395,6 +421,12 @@ export class BodyFrameScene {
     } else {
       this.model.quaternion.identity()
     }
+    // Wingsuit wireframes follow the model's pose (identity in cruise,
+    // hangPitch under canopy/ground) so they remain registered to the GLB.
+    if (this.wingsuitWireframes) {
+      this.wingsuitWireframes.group.position.set(0, 0, 0)
+      this.wingsuitWireframes.group.quaternion.copy(this.model.quaternion)
+    }
 
     // Head model — use bodyQuat for relative rotation computation
     if (this.headRenderer) {
@@ -429,11 +461,11 @@ export class BodyFrameScene {
       }
     }
 
-    // Global "Hide GLB" override.
-    if (this.glbHidden) {
-      if (this.model) this.model.visible = false
-      if (this.canopyModel) this.canopyModel.visible = false
-    }
+    // Note: We deliberately do NOT touch model.visible / canopyModel.visible here.
+    // setGlbHidden() handles the per-mesh hide once via applyGlbHide(); the
+    // per-frame canopy show/hide above sets only the *group* visibility, so the
+    // mesh-hide persists. Wireframes parented to canopyModel inherit the group
+    // toggle, so they appear only during canopy phase — the desired behavior.
 
     // Aero overlay at origin (body frame — vectors are native)
     // Pre-line-stretch: show wingsuit aero even if flight mode says canopy
