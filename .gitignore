@@ -34,5 +34,16 @@ BOOTSTRAP.md
 # Data files (derived results)
 *.csv
 
+# Large 3D model source files (keep only optimized .glb exports)
+*.3dm
+*.blend
+*.fbx
+*.zip
+
+# Corvid model (keep optimized GLB only)
+polar-visualizer/public/models/Corvid 2 Hartman.3dm
+polar-visualizer/public/models/Corvid 2 Hartman.zip
+polar-visualizer/public/models/Corvid 2 Hartman/
+
 # VS Code MCP config
 .vscode/mcp.json
