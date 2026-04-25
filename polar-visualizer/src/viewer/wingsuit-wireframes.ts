@@ -488,3 +488,145 @@ export function createWingsuitWireframes(): WingsuitWireframes {
     },
   }
 }
+
+// ─── Solid-mesh export ──────────────────────────────────────────────────────
+//
+// Build a parallel `THREE.Group` of solid `THREE.Mesh`es (not LineSegments)
+// from the same per-segment specs.  Useful for exporting to .glb / .obj for
+// editing in Blender or another DCC, then re-importing as a tuned model.
+//
+// All geometry is in NED metres → Three.js (via `nedToThreeJS`), pre-scaled by
+// `pilotScale` and translated by each segment's reference position so the
+// resulting Group lines up with the GLB pilot at the same scale used in the
+// viewer.
+
+function buildSolidBoxMesh(spec: BoxSpec): THREE.Mesh {
+  // BoxGeometry expects width/height/depth in Three.js axes.  Mapping NED
+  // (x=fore/aft, y=lateral, z=vertical) → Three (-y, -z, x):
+  //   width  = |y|  height = |z|  depth = |x|
+  const geo = new THREE.BoxGeometry(spec.size.y, spec.size.z, spec.size.x)
+  const mat = new THREE.MeshStandardMaterial({ color: spec.color, side: THREE.DoubleSide })
+  const mesh = new THREE.Mesh(geo, mat)
+  // Translate by the box offset (NED → Three).
+  const off = nedToThreeJS(spec.offset)
+  mesh.position.set(off.x, off.y, off.z)
+  return mesh
+}
+
+function buildPrismMeshFromVertsNED(
+  verts: Array<[number, number, number]>,  // 8 NED vertices: 4 top (zT) + 4 bottom (zB), each in CCW order viewed from +z
+  color: number,
+): THREE.Mesh {
+  // Convert NED → Three.js for each vertex.
+  const positions: number[] = []
+  for (const [x, y, z] of verts) {
+    const t = nedToThreeJS({ x, y, z })
+    positions.push(t.x, t.y, t.z)
+  }
+  // Index 6 quads (top, bottom, 4 sides) as 12 triangles.
+  // Top   = 0,1,2,3   Bottom = 4,5,6,7
+  // Sides: (0-1-5-4), (1-2-6-5), (2-3-7-6), (3-0-4-7)
+  const quad = (a: number, b: number, c: number, d: number) => [a, b, c, a, c, d]
+  const indices = [
+    ...quad(0, 1, 2, 3),         // top
+    ...quad(7, 6, 5, 4),         // bottom (reversed for outward normal)
+    ...quad(0, 4, 5, 1),         // side LE (or fwd)
+    ...quad(1, 5, 6, 2),         // side outboard
+    ...quad(2, 6, 7, 3),         // side TE (or aft)
+    ...quad(3, 7, 4, 0),         // side inboard
+  ]
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  const mat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide })
+  return new THREE.Mesh(geo, mat)
+}
+
+function buildSolidTrianglePrismMesh(spec: TrianglePrismSpec): THREE.Mesh {
+  const { xForward, xAft, widthAtForward, widthAtAft, thickness, zCenter = 0 } = spec
+  const wF = widthAtForward / 2
+  const wA = widthAtAft / 2
+  const zT = zCenter - thickness / 2
+  const zB = zCenter + thickness / 2
+  const verts: Array<[number, number, number]> = [
+    [xForward, +wF, zT],  // 0 fwd-L top
+    [xForward, -wF, zT],  // 1 fwd-R top
+    [xAft,     -wA, zT],  // 2 aft-R top
+    [xAft,     +wA, zT],  // 3 aft-L top
+    [xForward, +wF, zB],  // 4 fwd-L bot
+    [xForward, -wF, zB],  // 5 fwd-R bot
+    [xAft,     -wA, zB],  // 6 aft-R bot
+    [xAft,     +wA, zB],  // 7 aft-L bot
+  ]
+  return buildPrismMeshFromVertsNED(verts, spec.color)
+}
+
+function buildSolidSweptWingMesh(spec: SweptWingSpec): THREE.Mesh {
+  const {
+    yInboard, yOutboard,
+    xLeInboard, xLeOutboard,
+    xTeInboard, xTeOutboard,
+    thickness, zCenter = 0,
+  } = spec
+  const yTeIn  = spec.yTeInboard  ?? yInboard
+  const yTeOut = spec.yTeOutboard ?? yOutboard
+  const zT = zCenter - thickness / 2
+  const zB = zCenter + thickness / 2
+  const verts: Array<[number, number, number]> = [
+    [xLeInboard,  yInboard,  zT],   // 0 inboard-LE top
+    [xLeOutboard, yOutboard, zT],   // 1 outboard-LE top
+    [xTeOutboard, yTeOut,    zT],   // 2 outboard-TE top
+    [xTeInboard,  yTeIn,     zT],   // 3 inboard-TE top
+    [xLeInboard,  yInboard,  zB],   // 4 inboard-LE bot
+    [xLeOutboard, yOutboard, zB],   // 5 outboard-LE bot
+    [xTeOutboard, yTeOut,    zB],   // 6 outboard-TE bot
+    [xTeInboard,  yTeIn,     zB],   // 7 inboard-TE bot
+  ]
+  return buildPrismMeshFromVertsNED(verts, spec.color)
+}
+
+/**
+ * Build a `THREE.Group` of solid `Mesh`es matching the wireframe geometry
+ * for the supplied wingsuit aero segments.  Pure mesh data — no materials
+ * or transforms tied to the live viewer scene — so it can be safely fed to
+ * `GLTFExporter` / `OBJExporter` without disturbing the live scene.
+ */
+export function buildWingsuitWireframeSolidGroup(
+  segments: AeroSegment[],
+  pilotScale: number,
+  massReference_m: number,
+): THREE.Group {
+  const root = new THREE.Group()
+  root.name = 'wingsuit-wireframe-solid'
+  for (const seg of segments) {
+    const specs = A5_WIREFRAME_BOXES[seg.name] ?? [fallbackBox(seg)]
+    // Per-segment sub-group at the segment's reference position (matches viewer).
+    const segGroup = new THREE.Group()
+    segGroup.name = `seg-${seg.name}`
+    const posNED_m = {
+      x: seg.position.x * massReference_m,
+      y: seg.position.y * massReference_m,
+      z: seg.position.z * massReference_m,
+    }
+    const posThree = nedToThreeJS(posNED_m).multiplyScalar(pilotScale)
+    segGroup.position.copy(posThree)
+    segGroup.scale.setScalar(pilotScale)
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i]
+      let mesh: THREE.Mesh
+      if (spec.kind === 'triangle-xy') {
+        mesh = buildSolidTrianglePrismMesh(spec)
+      } else if (spec.kind === 'swept-wing-xy') {
+        mesh = buildSolidSweptWingMesh(spec)
+      } else {
+        mesh = buildSolidBoxMesh(spec)
+      }
+      mesh.name = `${seg.name}-${i}`
+      segGroup.add(mesh)
+    }
+    root.add(segGroup)
+  }
+  return root
+}
+

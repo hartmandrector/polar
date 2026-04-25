@@ -29,7 +29,7 @@ import { computeInertia, ZERO_INERTIA, computeCenterOfMass } from './polar/inert
 import type { InertiaComponents } from './polar/inertia.ts'
 import { createMassOverlay, MassOverlay } from './viewer/mass-overlay.ts'
 import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.ts'
-import { createWingsuitWireframes, WingsuitWireframes } from './viewer/wingsuit-wireframes.ts'
+import { createWingsuitWireframes, WingsuitWireframes, buildWingsuitWireframeSolidGroup } from './viewer/wingsuit-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
 import { setupSimUI, updateGamepadOrbit, tickDeployZoom } from './sim/sim-ui.ts'
@@ -950,6 +950,45 @@ async function init(): Promise<void> {
     controls: sceneCtx.controls,
     scene: sceneCtx.scene,
     renderer: sceneCtx.renderer,
+    /**
+     * Export the current wingsuit segment wireframes as a .glb (binary glTF)
+     * containing solid `Mesh`es (one per box / triangle prism / swept-wing
+     * panel), grouped by aero-segment name.  Use this to take the geometry
+     * into Blender / another DCC, edit vertex positions to match the GLB
+     * mesh and the mass model, then re-author the per-segment specs in
+     * `viewer/wingsuit-wireframes.ts` (or replace the live group entirely).
+     *
+     * Usage in DevTools:  __polar.exportWingsuitWireframes('aura5.glb')
+     */
+    exportWingsuitWireframes: async (filename = 'wingsuit-wireframes.glb') => {
+      const vehicle = getVehicleDefinition(flightState.polarKey)
+      const basePolar = getVehicleAeroPolar(vehicle)
+        ?? continuousPolars[flightState.polarKey]
+        ?? continuousPolars.aurafive
+      const polar = getOverriddenPolar(basePolar)
+      if (!polar?.aeroSegments?.length) {
+        console.warn('[export] No aero segments on current polar — nothing to export.')
+        return
+      }
+      const massRef = getVehicleMassReference(vehicle, basePolar)
+      const pilotScale = currentModel?.pilotScale ?? 1.0
+      const solid = buildWingsuitWireframeSolidGroup(polar.aeroSegments, pilotScale, massRef)
+      const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js')
+      const exporter = new GLTFExporter()
+      const result = await new Promise<ArrayBuffer>((resolve, reject) => {
+        exporter.parse(solid, (out) => resolve(out as ArrayBuffer), reject, { binary: true })
+      })
+      const blob = new Blob([result], { type: 'model/gltf-binary' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      console.log(`[export] Wrote ${filename} (${(result.byteLength / 1024).toFixed(1)} KB, ${polar.aeroSegments.length} segments).`)
+    },
   }
 
   // Create force vectors
