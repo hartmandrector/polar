@@ -171,11 +171,17 @@ After every UI change, the snapshot shows updated readout values (CL, CD, forces
 - `screenshot_page` — captures the whole viewport.
 - `read_page` — text-only; use for state tables, debug overlays, readouts.
 
-### Driving the camera (dev hook)
+### Driving the camera (dev hooks)
 
-The polar visualizer exposes a `window.__polar` dev hook with the live `camera`, `controls`, `scene`, and `renderer`. Use it to set exact camera positions for repeatable screenshots:
+Both apps expose dev hooks with live `camera`, `controls`, `scene`, and `renderer`:
+
+| App | Hook | Scene fields |
+|---|---|---|
+| Polar Visualizer | `window.__polar` | `camera`, `controls`, `scene`, `renderer` |
+| GPS Flight Viewer | `window.__polarGps` | `inertialScene`, `bodyScene` (each with `camera`, `controls`, `scene`, `renderer`) |
 
 ```js
+// Polar visualizer
 await page.evaluate(() => {
   const p = window.__polar;
   p.camera.position.set(3.30, 4.18, 3.80);
@@ -184,17 +190,37 @@ await page.evaluate(() => {
   p.camera.updateProjectionMatrix();
   p.controls.update();
 });
+
+// GPS viewer (body-frame pane)
+await page.evaluate(() => {
+  const bs = window.__polarGps.bodyScene;
+  bs.camera.position.set(-1.06, 2.40, -1.89);
+  bs.camera.zoom = 1.0;
+  bs.camera.updateProjectionMatrix();
+  bs.controls.target.set(0, 0, 0);
+  bs.controls.update();
+});
 ```
 
 ### Saved camera presets
 
-These have been validated to give clear, well-composed shots:
+Validated shots, all targeting `(0, 0, 0)`:
 
-| Preset | Frame | `camera.position` | `controls.target` | Notes |
-|---|---|---|---|---|
-| **Body 3-quarter** | Body | `(3.30, 4.18, 3.80)` | `(0, 0, 0)` | All three body axes labels visible; force/moment arrows readable; segment positions clear. User-validated default for body-frame screenshots. |
+#### Polar Visualizer (`window.__polar.camera`)
 
-Add new presets here as you discover useful angles.
+| Preset | Frame | `camera.position` | Notes |
+|---|---|---|---|
+| **Body 3-quarter** | Body | `(3.30, 4.18, 3.80)` | All three body axes visible; force/moment arrows readable; segment positions clear. |
+
+#### GPS Flight Viewer body-frame pane (`window.__polarGps.bodyScene.camera`)
+
+| Preset | Subject | `camera.position` | Notes |
+|---|---|---|---|
+| **Wingsuit close-front** | Wingsuit | `(-1.06, 2.40, -1.89)` | Front-quarter view, fills the right pane. Shows segment force vectors and CM arcs clearly. Default for wingsuit-phase shots. |
+| **Wingsuit rear-from-distance** | Wingsuit | `(1.03, 0.66, 12.13)` | From behind/above at distance. Better for moment-arc readability when the close-front view crowds the arcs. |
+| **Canopy top-down (no GLB)** | Canopy | `(-0.80, 8.90, -2.38)` | Looking down from above. Hide GLB checkbox to see canopy CM arcs cleanly arranged in the wing planform. |
+
+Add new presets here as you discover useful angles. Body-frame presets work for **any track point** in the matching phase — the body frame is rotation-invariant, so a single camera position composes well across the whole flight. **This is why we prefer body-frame for visual validation.**
 
 ### Composing a good shot
 
@@ -237,6 +263,92 @@ Validates:  Force/moment vectors stay aligned with body axes regardless of attit
 URL:        http://localhost:5173/gps?track=07-29-25/TRACK.CSV&roll=blended&overlays=1&kf=1
 Validates:  Overlay arrows + moment arcs match GPS-derived orientation in both panes.
 ```
+
+## GPS Viewer Quick Recipes
+
+The GPS viewer is a **two-pane app** (inertial left, body right). For visual validation of segment vectors, **always work in the body pane** — it's rotation-invariant, so one camera preset composes well across the entire flight.
+
+### Phase indexing — track 05-02-2025-1 (7183 points, ~20 Hz)
+
+| Slider value | Phase | Notes |
+|---|---|---|
+| 0 — 4900 | Pre-exit / wingsuit | Long wingsuit cruise |
+| 5400 | **Wingsuit cruise** | 45 m/s airspeed, AOA ~6°. Use `Mode: Wingsuit`. |
+| 5500 | Line-stretch / pre-canopy | `Mode: Canopy` but pre-deployment-replay onset; canopy GLB not yet shown. |
+| 5700 | **Canopy steady** | `+7s LS`, Trust=Yes, canopy α=16°. **Use this for canopy CM-arc validation.** |
+| 6500 | Late canopy / flare | High body rates; CM arcs shift visibly. |
+| 6800+ | Ground | Airspeed → 0, mode → Ground. Don't waste time here. |
+
+> Heuristic: `Mode: Canopy` ≠ canopy CM arcs visible. Look at **Trust=Yes** and a positive `t from LS` in the readout — that's when canopy aero overlay is actually computing. ~5700 is a reliable canopy-phase index for this track.
+
+### Recipe 1 — Canopy CM arcs (top-down, no GLB)
+
+```js
+// 1. Scrub to canopy phase
+const slider = (await page.$$('input[type="range"]'))[0];
+await slider.evaluate(n => n.value = '5700');
+await slider.evaluate(n => {
+  n.dispatchEvent(new Event('input', { bubbles: true }));
+  n.dispatchEvent(new Event('change', { bubbles: true }));
+});
+
+// 2. Hide GLB via the "Hide GLB" checkbox (use the live ref from the snapshot)
+//    click_element(ref="eXXX")  // checkbox "Hide GLB"
+
+// 3. Apply canopy top-down preset
+await page.evaluate(() => {
+  const bs = window.__polarGps.bodyScene;
+  bs.camera.position.set(-0.80, 8.90, -2.38);
+  bs.camera.zoom = 1.0;
+  bs.camera.updateProjectionMatrix();
+  bs.controls.target.set(0, 0, 0);
+  bs.controls.update();
+});
+// 4. screenshot_page
+```
+
+### Recipe 2 — Wingsuit segment vectors (close-front)
+
+```js
+// 1. Scrub to wingsuit cruise (~5400 for track 05-02-2025-1)
+// 2. Apply wingsuit close-front preset
+await page.evaluate(() => {
+  const bs = window.__polarGps.bodyScene;
+  bs.camera.position.set(-1.06, 2.40, -1.89);
+  bs.camera.zoom = 1.0;
+  bs.camera.updateProjectionMatrix();
+  bs.controls.target.set(0, 0, 0);
+  bs.controls.update();
+});
+// 3. screenshot_page
+```
+
+### Recipe 3 — Verify segment objects exist in the scene
+
+```js
+// Walk the bodyScene to find named segment objects. Useful when you've added
+// a new visualization and aren't sure if it's being created/positioned.
+const found = await page.evaluate(() => {
+  const out = [];
+  function scan(o) {
+    if (o.name && o.name.includes('-cm') && !o.name.endsWith('-cm-arc')) {
+      out.push({ name: o.name, visible: o.visible, pos: [+o.position.x.toFixed(2), +o.position.y.toFixed(2), +o.position.z.toFixed(2)] });
+    }
+    if (o.children) for (const c of o.children) scan(c);
+  }
+  scan(window.__polarGps.bodyScene.scene);
+  return out;
+});
+return found;
+```
+
+### Hiding GPS-viewer side panels for clean shots
+
+The GPS viewer has a left info column ("Flight Data" / "Moment Decomposition" / "PNG Capture" / "Head Sensor"). For full-bleed dual-pane shots, hide it via DOM. The two scene panes are direct children of the top-level wrapper — the side column is the next sibling. Inspect the snapshot for the wrapping `generic [ref=eXX]` that contains "TRACK.CSV │ Format: …" and `display:none` it.
+
+### "Mode says canopy but I don't see canopy CM arcs" — common confusion
+
+`gps-aero-overlay.ts` shows the **wingsuit overlay** when `flightMode === 'Canopy'` but `isPostLineStretch === false` (pre-line-stretch canopy is still flying as wingsuit). Canopy CM arcs only render once `showCanopyAero` is true — i.e. **after line-stretch** AND `effectiveCs` is non-null. Use the `Trust: Yes` field as the proxy and pick a slider value with `t from LS > +5s`.
 
 ## Iteration Discipline
 
