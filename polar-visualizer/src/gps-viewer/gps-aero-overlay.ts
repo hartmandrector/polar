@@ -21,6 +21,7 @@ import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { GPSPipelinePoint } from '../gps/types'
 import { bodyToInertialQuat, nedToThreeJS } from '../viewer/frames'
 import { CurvedArrow } from '../viewer/curved-arrow'
+import { CMArrow } from '../viewer/cm-arrow'
 import type { AxisMoments, CanopyControlMap } from './moment-types'
 import { solveControlInputs, solveCanopyControls, type ControlInversionConfig, type ControlInversionResult, type CanopyControlResult, type CanopyControlConstraint } from './control-solver'
 import type { InertiaComponents } from '../polar/inertia'
@@ -72,6 +73,8 @@ export interface AeroOverlayConfig {
 export class GPSAeroOverlay {
   private group: THREE.Group
   private segArrows: SegmentArrows[] = []
+  /** Per-segment CM (pitching moment) arcs at each segment's AC. */
+  private cmArrows: CMArrow[] = []
   private momentGroup: THREE.Group  // sub-group for body-frame rotation
   private rollArc: CurvedArrow
   private pitchArc: CurvedArrow
@@ -180,6 +183,12 @@ export class GPSAeroOverlay {
       sa.lift.dispose(); sa.drag.dispose(); sa.side.dispose(); sa.vel.dispose()
     }
     this.segArrows = []
+    // Remove old CM arrows
+    for (const arc of this.cmArrows) {
+      this.group.remove(arc)
+      arc.dispose()
+    }
+    this.cmArrows = []
 
     if (!this.config) return
 
@@ -191,6 +200,12 @@ export class GPSAeroOverlay {
       lift.visible = drag.visible = side.visible = vel.visible = false
       this.group.add(lift, drag, side, vel)
       this.segArrows.push({ lift, drag, side, vel })
+
+      const seg = this.config.segments[i]
+      const cmArc = new CMArrow(`gps-seg-${seg.name}-cm`)
+      cmArc.visible = false
+      this.group.add(cmArc)
+      this.cmArrows.push(cmArc)
     }
   }
 
@@ -422,6 +437,22 @@ export class GPSAeroOverlay {
       } else {
         sa.vel.visible = false
       }
+
+      // CM arrow — positioned at the segment's aerodynamic center (no CP
+      // offset).  Rotates with the body via bodyQuat (mirrors main viewer).
+      const acNED = {
+        x: ps.positionMeters.x * hScale,
+        y: ps.positionMeters.y * hScale,
+        z: ps.positionMeters.z,
+      }
+      const acWorld = nedToThreeJS(acNED).applyQuaternion(bodyQuat).add(modelPos)
+      const cmArc = this.cmArrows[i]
+      if (cmArc) {
+        cmArc.position.copy(acWorld)
+        cmArc.quaternion.copy(bodyQuat)
+        cmArc.setMoment(ps.forces.moment)
+        cmArc.visible = Math.abs(ps.forces.moment) > 0.01
+      }
     }
 
     // CG position in world space
@@ -528,6 +559,9 @@ export class GPSAeroOverlay {
     this.accelBall.visible = false
     for (const sa of this.segArrows) {
       sa.lift.visible = sa.drag.visible = sa.side.visible = sa.vel.visible = false
+    }
+    for (const arc of this.cmArrows) {
+      arc.visible = false
     }
     this.pitchArc.visible = false
     this.yawArc.visible = false

@@ -222,6 +222,11 @@ async function loadFile(file: File) {
     const bodyCanvas = document.getElementById('body-canvas') as HTMLCanvasElement
     bodyScene = new BodyFrameScene(bodyCanvas)
   }
+  // Dev hook: expose scenes for browser-dev tooling (camera control, scene inspection).
+  ;(window as unknown as { __polarGps?: unknown }).__polarGps = {
+    inertialScene: scene,
+    bodyScene,
+  }
   scene.setData(result.points)
   bodyScene.setData(result.points)
 
