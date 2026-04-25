@@ -21,8 +21,13 @@ import { CurvedArrow } from './curved-arrow.ts'
  *  while CM_MAX_ANGLE clamps anything pathological to ±π/2. */
 export const CM_SEGMENT_TORQUE_SCALE = 0.01
 
-/** Pitch arc color (matches total-moment pitchArc). */
-const CM_COLOR = 0xff8844
+/** Per-segment CM arc color — dark forest green.
+ *  Chosen to be visually distinct from:
+ *   • the bright green lift / normal-force segment arrows (~0x44ff44),
+ *   • the orange total-vehicle pitch-moment arc (0xff8844 in vectors.ts),
+ *  so segment-CM arcs read clearly as "this segment's pitching moment"
+ *  rather than as a vehicle-wide aero or rate vector. */
+const CM_COLOR = 0x1b5e20
 
 /** Max arc sweep for a single segment's CM contribution [rad]. */
 const CM_MAX_ANGLE = Math.PI / 2
@@ -41,10 +46,15 @@ export class CMArrow extends THREE.Group {
     super()
     this.name = name
     this.arc = new CurvedArrow('x', CM_COLOR, `${name}-arc`, {
+      // Mesh dimensions deliberately ~half the values used for the total-
+      // vehicle pitch arc, so per-segment CM arcs read as supporting detail
+      // rather than dominating the scene next to the segment lift/drag/side
+      // force arrows.  The arc radius (0.3) and the moment→angle mapping
+      // (CM_SEGMENT_TORQUE_SCALE) are unchanged.
       radius: 0.3,
-      tubeRadius: 0.015,
-      headLength: 0.10,
-      headRadius: 0.045,
+      tubeRadius: 0.0075,
+      headLength: 0.05,
+      headRadius: 0.0225,
     })
     this.add(this.arc)
   }

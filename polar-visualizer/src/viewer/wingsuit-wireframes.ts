@@ -271,7 +271,11 @@ export function createWingsuitWireframes(): WingsuitWireframes {
     // nedToThreeJS: (x, y, z)_NED → (-y, -z, x)_Three
     // So box extents map: Three width = |y|, height = |z|, depth = |x|
     const boxGeo = new THREE.BoxGeometry(spec.size.y, spec.size.z, spec.size.x)
-    const wireGeo = new THREE.WireframeGeometry(boxGeo)
+    // EdgesGeometry emits only the 12 unique box edges (hard-angle edges
+    // above the default 1° threshold).  This avoids the diagonal "X"
+    // pattern that WireframeGeometry produces by visualizing every
+    // triangulated face edge.
+    const wireGeo = new THREE.EdgesGeometry(boxGeo)
     boxGeo.dispose()
     geometries.push(wireGeo)
 
