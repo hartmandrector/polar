@@ -44,7 +44,7 @@ BOOTSTRAP.md
 polar-visualizer/public/models/Corvid 2 Hartman.3dm
 polar-visualizer/public/models/Corvid 2 Hartman.zip
 polar-visualizer/public/models/Corvid 2 Hartman/
-polar-visualizer/public/models/Corvid 2 Hartman.glb
+polar-visualizer/public/models/Corvid 2 Hartman.gltf
 
 # VS Code MCP config
 .vscode/mcp.json
