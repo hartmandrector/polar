@@ -350,6 +350,10 @@ The GPS viewer has a left info column ("Flight Data" / "Moment Decomposition" / 
 
 `gps-aero-overlay.ts` shows the **wingsuit overlay** when `flightMode === 'Canopy'` but `isPostLineStretch === false` (pre-line-stretch canopy is still flying as wingsuit). Canopy CM arcs only render once `showCanopyAero` is true — i.e. **after line-stretch** AND `effectiveCs` is non-null. Use the `Trust: Yes` field as the proxy and pick a slider value with `t from LS > +5s`.
 
+### "Hide GLB" behavior in the GPS body-frame pane
+
+The "Hide GLB" checkbox in the PNG Capture panel hides **both** the wingsuit GLB and the canopy GLB in the body-frame scene, AND turns on the **wingsuit segment wireframes** (a 7-box reference geometry showing the aero segments — head, body, two wing pairs, two tail pairs). This is the recommended setup for capturing clean shots of segment force vectors and CM arcs without the model occluding them. The wireframes are added to the body-frame scene by `body-frame-scene.ts → setAeroConfig()` and follow the body frame natively (no rotation needed).
+
 ## Iteration Discipline
 
 1. **Type-check first**: `cd c:\dev\polar\polar-visualizer && npx tsc --noEmit`. If it fails, fix before reloading the browser.

@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { BodyRateAxisHelper, EulerAxisHelper } from './axis-helper'
+import { createWingsuitWireframes, type WingsuitWireframes } from '../viewer/wingsuit-wireframes'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
@@ -55,6 +56,7 @@ export class BodyFrameScene {
   // Aero overlay (in body frame — no rotation needed)
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
+  private wingsuitWireframes: WingsuitWireframes | null = null
   private bodyRateAxis: BodyRateAxisHelper
   private eulerAxis: EulerAxisHelper  // shown in "all" mode
 
@@ -177,6 +179,16 @@ export class BodyFrameScene {
 
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
+    // Build/refresh wingsuit segment wireframes (body-frame reference geometry).
+    // pilotScale matches the GLB scale (MODEL_SCALE = 1.875 / 3.55).
+    if (config.segments.length > 0) {
+      if (!this.wingsuitWireframes) {
+        this.wingsuitWireframes = createWingsuitWireframes()
+        this.scene.add(this.wingsuitWireframes.group)
+      }
+      this.wingsuitWireframes.update(config.segments, MODEL_SCALE, config.height)
+      this.wingsuitWireframes.setVisible(this.glbHidden)
+    }
   }
 
   setCanopyAeroConfig(config: AeroOverlayConfig) {
@@ -208,10 +220,13 @@ export class BodyFrameScene {
     this.canopyStates = states
   }
 
-  /** Hide the canopy GLB (overlays / helpers remain visible). */
+  /** Hide the wingsuit + canopy GLBs (overlays / helpers / wireframes remain visible). */
   setGlbHidden(hidden: boolean) {
     this.glbHidden = hidden
+    if (this.model) this.model.visible = !hidden
     if (hidden && this.canopyModel) this.canopyModel.visible = false
+    // Show wingsuit wireframes when GLB is hidden (body-frame reference).
+    if (this.wingsuitWireframes) this.wingsuitWireframes.setVisible(hidden)
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -415,8 +430,9 @@ export class BodyFrameScene {
     }
 
     // Global "Hide GLB" override.
-    if (this.glbHidden && this.canopyModel) {
-      this.canopyModel.visible = false
+    if (this.glbHidden) {
+      if (this.model) this.model.visible = false
+      if (this.canopyModel) this.canopyModel.visible = false
     }
 
     // Aero overlay at origin (body frame — vectors are native)
