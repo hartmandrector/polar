@@ -40,10 +40,11 @@ BOOTSTRAP.md
 *.fbx
 *.zip
 
-# Corvid model (keep optimized GLB only)
+# Corvid model
 polar-visualizer/public/models/Corvid 2 Hartman.3dm
 polar-visualizer/public/models/Corvid 2 Hartman.zip
 polar-visualizer/public/models/Corvid 2 Hartman/
+polar-visualizer/public/models/Corvid 2 Hartman.glb
 
 # VS Code MCP config
 .vscode/mcp.json
