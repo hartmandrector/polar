@@ -104,6 +104,25 @@ html, body {
   display: flex;
   gap: 2px;
   min-height: 0;
+  position: relative;
+}
+
+/* Optional video background. Spans the full dual-scene area. Hidden by
+   default — only displayed when a file is loaded via the Video Sync panel.
+   Canvases sit above this layer with transparent clear color, so the video
+   shows through and Playwright captures (which never load a video) remain
+   fully transparent. */
+#bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  transform-origin: center center;
 }
 
 .scene-box {
@@ -111,6 +130,7 @@ html, body {
   position: relative;
   min-width: 0;
   overflow: hidden;
+  z-index: 1;
 }
 
 .scene-box canvas {

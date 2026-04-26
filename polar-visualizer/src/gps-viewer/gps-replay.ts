@@ -26,6 +26,7 @@ export class GPSReplay {
 
   get playing() { return this._playing }
   get speed() { return this._speed }
+  get time() { return this.playbackTime }
   set speed(v: number) { this._speed = v }
 
   setData(data: GPSPipelinePoint[]) {

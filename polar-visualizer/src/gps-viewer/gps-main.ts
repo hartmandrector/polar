@@ -49,6 +49,7 @@ function writebackFixedRates(points: GPSPipelinePoint[]) {
 }
 import { KeyframeEditor } from './keyframe-editor'
 import type { CaptureSessionState } from './capture-session'
+import { VideoSync } from './video-sync'
 
 // ─── DOM Elements ───────────────────────────────────────────────────────────
 
@@ -469,6 +470,10 @@ async function loadFile(file: File) {
       updateLegends(index)
       updateTransport(t, dur)
       applyKeyframeCameras(t)
+      // Video sync: only does work when a video file is loaded.
+      // Capture pipeline (CaptureHandler) drives scenes via a separate path
+      // and never invokes this callback, so capture stays video-free.
+      videoSync.update(t, replay?.playing ?? false, replay?.speed ?? 1)
     })
   } else {
     replay.setData(result.points)
@@ -560,6 +565,8 @@ btnPlay.addEventListener('click', () => {
   if (replay.playing) {
     replay.pause()
     btnPlay.textContent = '▶'
+    // Pin video to the current playhead frame so it lands deterministically.
+    videoSync.update(replay.time, false, 1)
   } else {
     replay.play()
     btnPlay.textContent = '⏸'
@@ -580,6 +587,7 @@ scrubber.addEventListener('input', () => {
   const t = result.points[idx]?.processed.t ?? 0
   updateTransport(t, result.duration)
   applyKeyframeCameras(t)
+  videoSync.update(t, replay.playing, replay.speed)
 })
 
 speedSelect.addEventListener('change', () => {
@@ -845,6 +853,71 @@ function updateReadout(index: number) {
     ` : ''}
   `
 }
+
+// ─── Video Sync (optional LRV/MP4 background) ──────────────────────────────
+
+const bgVideoEl = document.getElementById('bg-video') as HTMLVideoElement
+const videoSync = new VideoSync(bgVideoEl)
+const videoLoadBtn = document.getElementById('video-load-btn')!
+const videoFileInput = document.getElementById('video-file-input') as HTMLInputElement
+const videoStatus = document.getElementById('video-status')!
+const videoControlsBody = document.getElementById('video-controls-body')!
+const videoVisible = document.getElementById('video-visible') as HTMLInputElement
+const videoFlipH = document.getElementById('video-flip-h') as HTMLInputElement
+const videoRotation = document.getElementById('video-rotation') as HTMLSelectElement
+const videoOffset = document.getElementById('video-offset') as HTMLInputElement
+const videoOffsetNum = document.getElementById('video-offset-num') as HTMLInputElement
+const videoOpacity = document.getElementById('video-opacity') as HTMLInputElement
+const videoUnload = document.getElementById('video-unload')!
+
+videoLoadBtn.addEventListener('click', () => videoFileInput.click())
+videoFileInput.addEventListener('change', () => {
+  const file = videoFileInput.files?.[0]
+  if (!file) return
+  videoSync.loadFile(file)
+  videoStatus.textContent = file.name
+  videoControlsBody.style.display = 'block'
+  // Reset transient state to current UI values
+  videoSync.setOffset(parseFloat(videoOffset.value) || 0)
+  videoSync.setVisible(videoVisible.checked)
+  videoSync.setRotation(parseInt(videoRotation.value, 10) || 0)
+  videoSync.setFlipH(videoFlipH.checked)
+  videoSync.setOpacity(parseFloat(videoOpacity.value) || 1)
+  // Once metadata is parsed, snap the video to the current playhead frame
+  // instead of frame 0. One-shot listener; replaces any prior one.
+  const onMeta = () => {
+    bgVideoEl.removeEventListener('loadedmetadata', onMeta)
+    if (replay) videoSync.update(replay.time, replay.playing, replay.speed)
+  }
+  bgVideoEl.addEventListener('loadedmetadata', onMeta)
+})
+videoUnload.addEventListener('click', () => {
+  videoSync.unload()
+  videoFileInput.value = ''
+  videoStatus.textContent = 'No video'
+  videoControlsBody.style.display = 'none'
+})
+videoVisible.addEventListener('change', () => videoSync.setVisible(videoVisible.checked))
+videoFlipH.addEventListener('change', () => videoSync.setFlipH(videoFlipH.checked))
+videoRotation.addEventListener('change', () => videoSync.setRotation(parseInt(videoRotation.value, 10) || 0))
+videoOpacity.addEventListener('input', () => videoSync.setOpacity(parseFloat(videoOpacity.value) || 0))
+
+function setVideoOffsetFromUI(s: number) {
+  const clamped = Math.max(-60, Math.min(60, s))
+  videoSync.setOffset(clamped)
+  videoOffset.value = String(clamped)
+  videoOffsetNum.value = clamped.toFixed(2)
+  // While paused, re-seek the video so the user sees the new offset frame
+  // immediately. While playing, the next replay tick will drift-correct.
+  if (replay && !replay.playing) videoSync.update(replay.time, false, 1)
+}
+videoOffset.addEventListener('input', () => setVideoOffsetFromUI(parseFloat(videoOffset.value) || 0))
+videoOffsetNum.addEventListener('change', () => setVideoOffsetFromUI(parseFloat(videoOffsetNum.value) || 0))
+;(document.getElementById('video-nudge-mframe')!).addEventListener('click', () => setVideoOffsetFromUI(videoSync.offset - videoSync.frameDt))
+;(document.getElementById('video-nudge-mtenth')!).addEventListener('click', () => setVideoOffsetFromUI(videoSync.offset - 0.1))
+;(document.getElementById('video-nudge-zero')!).addEventListener('click', () => setVideoOffsetFromUI(0))
+;(document.getElementById('video-nudge-ptenth')!).addEventListener('click', () => setVideoOffsetFromUI(videoSync.offset + 0.1))
+;(document.getElementById('video-nudge-pframe')!).addEventListener('click', () => setVideoOffsetFromUI(videoSync.offset + videoSync.frameDt))
 
 // ─── Head Sensor Loading ────────────────────────────────────────────────────
 
