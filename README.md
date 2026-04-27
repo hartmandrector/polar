@@ -419,11 +419,11 @@ The wingsuit responds to three simultaneous **throttle axes** — pitch, roll, a
 
 **Effect:** Shifts angle of attack symmetrically across all lifting segments:
 
-$$\alpha_{eff} = \alpha + \text{pitchThrottle} \times \text{PITCH\_ALPHA\_MAX\_DEG}$$
+$$\alpha_{eff} = \alpha + \mathrm{pitchThrottle} \times \mathrm{PITCH\_ALPHA\_MAX\_DEG}$$
 
 Default `PITCH_ALPHA_MAX_DEG = ±1.5°`. Also shifts the center of pressure aft with pitch-down input (stabilizing) and forward with pitch-up (destabilizing):
 
-$$\text{CP}_{eff} = \text{CP} + \text{pitchThrottle} \times \text{PITCH\_CP\_SHIFT}$$
+$$\mathrm{CP}_{eff} = \mathrm{CP} + \mathrm{pitchThrottle} \times \mathrm{PITCH\_CP\_SHIFT}$$
 
 Default `PITCH_CP_SHIFT = ±0.05` (chord fraction). This models the pilot arching (increasing α, CP aft) and de-arching (decreasing α, CP forward).
 
@@ -435,7 +435,7 @@ Default `PITCH_CP_SHIFT = ±0.05` (chord fraction). This models the pilot archin
 
 **Effect:** Differential angle of attack across left and right wings:
 
-$$\Delta\alpha_{roll} = \text{rollThrottle} \times \text{ROLL\_ALPHA\_MAX\_DEG} \times \text{rollSensitivity} \times \text{sideSign}$$
+$$\Delta\alpha_{roll} = \mathrm{rollThrottle} \times \mathrm{ROLL\_ALPHA\_MAX\_DEG} \times \mathrm{rollSensitivity} \times \mathrm{sideSign}$$
 
 Segments have graduated `rollSensitivity` values (outer wings 1.0, inner 0.6, body 0.3) so outer surfaces respond more strongly. This models asymmetric shoulder height — right shoulder up increases α on right wing and decreases it on left, generating roll moment and adverse yaw drag.
 
@@ -449,13 +449,13 @@ Code: [src/polar/segment-factories.ts#L873](src/polar/segment-factories.ts#L873)
 
 **Effect:** Lateral body shift and coupled differential roll moment. The yaw throttle moves the body segment left/right:
 
-$$\text{bodyY} = \text{baseY} + \text{yawThrottle} \times \text{YAW\_BODY\_Y\_SHIFT}$$
+$$\mathrm{bodyY} = \mathrm{baseY} + \mathrm{yawThrottle} \times \mathrm{YAW\_BODY\_Y\_SHIFT}$$
 
 and induces differential α on the wings via body twist coupling:
 
-$$\Delta\alpha_{yaw} = \text{yawThrottle} \times \text{YAW\_ROLL\_COUPLING\_DEG} \times \text{sideSign}$$
+$$\Delta\alpha_{yaw} = \mathrm{yawThrottle} \times \mathrm{YAW\_ROLL\_COUPLING\_DEG} \times \mathrm{sideSign}$$
 
-This models the pilot leaning left/right to yaw the body while maintaining pitch — a core technique for precision steering in wingsuit flying.
+This models the pilot leaning left/right to yaw the body while maintaining pitch.
 
 #### Control Constants
 
