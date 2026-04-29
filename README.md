@@ -419,13 +419,13 @@ The wingsuit responds to three simultaneous **throttle axes** — pitch, roll, a
 
 **Effect:** Shifts angle of attack symmetrically across all lifting segments:
 
-$$\alpha_{eff} = \alpha + \mathrm{pitchThrottle} \times \mathrm{PITCH\_ALPHA\_MAX\_DEG}$$
+$$\alpha_{eff} = \alpha + p \cdot \alpha_{max}$$
 
-Default `PITCH_ALPHA_MAX_DEG = ±1.5°`. Also shifts the center of pressure aft with pitch-down input (stabilizing) and forward with pitch-up (destabilizing):
+where $p$ is `pitchThrottle` and $\alpha_{max}$ is `PITCH_ALPHA_MAX_DEG` (default ±1.5°). Also shifts the center of pressure aft with pitch-down input (stabilizing) and forward with pitch-up (destabilizing):
 
-$$\mathrm{CP}_{eff} = \mathrm{CP} + \mathrm{pitchThrottle} \times \mathrm{PITCH\_CP\_SHIFT}$$
+$$CP_{eff} = CP + p \cdot \Delta CP_{max}$$
 
-Default `PITCH_CP_SHIFT = ±0.05` (chord fraction). This models the pilot arching (increasing α, CP aft) and de-arching (decreasing α, CP forward).
+where $\Delta CP_{max}$ is `PITCH_CP_SHIFT` (default ±0.05 chord fraction). This models the pilot arching (increasing α, CP aft) and de-arching (decreasing α, CP forward).
 
 #### Roll Throttle
 
@@ -435,7 +435,9 @@ Default `PITCH_CP_SHIFT = ±0.05` (chord fraction). This models the pilot archin
 
 **Effect:** Differential angle of attack across left and right wings:
 
-$$\Delta\alpha_{roll} = \mathrm{rollThrottle} \times \mathrm{ROLL\_ALPHA\_MAX\_DEG} \times \mathrm{rollSensitivity} \times \mathrm{sideSign}$$
+$$\Delta\alpha_{roll} = r \cdot \alpha_{r,max} \cdot s_{roll} \cdot \sigma$$
+
+where $r$ is `rollThrottle`, $\alpha_{r,max}$ is `ROLL_ALPHA_MAX_DEG`, $s_{roll}$ is `rollSensitivity`, and $\sigma$ is `sideSign` (±1).
 
 Segments have graduated `rollSensitivity` values (outer wings 1.0, inner 0.6, body 0.3) so outer surfaces respond more strongly. This models asymmetric shoulder height — right shoulder up increases α on right wing and decreases it on left, generating roll moment and adverse yaw drag.
 
@@ -449,11 +451,13 @@ Code: [src/polar/segment-factories.ts#L873](src/polar/segment-factories.ts#L873)
 
 **Effect:** Lateral body shift and coupled differential roll moment. The yaw throttle moves the body segment left/right:
 
-$$\mathrm{bodyY} = \mathrm{baseY} + \mathrm{yawThrottle} \times \mathrm{YAW\_BODY\_Y\_SHIFT}$$
+$$y_{body} = y_{base} + y \cdot \Delta y_{max}$$
 
-and induces differential α on the wings via body twist coupling:
+where $y$ is `yawThrottle` and $\Delta y_{max}$ is `YAW_BODY_Y_SHIFT`. It also induces differential α on the wings via body twist coupling:
 
-$$\Delta\alpha_{yaw} = \mathrm{yawThrottle} \times \mathrm{YAW\_ROLL\_COUPLING\_DEG} \times \mathrm{sideSign}$$
+$$\Delta\alpha_{yaw} = y \cdot \alpha_{y,max} \cdot \sigma$$
+
+where $\alpha_{y,max}$ is `YAW_ROLL_COUPLING_DEG` and $\sigma$ is `sideSign`.
 
 This models the pilot leaning left/right to yaw the body while maintaining pitch.
 
