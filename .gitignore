@@ -32,7 +32,7 @@ HEARTBEAT.md
 BOOTSTRAP.md
 
 # Data files (derived results)
-*.csv
+
 
 # Large 3D model source files (keep only optimized .glb exports)
 *.3dm
