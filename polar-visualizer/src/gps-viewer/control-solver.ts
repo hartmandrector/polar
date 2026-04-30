@@ -51,6 +51,9 @@ export interface ControlInversionResult {
   pitchThrottle: number
   rollThrottle: number
   yawThrottle: number
+  /** Solved dirty input [0, 1] — 1D drag-match outer-loop solve.
+   *  0 if measured glide ratio is at least as steep as clean polar predicts. */
+  dirty: number
   /** Moment breakdown per axis */
   moments: AxisMoments
   /** Did the solver converge? */
@@ -118,18 +121,39 @@ export function solveControlInputs(
   const trimLegBend   = config.trimLegBend   ?? 0.30
 
   // Helper: evaluate aero moments for given control vector
-  function evalMoments(pitch: number, roll: number, yaw: number): Vec3NED {
+  function evalMoments(pitch: number, roll: number, yaw: number, dirty = 0): Vec3NED {
     const ctrl = defaultControls()
     ctrl.hipCamber     = trimHipCamber
     ctrl.legBend       = trimLegBend
     ctrl.pitchThrottle = pitch
     ctrl.rollThrottle  = roll * rollGain
     ctrl.yawThrottle   = yaw
+    ctrl.dirty         = dirty
     const result = evaluateAeroForcesDetailed(
       config.segments, config.cgMeters, config.height,
       bodyVel, omega, ctrl, rho,
     )
     return result.system.moment
+  }
+
+  // Helper: evaluate aero drag (force component along -velocity_unit) [N].
+  // Used by the 1D dirty bisection so we can match measured glide ratio.
+  function evalDrag(pitch: number, roll: number, yaw: number, dirty: number): number {
+    const ctrl = defaultControls()
+    ctrl.hipCamber     = trimHipCamber
+    ctrl.legBend       = trimLegBend
+    ctrl.pitchThrottle = pitch
+    ctrl.rollThrottle  = roll * rollGain
+    ctrl.yawThrottle   = yaw
+    ctrl.dirty         = dirty
+    const result = evaluateAeroForcesDetailed(
+      config.segments, config.cgMeters, config.height,
+      bodyVel, omega, ctrl, rho,
+    )
+    const vmag = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.y * bodyVel.y + bodyVel.z * bodyVel.z)
+    if (vmag < 1e-6) return 0
+    const vx = bodyVel.x / vmag, vy = bodyVel.y / vmag, vz = bodyVel.z / vmag
+    return -(result.system.force.x * vx + result.system.force.y * vy + result.system.force.z * vz)
   }
 
   // Newton-Raphson iteration — seed from previous timestep if available
@@ -180,6 +204,35 @@ export function solveControlInputs(
   const finalRes = [Mfinal.x - Lreq, Mfinal.y - Mreq, Mfinal.z - Nreq]
   const finalNorm = Math.sqrt(finalRes[0] * finalRes[0] + finalRes[1] * finalRes[1] + finalRes[2] * finalRes[2])
 
+  // ── 1D dirty solve (outer loop) ───────────────────────────────────────────
+  // Match measured glide ratio by bisecting `dirty` so predicted drag equals
+  // the quasi-steady drag implied by the flight path angle.
+  // D_req = m * g * |sin(gamma)|.  If clean polar (dirty=0) already produces
+  // more drag than required, leave dirty=0 (we don't subtract drag).
+  let dirty = 0
+  const gamma = pt.aero?.gamma ?? 0
+  const Dreq = Math.abs(config.mass * 9.80665 * Math.sin(gamma))
+  if (Dreq > 0) {
+    const Dclean = evalDrag(u[0], u[1], u[2], 0)
+    if (Dclean < Dreq) {
+      // Bisect dirty in [0, 1].  Drag is monotonically increasing in dirty.
+      let lo = 0, hi = 1
+      const Dhi = evalDrag(u[0], u[1], u[2], 1)
+      if (Dhi < Dreq) {
+        // Even fully dirty can't explain it — cap at 1.
+        dirty = 1
+      } else {
+        for (let i = 0; i < 16; i++) {
+          const mid = 0.5 * (lo + hi)
+          const D = evalDrag(u[0], u[1], u[2], mid)
+          if (D < Dreq) lo = mid
+          else          hi = mid
+        }
+        dirty = 0.5 * (lo + hi)
+      }
+    }
+  }
+
   // Gyroscopic terms (ω × Iω)
   const gyroL = (Izz - Iyy) * omega.q * omega.r + Ixz * omega.p * omega.q
   const gyroM = (Ixx - Izz) * omega.p * omega.r + Ixz * (omega.p * omega.p - omega.r * omega.r)
@@ -199,6 +252,7 @@ export function solveControlInputs(
     pitchThrottle: u[0],
     rollThrottle: u[1],
     yawThrottle: u[2],
+    dirty,
     moments: {
       roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: IalphaL },
       pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: IalphaM },

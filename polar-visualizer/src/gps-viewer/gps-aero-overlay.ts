@@ -106,7 +106,7 @@ export class GPSAeroOverlay {
   }
 
   /** Last solved control inputs (Pass 2) — wingsuit shape */
-  lastControls: { pitch: number; roll: number; yaw: number } = { pitch: 0, roll: 0, yaw: 0 }
+  lastControls: { pitch: number; roll: number; yaw: number; dirty: number } = { pitch: 0, roll: 0, yaw: 0, dirty: 0 }
   /** Last solved canopy controls (Pass 2) — brake/riser shape */
   lastCanopyControls: { brakeLeft: number; brakeRight: number; frontRiserLeft: number; frontRiserRight: number } = { brakeLeft: 0, brakeRight: 0, frontRiserLeft: 0, frontRiserRight: 0 }
   /** Per-control moment mapping (which controls drive which axes) */
@@ -297,7 +297,7 @@ export class GPSAeroOverlay {
       if (this.canopyMode) {
         const sol = solveCanopyControls(pt, solverCfg, undefined, this.canopyConstraint)
         this.lastMoments = sol.moments
-        this.lastControls = { pitch: (sol.brakeLeft + sol.brakeRight) / 2, roll: (sol.brakeRight - sol.brakeLeft) / 2, yaw: (sol.frontRiserLeft + sol.frontRiserRight) / 2 }
+        this.lastControls = { pitch: (sol.brakeLeft + sol.brakeRight) / 2, roll: (sol.brakeRight - sol.brakeLeft) / 2, yaw: (sol.frontRiserLeft + sol.frontRiserRight) / 2, dirty: 0 }
         this.lastCanopyControls = { brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
         this.lastCanopyControlMap = sol.controlMap
         this.lastConverged = sol.converged
@@ -305,7 +305,7 @@ export class GPSAeroOverlay {
       } else {
         const sol = solveControlInputs(pt, solverCfg)
         this.lastMoments = sol.moments
-        this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
+        this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle, dirty: sol.dirty }
         this.lastConverged = sol.converged
         // Match the solver's trim baseline so the re-evaluation pass below renders
         // segments with the same hipCamber/legBend the solver assumed.
@@ -316,6 +316,7 @@ export class GPSAeroOverlay {
           pitchThrottle: sol.pitchThrottle,
           rollThrottle: sol.rollThrottle,
           yawThrottle: sol.yawThrottle,
+          dirty: sol.dirty,
         }
       }
       this.lastSolvedSegmentControls = solvedControls
@@ -560,7 +561,7 @@ export class GPSAeroOverlay {
         pitch: { aero: my, pilot: 0, gyro: 0, net: my },
         yaw:   { aero: mz, pilot: 0, gyro: 0, net: mz },
       }
-      this.lastControls = { pitch: 0, roll: 0, yaw: 0 }
+      this.lastControls = { pitch: 0, roll: 0, yaw: 0, dirty: 0 }
       this.lastSolvedSegmentControls = defaultControls()
       this.lastConverged = true
     }

@@ -36,14 +36,24 @@ function fmtCtrl(v: number): string {
   return `${bar} ${pctStr}`
 }
 
+/** Format unipolar control input as HTML bar (0 to +100%, full width) */
+function fmtUni(v: number): string {
+  const pct = Math.round(Math.max(0, Math.min(1, v)) * 100)
+  const pctStr = ' ' + String(pct).padStart(3, ' ') + '%'
+  const filled = Math.min(16, Math.round(Math.abs(v) * 16))
+  let bar = ''
+  for (let i = 0; i < 16; i++) bar += cell(i < filled)
+  return `${bar} ${pctStr}`
+}
+
 // ─── Formatter ──────────────────────────────────────────────────────────────
 
 export class WingsuitLegendFormatter implements MomentLegendFormatter {
-  private ctrl: WingsuitControls = { pitch: 0, roll: 0, yaw: 0 }
+  private ctrl: WingsuitControls = { pitch: 0, roll: 0, yaw: 0, dirty: 0 }
 
   setControls(controls: WingsuitControls | CanopyControls): void {
     const c = controls as WingsuitControls
-    this.ctrl = { pitch: c.pitch ?? 0, roll: c.roll ?? 0, yaw: c.yaw ?? 0 }
+    this.ctrl = { pitch: c.pitch ?? 0, roll: c.roll ?? 0, yaw: c.yaw ?? 0, dirty: c.dirty ?? 0 }
   }
 
   formatControls(converged: boolean): string {
@@ -55,6 +65,7 @@ export class WingsuitLegendFormatter implements MomentLegendFormatter {
       `  Pitch ${fmtCtrl(this.ctrl.pitch)}`,
       `  Roll  ${fmtCtrl(this.ctrl.roll)}`,
       `  Yaw   ${fmtCtrl(this.ctrl.yaw)}`,
+      `  Dirty ${fmtUni(this.ctrl.dirty)}`,
     ].join('<br>')
   }
 
