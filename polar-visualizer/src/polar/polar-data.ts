@@ -1547,6 +1547,52 @@ void A5_LE_ROOT_FWD_OFFSET  // reserved for wireframe LE fit (Phase E audit)
 const A5_TORSO_CHORD = 0.407
 /** Torso reference area [m²] — 30% of A5_CENTER_POLAR.s = 1.03. */
 const A5_TORSO_S = 0.31
+
+/**
+ * Torso polar (Phase B) — short, fuselage-like, inherits head-wake drag.
+ *
+ * Starting values per docs/CENTER-SEGMENT-SPLIT.md §4.1.  Sideslip
+ * coefficients (cy_beta, cn_beta, cl_beta) match A5_CENTER_POLAR so that
+ * area-weighted sums at neutral β are preserved (S_torso + S_leg = 1.03).
+ * Calibration sweep against aurafiveContinuous to be done in browser.
+ */
+const A5_TORSO_POLAR: ContinuousPolar = {
+  name: 'A5 Torso',
+  type: 'Wingsuit',
+  cl_alpha: 2.2,             // stubby low-AR fuselage
+  alpha_0: 0,                // roughly symmetric chest cavity
+  cd_0: 0.13,                // includes head-wake parasitic drag
+  k: 0.35,
+  cd_n: 1.2,
+  cd_n_lateral: 1.0,
+  alpha_stall_fwd: 28,        // earlier stall (less flexible than full center)
+  s1_fwd: 5,                 // gentle bluff-body stall
+  alpha_stall_back: -30,
+  s1_back: 7,
+  cy_beta: -0.9,
+  cn_beta: 0.08,
+  cl_beta: -0.04,
+  cm_0: -0.005,              // slight nose-down trim (chest geometry)
+  cm_alpha: 0.10,
+  cp_0: 0.30,                // CP fwd of geometric center
+  cp_alpha: 0.025,
+  cg: 0.40,
+  cp_lateral: 0.50,
+  s: A5_TORSO_S,
+  m: 77.5,
+  chord: A5_TORSO_CHORD,
+  controls: {
+    dirty: {
+      d_cd_0: 0.035,
+      d_cl_alpha: -0.15,
+      d_k: 0.10,
+      d_cd_n: 0.15,
+      d_alpha_stall_fwd: -2,
+    }
+  },
+  referenceLength: A5_REF_LENGTH
+}
+
 const A5_TORSO_POS = {        // x/c = 0.276 (torso own QC at LE + 0.25·c_torso)
   x: a5xc(0.276),            //  +0.119 normalized (+0.223 m fwd of CG)
   y: 0,
@@ -1557,6 +1603,53 @@ const A5_TORSO_POS = {        // x/c = 0.276 (torso own QC at LE + 0.25·c_torso
 const A5_LEG_CHORD = 0.954
 /** Leg-wing reference area [m²] — 70% of A5_CENTER_POLAR.s = 1.03. */
 const A5_LEG_S = 0.72
+
+/**
+ * Leg-wing polar (Phase B) — clean trailing edge, flexible cambered panel.
+ *
+ * Starting values per docs/CENTER-SEGMENT-SPLIT.md §4.1.  Higher cl_alpha
+ * and later, sharper stall than the torso; cleaner cd_0 (no head wake);
+ * stronger nose-down cm_0 and cm_alpha drives the flare authority that
+ * the legs provide in real wingsuit flight.  Sideslip coefficients match
+ * the torso so area-weighted sums at neutral β preserve A5_CENTER_POLAR.
+ */
+const A5_LEG_POLAR: ContinuousPolar = {
+  name: 'A5 Leg Wing',
+  type: 'Wingsuit',
+  cl_alpha: 3.2,             // higher than torso — flat cambered panel
+  alpha_0: -2,               // cambered (knees-down arch)
+  cd_0: 0.08,                // cleaner TE, no head wake
+  k: 0.25,                   // better span efficiency than torso
+  cd_n: 1.2,
+  cd_n_lateral: 1.0,
+  alpha_stall_fwd: 38,        // late stall, post-stall lift retention
+  s1_fwd: 3.5,               // sharper stall break
+  alpha_stall_back: -34.5,
+  s1_back: 7,
+  cy_beta: -0.9,
+  cn_beta: 0.08,
+  cl_beta: -0.04,
+  cm_0: -0.02,               // more nose-down (large TE area)
+  cm_alpha: -0.30,           // strong pitch authority — drives the flare
+  cp_0: 0.40,                // aft CP (wide trailing flare)
+  cp_alpha: 0.025,
+  cg: 0.40,
+  cp_lateral: 0.50,
+  s: A5_LEG_S,
+  m: 77.5,
+  chord: A5_LEG_CHORD,
+  controls: {
+    dirty: {
+      d_cd_0: 0.035,
+      d_cl_alpha: -0.15,
+      d_k: 0.10,
+      d_cd_n: 0.15,
+      d_alpha_stall_fwd: -2,
+    }
+  },
+  referenceLength: A5_REF_LENGTH
+}
+
 const A5_LEG_POS = {          // x/c = 0.578 (leg-wing own QC at LE + 0.25·c_leg)
   x: a5xc(0.578),            //  −0.171 normalized (−0.320 m aft of CG)
   y: 0,
@@ -1698,14 +1791,15 @@ export function makeA5SegmentsAeroSegments(): AeroSegment[] {
     // Head — parasitic bluff body, responds to yawThrottle (lateral shift)
     makeWingsuitHeadSegment('head', A5_HEAD_POS, A5_HEAD_S, A5_HEAD_CHORD, A5_HEAD_CD),
 
-    // Center body split into torso (shoulder→hip) + leg (hip→feet) — Phase A
-    // shares A5_CENTER_POLAR; Phase B will introduce distinct polars.
+    // Center body split into torso (shoulder→hip) + leg (hip→feet) — Phase B
+    // gives each its own polar.  Sideslip coefficients are set so area-weighted
+    // sums match the legacy A5_CENTER_POLAR; calibration sweeps to come.
     makeWingsuitLiftingSegment(
-      'torso', A5_TORSO_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body',
+      'torso', A5_TORSO_POS, 0, 'center', A5_TORSO_POLAR, 0.3, 'body',
       undefined, A5_TORSO_S, A5_TORSO_CHORD,
     ),
     makeWingsuitLiftingSegment(
-      'leg', A5_LEG_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body',
+      'leg', A5_LEG_POS, 0, 'center', A5_LEG_POLAR, 0.3, 'body',
       undefined, A5_LEG_S, A5_LEG_CHORD,
     ),
 
