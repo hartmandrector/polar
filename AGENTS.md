@@ -133,7 +133,7 @@ polar-visualizer/
 - Phase B ✅ — Distinct `A5_TORSO_POLAR` + `A5_LEG_POLAR` (B.1: zeroed double-counted cm)
 - Phase C ✅ — Yaw via leg/torso roll differential (additive to lateral shift)
 - Phase D ✅ — `hipCamber` + `legBend` controls (D.1: cm₀ modulation; D.2: pitch throttle drives them, leg fully decoupled from pitch α/CP)
-- Phase E ⏳ — Solver retune + 6→7 rename pass (pending)
+- Phase E ✅ — Joint α/dirty solver, 6→7 rename pass, stability analysis refresh (commits `dd7d211`, `6991d88`, `432a8c8`, `c270825`, `c9e3561`, `df6e4bb`); GPS smoke test on 05-02-2025-1: 98.9% wingsuit convergence, mean |Δα|=1.0°
 
 **Wingsuit Segments (legacy 6-segment notes):**
 - Phase 1 ✅ — Segment data, factories, types, registry

@@ -1,6 +1,6 @@
 # Center Segment Split — Torso + Leg-Wing Refactor
 
-**Status:** ✅ **Implemented** on `split` branch (Phases A–D.2 complete; Phase E pending).
+**Status:** ✅ **Implemented** on `split` branch (Phases A–E complete; ready to merge to `master`).
 **Last updated:** 2026-04-30
 **Affects:** [polar-visualizer/src/polar/polar-data.ts](../polar-visualizer/src/polar/polar-data.ts), [polar-visualizer/src/polar/segment-factories.ts](../polar-visualizer/src/polar/segment-factories.ts), [polar-visualizer/src/viewer/wingsuit-wireframes.ts](../polar-visualizer/src/viewer/wingsuit-wireframes.ts), [polar-visualizer/src/ui/controls.ts](../polar-visualizer/src/ui/controls.ts), [polar-visualizer/index.html](../polar-visualizer/index.html), the GPS control solver (Phase E), and most wingsuit segment tests.
 
@@ -330,10 +330,11 @@ This makes the per-segment AC computation explicit and audit-able — the same f
 15. Add UI sliders to the debug panel; gamepad binding deferred.
 16. Documentation pass — update [README.md](../README.md) wingsuit-controls section.
 
-### Phase E — Solver retune & polish ⏳ (pending)
-17. Run the GPS control inversion solver against a canonical wingsuit track ([control-solver.ts](../polar-visualizer/src/gps-viewer/control-solver.ts)). Verify convergence rate ≥90% and solved throttle magnitudes remain in normal pilot ranges.
-18. If convergence drops: the dominant new sensitivity knob is `YAW_LEG_ROLL_DEG`. Tune it; do not relax solver tolerances without a clear reason.
-19. Audit follow-up from §3.4: write the segment LE / chord / AC table into [docs/MODEL-GEOMETRY.md](MODEL-GEOMETRY.md).
+### Phase E — Solver retune & polish ✅ (complete)
+17. Joint α/dirty solver shipped in [control-solver.ts](../polar-visualizer/src/gps-viewer/control-solver.ts) (commits `dd7d211`, `6991d88`, `432a8c8`, `c270825`): outer fixed-point on α around the Newton 3×3 throttle solve, with a 1D bisection on `dirty` to match measured L/D, then `matchAOABinarySearch` re-extracts α from the converged controls. Validated against the 05-02-2025-1 GPS track: 1815 wingsuit points, 98.9% converged, mean |Δα| = 1.0°, dirty correctly elevated through the 540° turn (peak 0.66 at t=231 s) and the dirty-flying section before deployment (peak 0.78 at t=274 s). Cruise samples land on the swept polar curve in the chart cursor view.
+18. 6→7 rename pass through `polar-data.ts`, `docs/CONTROL-SOLVER.md`, `docs/contexts/wingsuit-aero.md`, `docs/contexts/README.md`, and `docs/sim/STABILITY-ANALYSIS.md` (commits `c9e3561`, `df6e4bb`).
+19. Stability analysis re-run on 7-segment topology and tables in [docs/sim/STABILITY-ANALYSIS.md](sim/STABILITY-ANALYSIS.md) refreshed: short-period ζ rises from ~0.095 to ~0.15, qDot stays uniformly nose-down across the trimmed envelope (legacy 6-segment had a sign flip near 40 m/s), phugoid damping increases. Lateral divergence behavior near 35–50 m/s is essentially unchanged.
+20. Audit follow-up from §3.4 (segment LE / chord / AC table into [docs/MODEL-GEOMETRY.md](MODEL-GEOMETRY.md)) deferred — not a merge blocker.
 
 ---
 
