@@ -247,8 +247,15 @@ export class GPSAeroOverlay {
       r: (pt.bodyRates?.r ?? 0) * D2R,
     }
 
-    // Evaluate segment model with neutral controls (arrows show baseline aero)
+    // Evaluate segment model with trim-baseline controls so arrow forces match
+    // the solver's neutral pass.  Wingsuit trim baseline = hipCamber 0.30, legBend 0.30
+    // (matches gamepad slider neutral and ControlInversionConfig defaults).
+    // Canopy uses true defaults.
     this.controls = defaultControls()
+    if (!this.canopyMode) {
+      this.controls.hipCamber = 0.30
+      this.controls.legBend = 0.30
+    }
     const result = evaluateAeroForcesDetailed(
       cfg.segments, cfg.cgMeters, cfg.height,
       bodyVel, omega, this.controls, rho,
@@ -300,7 +307,16 @@ export class GPSAeroOverlay {
         this.lastMoments = sol.moments
         this.lastControls = { pitch: sol.pitchThrottle, roll: sol.rollThrottle, yaw: sol.yawThrottle }
         this.lastConverged = sol.converged
-        solvedControls = { ...defaultControls(), pitchThrottle: sol.pitchThrottle, rollThrottle: sol.rollThrottle, yawThrottle: sol.yawThrottle }
+        // Match the solver's trim baseline so the re-evaluation pass below renders
+        // segments with the same hipCamber/legBend the solver assumed.
+        solvedControls = {
+          ...defaultControls(),
+          hipCamber: solverCfg.trimHipCamber ?? 0.30,
+          legBend: solverCfg.trimLegBend ?? 0.30,
+          pitchThrottle: sol.pitchThrottle,
+          rollThrottle: sol.rollThrottle,
+          yawThrottle: sol.yawThrottle,
+        }
       }
       this.lastSolvedSegmentControls = solvedControls
       solverActive = true
