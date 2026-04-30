@@ -1802,11 +1802,11 @@ export function makeA5SegmentsAeroSegments(): AeroSegment[] {
     // gives each its own polar.  Sideslip coefficients are set so area-weighted
     // sums match the legacy A5_CENTER_POLAR; calibration sweeps to come.
     makeWingsuitLiftingSegment(
-      'torso', A5_TORSO_POS, 0, 'center', A5_TORSO_POLAR, 0.3, 'body',
+      'torso', A5_TORSO_POS, 0, 'center', A5_TORSO_POLAR, 0.3, 'torso',
       undefined, A5_TORSO_S, A5_TORSO_CHORD,
     ),
     makeWingsuitLiftingSegment(
-      'leg', A5_LEG_POS, 0, 'center', A5_LEG_POLAR, 0.3, 'body',
+      'leg', A5_LEG_POS, 0, 'center', A5_LEG_POLAR, 0.3, 'leg',
       undefined, A5_LEG_S, A5_LEG_CHORD,
     ),
 

@@ -80,6 +80,8 @@ export function defaultControls(): SegmentControls {
     rollThrottle: 0,
     dihedral: 0.5,
     wingsuitDeploy: 0,
+    hipCamber: 0,
+    legBend: 0,
     delta: 0,
     dirty: 0,
     unzip: 0,

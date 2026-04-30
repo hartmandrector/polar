@@ -320,6 +320,12 @@ export interface SegmentControls {
   rollThrottle: number    // [-1, +1] differential shoulder height → roll (+ coupled yaw)
   dihedral: number        // [0, 1] wing dihedral angle (0 = flat, 1 = max ~20°)
   wingsuitDeploy: number  // [0, 1] wingsuit deployment phase (0 = flight, 1 = line stretch)
+  /** [-1, +1] arch / hip-camber input.  Positive = "more arch": shifts torso α_0
+   *  positive (more lift fwd of CG) and leg α_0 negative (less lift aft of CG),
+   *  net pitch-up moment that balances geometric pitch-down at trim α. */
+  hipCamber: number
+  /** [0, 1] leg-bend (knees-bent flare): scales leg-segment effective S and chord. */
+  legBend: number
 
   // ── Universal ──
   delta: number           // Generic symmetric control (current δ slider — arch, brakes, etc.)

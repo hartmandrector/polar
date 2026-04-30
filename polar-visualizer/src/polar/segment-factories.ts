@@ -776,6 +776,18 @@ export interface WingsuitControlConstants {
   DIHEDRAL_INNER_MAX_DEG: number
   /** Max outer wing dihedral at slider=1 [deg] */
   DIHEDRAL_OUTER_MAX_DEG: number
+
+  // ── Arch / hip camber (Phase D) ──
+  /** Max α_0 shift on torso/leg at full hipCamber input [deg].
+   *  Positive hipCamber → torso α_0 shifts +Δ (more lift fwd of CG, pitch-up),
+   *  leg α_0 shifts −Δ (less lift aft of CG, less pitch-down). */
+  HIP_CAMBER_ALPHA0_DEG: number
+
+  // ── Leg-bend (Phase D) ──
+  /** Max effective-S reduction on leg at full legBend input [fraction 0–1]. */
+  LEG_BEND_S_FRACTION: number
+  /** Max effective-chord reduction on leg at full legBend input [fraction 0–1]. */
+  LEG_BEND_CHORD_FRACTION: number
 }
 
 /** Default wingsuit control constants — conservative starting point. */
@@ -797,6 +809,10 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
 
   DIHEDRAL_INNER_MAX_DEG: 16,
   DIHEDRAL_OUTER_MAX_DEG: 30,
+
+  HIP_CAMBER_ALPHA0_DEG: 6,
+  LEG_BEND_S_FRACTION: 0.20,
+  LEG_BEND_CHORD_FRACTION: 0.10,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
@@ -881,7 +897,7 @@ export function makeWingsuitLiftingSegment(
   side: 'center' | 'right' | 'left',
   segmentPolar: ContinuousPolar,
   rollSensitivity: number,
-  wingType: 'body' | 'inner' | 'outer',
+  wingType: 'body' | 'torso' | 'leg' | 'inner' | 'outer',
   constants?: WingsuitControlConstants,
   /** Optional override for the segment's reference area [m²]. Defaults to segmentPolar.s.
    *  Used by the torso/leg split to share a polar but carry distinct geometry. */
@@ -892,13 +908,15 @@ export function makeWingsuitLiftingSegment(
   const ctrl = constants ?? DEFAULT_WINGSUIT_CONSTANTS
   const baseY = position.y
   const sideSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
+  const baseS = S_override ?? segmentPolar.s
+  const baseChord = chord_override ?? segmentPolar.chord
 
   return {
     name,
     position: { ...position },
     orientation: { roll_deg: baseRollDeg },
-    S: S_override ?? segmentPolar.s,
-    chord: chord_override ?? segmentPolar.chord,
+    S: baseS,
+    chord: baseChord,
     polar: segmentPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
@@ -932,12 +950,32 @@ export function makeWingsuitLiftingSegment(
       const yawT = Math.max(-1, Math.min(1, controls.yawThrottle))
       const deltaAlphaYaw = yawT * ctrl.YAW_ROLL_COUPLING_DEG * sideSign
 
-      // ── Total α offset ──
-      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw
+      // ── Hip camber / arch (Phase D) ──
+      // Positive hipCamber = "more arch": torso α_0 shifts +Δ (more lift fwd of CG,
+      // pitch-up moment), leg α_0 shifts −Δ (less lift aft of CG, less pitch-down).
+      // The two together produce a net pitch-up moment that balances the geometric
+      // pitch-down at trim α.  Other segments are unaffected.
+      const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber))
+      let deltaAlphaCamber = 0
+      if (wingType === 'torso') {
+        deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+      } else if (wingType === 'leg') {
+        deltaAlphaCamber = -hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+      }
 
-      // ── Yaw throttle → lateral body shift (body segment only) ──
-      if (wingType === 'body') {
+      // ── Total α offset ──
+      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw + deltaAlphaCamber
+
+      // ── Yaw throttle → lateral body shift (body / torso / leg segments) ──
+      if (wingType === 'body' || wingType === 'torso' || wingType === 'leg') {
         this.position.y = baseY + yawT * ctrl.YAW_BODY_Y_SHIFT
+      }
+
+      // ── Leg bend (Phase D) — knees-bent flare shrinks leg-wing geometry ──
+      if (wingType === 'leg') {
+        const legBend = Math.max(0, Math.min(1, controls.legBend))
+        this.S = baseS * (1 - legBend * ctrl.LEG_BEND_S_FRACTION)
+        this.chord = baseChord * (1 - legBend * ctrl.LEG_BEND_CHORD_FRACTION)
       }
 
       // ── Dirty coupling from throttle inputs ──
