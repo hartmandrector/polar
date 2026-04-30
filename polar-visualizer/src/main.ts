@@ -368,6 +368,13 @@ function updateSystemViewData(
     totalLift, totalDrag, totalSide,
   }
 
+  // Dev hook: expose latest system view + flight state for browser-dev tooling
+  // (used by trim-experiment skill — programmatic per-segment lift/drag/side
+  //  and aggregate aero coefficients without forcing the System View panel open).
+  ;(window as unknown as { __polar?: any }).__polar.lastSystemView = viewData
+  ;(window as unknown as { __polar?: any }).__polar.lastFlightState = state
+  ;(window as unknown as { __polar?: any }).__polar.lastReadout = readout
+
   updateSystemView(viewData)
 }
 

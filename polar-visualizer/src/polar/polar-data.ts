@@ -1559,13 +1559,16 @@ const A5_TORSO_S = 0.31
 const A5_TORSO_POLAR: ContinuousPolar = {
   name: 'A5 Torso',
   type: 'Wingsuit',
-  cl_alpha: 2.2,             // stubby low-AR fuselage
+  // Step 2: bump cl_alpha 2.2→2.8 — torso panel benefits from head-deflected flow
+  // and arm-wing roots; helps redistribute lift away from the over-lifting leg.
+  cl_alpha: 2.8,
   alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
   cd_0: 0.13,                // includes head-wake parasitic drag
   k: 0.35,
   cd_n: 1.2,
   cd_n_lateral: 1.0,
-  alpha_stall_fwd: 28,        // earlier stall (less flexible than full center)
+  // Step 2: 28→38 — give flare margin, match leg stall angle.
+  alpha_stall_fwd: 38,
   s1_fwd: 5,                 // gentle bluff-body stall
   alpha_stall_back: -30,
   s1_back: 7,
@@ -1619,7 +1622,17 @@ const A5_LEG_S = 0.72
 const A5_LEG_POLAR: ContinuousPolar = {
   name: 'A5 Leg Wing',
   type: 'Wingsuit',
-  cl_alpha: 3.2,             // higher than torso — flat cambered panel
+  // Step 2: cl_alpha 3.2→2.4 — hindwing in body wake should NOT have a higher
+  // slope than torso; physical legs are triangular taper, low-AR, body-shadowed.
+  // Pre-Step-2 leg/torso lift ratio was 2.85× — drop ~25% on leg targets ~2.1×.
+  // Result: trim α=5.25°, leg/torso ratio at α=8° dropped to 1.51× (target ~1.5×).
+  cl_alpha: 2.4,
+  // DEFERRED (Step 2b): physically the leg sits at ~3-5° lower effective α than
+  // the torso because the suit tapers back toward the feet — could be encoded by
+  // shifting alpha_0 from -2 to ~+1 (or by adding a pitchOffset_deg parameter to
+  // makeWingsuitLiftingSegment).  Not done because the legBend slider already
+  // provides this α offset on demand and re-trimming everything downstream would
+  // be expensive.  Revisit if posture-driven trim authority becomes limiting.
   alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
   cd_0: 0.08,                // cleaner TE, no head wake
   k: 0.25,                   // better span efficiency than torso
@@ -1637,7 +1650,11 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // torso AC at +0.22 m → pitch-up with α).  Re-introduce camber terms only
   // after gross trim is verified.
   cm_0: 0,
-  cm_alpha: 0.60,
+  // Step 1 of leg-lift retune: zero out the cm_alpha "crutch" that was
+  // masking the lift-arm imbalance between torso (+0.22 m) and leg (−0.32 m).
+  // With this removed, system pitch stability is purely lift × lever arm,
+  // so the real over-lift on the leg becomes visible for tuning.
+  cm_alpha: 0,
   cp_0: 0.40,                // aft CP (wide trailing flare)
   cp_alpha: 0.025,
   cg: 0.40,
