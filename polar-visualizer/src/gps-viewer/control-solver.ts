@@ -40,6 +40,10 @@ export interface ControlInversionConfig {
   theta?: number  // pitch [rad]
   /** Riser length: pilot CG to canopy attachment [m] (default 6.0) */
   riserLength?: number
+  /** Wingsuit trim baseline: hip camber [−1,+1] (default 0.30, matches gamepad slider neutral) */
+  trimHipCamber?: number
+  /** Wingsuit trim baseline: leg bend [0,1] (default 0.30, matches gamepad slider neutral) */
+  trimLegBend?: number
 }
 
 export interface ControlInversionResult {
@@ -110,13 +114,17 @@ export function solveControlInputs(
     + (Iyy - Ixx) * omega.p * omega.q + Ixz * omega.q * omega.r
 
   const rollGain = config.rollGain ?? 1.0
+  const trimHipCamber = config.trimHipCamber ?? 0.30
+  const trimLegBend   = config.trimLegBend   ?? 0.30
 
   // Helper: evaluate aero moments for given control vector
   function evalMoments(pitch: number, roll: number, yaw: number): Vec3NED {
     const ctrl = defaultControls()
+    ctrl.hipCamber     = trimHipCamber
+    ctrl.legBend       = trimLegBend
     ctrl.pitchThrottle = pitch
-    ctrl.rollThrottle = roll * rollGain
-    ctrl.yawThrottle = yaw
+    ctrl.rollThrottle  = roll * rollGain
+    ctrl.yawThrottle   = yaw
     const result = evaluateAeroForcesDetailed(
       config.segments, config.cgMeters, config.height,
       bodyVel, omega, ctrl, rho,
