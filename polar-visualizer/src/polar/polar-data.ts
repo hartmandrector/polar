@@ -1521,8 +1521,44 @@ const A5_CENTER_POLAR: ContinuousPolar = {
 
   referenceLength: A5_REF_LENGTH
 }
-const A5_CENTER_POS = {       // x/c = 0.42 (center panel QC, forward of hip line)
+const A5_CENTER_POS = {       // x/c = 0.42 (legacy single-center QC; superseded by torso/leg split below)
   x: a5xc(0.42),             //  −0.019 (just behind CG — 27° LE sweep correction)
+  y: 0,
+  z: 0,
+}
+void A5_CENTER_POS  // retained for documentation; unused after Phase A split
+
+// ── Center-segment split (Phase A) ──
+// The legacy single `center` segment is split into two co-planar segments,
+// `torso` (shoulder→hip) and `leg` (hip→feet), at their respective AC
+// positions derived from WINGSUIT_MASS_SEGMENTS.  Phase A keeps both segments
+// on the shared A5_CENTER_POLAR; Phase B introduces distinct polars.  See
+// docs/CENTER-SEGMENT-SPLIT.md §2.5 for the geometric derivation.
+//
+// Areas split 30/70 from the original 1.03 m² total (final calibration in
+// Phase B).  Each segment's S/chord are passed as overrides to the factory
+// so the shared polar still carries the system reference values.
+
+/** Forward shift from shoulder mass position to fabric LE root [m]. */
+const A5_LE_ROOT_FWD_OFFSET = 0.05
+void A5_LE_ROOT_FWD_OFFSET  // reserved for wireframe LE fit (Phase E audit)
+
+/** Torso own chord (shoulder→hip): (0.445 − 0.219) × 1.8 m. */
+const A5_TORSO_CHORD = 0.407
+/** Torso reference area [m²] — 30% of A5_CENTER_POLAR.s = 1.03. */
+const A5_TORSO_S = 0.31
+const A5_TORSO_POS = {        // x/c = 0.276 (torso own QC at LE + 0.25·c_torso)
+  x: a5xc(0.276),            //  +0.119 normalized (+0.223 m fwd of CG)
+  y: 0,
+  z: 0,
+}
+
+/** Leg-wing own chord (hip→feet): (0.975 − 0.445) × 1.8 m. */
+const A5_LEG_CHORD = 0.954
+/** Leg-wing reference area [m²] — 70% of A5_CENTER_POLAR.s = 1.03. */
+const A5_LEG_S = 0.72
+const A5_LEG_POS = {          // x/c = 0.578 (leg-wing own QC at LE + 0.25·c_leg)
+  x: a5xc(0.578),            //  −0.171 normalized (−0.320 m aft of CG)
   y: 0,
   z: 0,
 }
@@ -1662,8 +1698,16 @@ export function makeA5SegmentsAeroSegments(): AeroSegment[] {
     // Head — parasitic bluff body, responds to yawThrottle (lateral shift)
     makeWingsuitHeadSegment('head', A5_HEAD_POS, A5_HEAD_S, A5_HEAD_CHORD, A5_HEAD_CD),
 
-    // Center body — primary lift, responds to pitchThrottle + yawThrottle (body shift)
-    makeWingsuitLiftingSegment('center', A5_CENTER_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body'),
+    // Center body split into torso (shoulder→hip) + leg (hip→feet) — Phase A
+    // shares A5_CENTER_POLAR; Phase B will introduce distinct polars.
+    makeWingsuitLiftingSegment(
+      'torso', A5_TORSO_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body',
+      undefined, A5_TORSO_S, A5_TORSO_CHORD,
+    ),
+    makeWingsuitLiftingSegment(
+      'leg', A5_LEG_POS, 0, 'center', A5_CENTER_POLAR, 0.3, 'body',
+      undefined, A5_LEG_S, A5_LEG_CHORD,
+    ),
 
     // Inner wings — respond to all throttles + dihedral
     //   rollSensitivity = 0.6 (constrained by body)

@@ -883,6 +883,11 @@ export function makeWingsuitLiftingSegment(
   rollSensitivity: number,
   wingType: 'body' | 'inner' | 'outer',
   constants?: WingsuitControlConstants,
+  /** Optional override for the segment's reference area [m²]. Defaults to segmentPolar.s.
+   *  Used by the torso/leg split to share a polar but carry distinct geometry. */
+  S_override?: number,
+  /** Optional override for the segment's reference chord [m]. Defaults to segmentPolar.chord. */
+  chord_override?: number,
 ): AeroSegment {
   const ctrl = constants ?? DEFAULT_WINGSUIT_CONSTANTS
   const baseY = position.y
@@ -892,8 +897,8 @@ export function makeWingsuitLiftingSegment(
     name,
     position: { ...position },
     orientation: { roll_deg: baseRollDeg },
-    S: segmentPolar.s,
-    chord: segmentPolar.chord,
+    S: S_override ?? segmentPolar.s,
+    chord: chord_override ?? segmentPolar.chord,
     polar: segmentPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {

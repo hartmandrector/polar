@@ -113,32 +113,38 @@ const A5_WIREFRAME_BOXES: Record<string, WireframeSpec[]> = {
     size:   { x: 0.18, y: 0.18, z: 0.20 },
   }],
 
-  // Center — "fuselage + tail wing" aero segment, rendered as TWO pieces:
-  //   (a) torso:    shoulders → waist, narrower
-  //   (b) leg wing: hips → past feet, triangular tail that FLARES outward
-  center: [
-    {
-      // Torso — +X face extends up toward the neck (halfway between the
-      // previous over-shrunk and full-length versions); −X face stays at
-      // the waist line (~−0.05 in segment frame) to meet the leg wing.
-      color: 0xffffff,
-      offset: { x: +0.225, y: 0, z: 0 },
-      size:   { x: 0.55, y: 0.50, z: 0.25 },
-    },
-    {
-      // Leg wing — triangular tail that FLARES outward toward the feet
-      // (wingsuit TE tapers outboard, not inboard).  Starts at hip width
-      // to match the torso, widens past the feet to capture the whole
-      // tail panel.
-      kind: 'triangle-xy',
-      color: 0xffffff,
-      xForward: -0.05,          // hip line (meets torso −X face)
-      xAft:     -1.15,           // past the feet
-      widthAtForward: 0.55,       // hips — matches torso width
-      widthAtAft:     0.85,       // flared tail, wider than hips
-      thickness: 0.12,
-    },
-  ],
+  // Center body split (Phase A) — torso (shoulder→hip) and leg-wing
+  // (hip→feet) are now distinct aero segments.  The wireframe geometry
+  // is unchanged in absolute NED coordinates: each spec's offsets are
+  // adjusted so that
+  //     segment_pos + offset = old_center_pos + old_offset
+  // where old_center_pos.x = a5xc(0.42) ≈ −0.019, torso_pos.x ≈ +0.119,
+  // leg_pos.x ≈ −0.171.
+
+  // Torso — +X face extends up toward the neck; −X face stays at the
+  // waist line (~−0.05 in segment frame) to meet the leg wing.
+  // Old offset.x = +0.225 (about old_center −0.019) → absolute +0.206.
+  // New offset.x = +0.206 − (+0.119) = +0.087.
+  torso: [{
+    color: 0xffffff,
+    offset: { x: +0.087, y: 0, z: 0 },
+    size:   { x: 0.55, y: 0.50, z: 0.25 },
+  }],
+
+  // Leg wing — triangular tail that flares outward toward the feet.
+  // Absolute extents preserved: forward edge at −0.069 NED-x, aft edge
+  // at −1.169 NED-x.  Relative to leg_pos.x = −0.171:
+  //   xForward = −0.069 − (−0.171) = +0.102
+  //   xAft     = −1.169 − (−0.171) = −0.998
+  leg: [{
+    kind: 'triangle-xy',
+    color: 0xffffff,
+    xForward: +0.102,           // hip line (meets torso −X face)
+    xAft:     -0.998,           // past the feet
+    widthAtForward: 0.55,        // hips — matches torso width
+    widthAtAft:     0.85,        // flared tail, wider than hips
+    thickness: 0.12,
+  }],
 
   // Inner wings — shoulder→elbow + hip→knee fabric panels.
   // Modeled as a swept trapezoidal prism with a slanted leading edge
