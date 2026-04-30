@@ -155,7 +155,7 @@ function sweepKey(s: FlightState): string {
     key += `|cc:${s.canopyControlMode}|lh:${s.canopyLeftHand}|rh:${s.canopyRightHand}|ws:${s.canopyWeightShift}|pp:${s.pilotPitch}|dep:${s.deploy}`
   }
   if (s.modelType === 'wingsuit') {
-    key += `|pt:${s.pitchThrottle}|yt:${s.yawThrottle}|rt:${s.rollThrottle}|dh:${s.wsDihedral}|wsd:${s.wsDeploy}`
+    key += `|pt:${s.pitchThrottle}|yt:${s.yawThrottle}|rt:${s.rollThrottle}|dh:${s.wsDihedral}|wsd:${s.wsDeploy}|hc:${s.wsHipCamber}|lb:${s.wsLegBend}`
   }
   return key
 }
@@ -206,6 +206,8 @@ function buildSegmentControls(state: FlightState): SegmentControls {
     ctrl.rollThrottle = state.rollThrottle
     ctrl.dihedral = state.wsDihedral
     ctrl.wingsuitDeploy = state.wsDeploy
+    ctrl.hipCamber = state.wsHipCamber
+    ctrl.legBend = state.wsLegBend
   }
 
   return ctrl

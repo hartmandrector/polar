@@ -191,6 +191,10 @@ export interface SolvedControls {
   pitchThrottle: number;   // [-1, 1] (wingsuit)
   rollThrottle: number;    // [-1, 1] (wingsuit)
   yawThrottle: number;     // [-1, 1] (wingsuit)
+  /** Solved drag-augmentation [0, 1] from L/D match (wingsuit, optional) */
+  dirty?: number;
+  /** Solved angle of attack [rad] (wingsuit, optional) — joint α/controls/dirty solve */
+  alpha?: number;
   converged: boolean;
   /** Canopy-specific solved controls (populated during canopy phase) */
   brakeLeft?: number;      // [0, 1]

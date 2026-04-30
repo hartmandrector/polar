@@ -21,7 +21,7 @@ For cross-cutting work, load multiple contexts:
 |---------|------|-------|
 | **Model Registry** | `model-registry.md` | GLB geometry, scaling, coordinate transforms, assembly rules |
 | **Canopy System** | `canopy-system.md` | Ibex UL canopy: cells, brake flaps, lines, deployment, pilot attachment |
-| **Wingsuit Aero** | `wingsuit-aero.md` | Aura 5 wingsuit: 6 segments, throttle controls, dirty flying, planform |
+| **Wingsuit Aero** | `wingsuit-aero.md` | Aura 5 wingsuit: 7 segments, throttle controls, dirty flying, planform |
 | **Physics Engine** | `physics-engine.md` | 6DOF EOM, force summation, inertia, apparent mass, simulation, composite frame |
 | **Export System** | `export-system.md` | OUTPUT.md: serializing flight model for CloudBASE (planning stage) |
 | **Visualization** | `visualization.md` | Three.js 3D viewer: scene, model loading, force arrows, mass overlay, coordinates |

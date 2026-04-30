@@ -45,7 +45,8 @@ polar-visualizer/
 | 🟡 Read if relevant | `docs/KIRCHHOFF.md` | Separation function math |
 | 🟡 Read if relevant | `docs/sim/STATUS.md` | What's working/broken in the sim |
 | 🟡 Read if relevant | `docs/sim/CANOPY-CONTROLS.md` | How brakes, risers, weight shift work |
-| 🟡 Read if relevant | `docs/WINGSUIT-SEGMENTS.md` | 6-segment wingsuit model phases |
+| 🟡 Read if relevant | `docs/CENTER-SEGMENT-SPLIT.md` | Current 7-segment wingsuit (torso/leg split, hipCamber/legBend) |
+| 🟡 Read if relevant | `docs/WINGSUIT-SEGMENTS.md` | Legacy 6-segment phase notes |
 
 ## Memory System
 

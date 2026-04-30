@@ -47,6 +47,8 @@ export interface FlightState {
   rollThrottle: number      // [-1, +1] differential shoulder height
   wsDihedral: number        // [0, 1] wing dihedral angle
   wsDeploy: number          // [0, 1] wingsuit deployment phase
+  wsHipCamber: number       // [-1, +1] arch / hip camber (Phase D)
+  wsLegBend: number         // [0, 1] knees-bent leg-wing shrink (Phase D)
   // ── Deployment sub-sim (set by SimRunner when PC is active) ──
   deployPCPosition?: { x: number; y: number; z: number }  // PC position relative to body [m] NED
   deployPCDistance?: number                                 // body-to-PC distance [m]
@@ -120,11 +122,15 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
   const wsRollSlider = document.getElementById('ws-roll-slider') as HTMLInputElement
   const wsDihedralSlider = document.getElementById('ws-dihedral-slider') as HTMLInputElement
   const wsDeploySlider = document.getElementById('ws-deploy-slider') as HTMLInputElement
+  const wsHipCamberSlider = document.getElementById('ws-hip-camber-slider') as HTMLInputElement
+  const wsLegBendSlider = document.getElementById('ws-leg-bend-slider') as HTMLInputElement
   const wsPitchLabel = document.getElementById('ws-pitch-value')!
   const wsYawLabel = document.getElementById('ws-yaw-value')!
   const wsRollLabel = document.getElementById('ws-roll-value')!
   const wsDihedralLabel = document.getElementById('ws-dihedral-value')!
   const wsDeployLabel = document.getElementById('ws-deploy-value')!
+  const wsHipCamberLabel = document.getElementById('ws-hip-camber-value')!
+  const wsLegBendLabel = document.getElementById('ws-leg-bend-value')!
 
   const alphaLabel = document.getElementById('alpha-value')!
   const betaLabel = document.getElementById('beta-value')!
@@ -334,11 +340,15 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     const wsRoll = parseFloat(wsRollSlider.value) / 100
     const wsDihedralVal = parseFloat(wsDihedralSlider.value) / 100
     const wsDeployVal = parseFloat(wsDeploySlider.value) / 100
+    const wsHipCamber = parseFloat(wsHipCamberSlider.value) / 100
+    const wsLegBend = parseFloat(wsLegBendSlider.value) / 100
     wsPitchLabel.textContent = `${(wsPitch * 100).toFixed(0)}`
     wsYawLabel.textContent = `${(wsYaw * 100).toFixed(0)}`
     wsRollLabel.textContent = `${(wsRoll * 100).toFixed(0)}`
     wsDihedralLabel.textContent = `${(wsDihedralVal * 100).toFixed(0)}%`
     wsDeployLabel.textContent = `${(wsDeployVal * 100).toFixed(0)}%`
+    wsHipCamberLabel.textContent = `${(wsHipCamber * 100).toFixed(0)}`
+    wsLegBendLabel.textContent = `${(wsLegBend * 100).toFixed(0)}%`
 
     // Update slider labels based on attitude mode
     const rollLabelEl = document.getElementById('roll-label')
@@ -395,6 +405,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       rollThrottle: wsRoll,
       wsDihedral: wsDihedralVal,
       wsDeploy: wsDeployVal,
+      wsHipCamber,
+      wsLegBend,
     }
   }
 
@@ -411,11 +423,13 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     wsRollSlider.value = '0'
     wsDihedralSlider.value = '50'
     wsDeploySlider.value = '0'
+    wsHipCamberSlider.value = '30'
+    wsLegBendSlider.value = '30'
     onInput()
   })
 
   // All continuous controls
-  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, lineTwistSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider, wsDeploySlider]) {
+  for (const el of [alphaSlider, betaSlider, deltaSlider, dirtySlider, airspeedSlider, rhoSlider, rollSlider, pitchSlider, yawSlider, leftHandSlider, rightHandSlider, weightShiftSlider, pilotPitchSlider, lineTwistSlider, deploySlider, phiDotSlider, thetaDotSlider, psiDotSlider, wsPitchSlider, wsYawSlider, wsRollSlider, wsDihedralSlider, wsDeploySlider, wsHipCamberSlider, wsLegBendSlider]) {
     el.addEventListener('input', onInput)
   }
 

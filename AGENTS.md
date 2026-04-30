@@ -20,7 +20,8 @@ TypeScript + Three.js + Vite + Chart.js + vitest.
 - `docs/USER-MY-DATA.md` — Three-tier guide for users integrating their own vehicle data (Beginner / Intermediate / Advanced)
 
 **Technical Details:**
-- `docs/WINGSUIT-SEGMENTS.md` — 6-segment wingsuit model: phases, implementation status, tuning notes
+- `docs/CENTER-SEGMENT-SPLIT.md` — **7-segment wingsuit (current)**: torso/leg split, hip-camber + leg-bend controls, pitch-throttle coupling, yaw via roll differential. Phases A–D.2 complete on `split` branch.
+- `docs/WINGSUIT-SEGMENTS.md` — Legacy 6-segment phase notes (superseded by CENTER-SEGMENT-SPLIT.md for current architecture)
 - `docs/CONTINUOUS-POLAR.md` — Continuous polar system architecture and segment math
 - `docs/POLAR-VISUALIZER.md` — Overall visualizer architecture, coordinate systems, rendering pipeline
 - `docs/CONTROL-SOLVER.md` — GPS control inversion: wingsuit/canopy solvers, gravity correction, moment decomposition view
@@ -122,12 +123,19 @@ polar-visualizer/
 - No breaking changes to existing polars (aurafive, ibexul, slicksin, caravan)
 - Use chord-fraction position system (`a5xc()`) for wingsuit segment positions
 - CP rendering uses negated offset with massReference: `-(sf.cp - 0.25) * seg.chord / massReference_m`
-- Check WINGSUIT-SEGMENTS.md phase checklist before starting wingsuit work
+- Check CENTER-SEGMENT-SPLIT.md (current) and WINGSUIT-SEGMENTS.md (legacy) before starting wingsuit work
 - Mark checklist items ✅ as they are completed
 
 ## Current Status
 
-**Wingsuit Segments:**
+**Wingsuit Segments (7-segment, `split` branch — see `docs/CENTER-SEGMENT-SPLIT.md`):**
+- Phase A ✅ — Geometric split: 1 center → torso + leg, shared polar (parity)
+- Phase B ✅ — Distinct `A5_TORSO_POLAR` + `A5_LEG_POLAR` (B.1: zeroed double-counted cm)
+- Phase C ✅ — Yaw via leg/torso roll differential (additive to lateral shift)
+- Phase D ✅ — `hipCamber` + `legBend` controls (D.1: cm₀ modulation; D.2: pitch throttle drives them, leg fully decoupled from pitch α/CP)
+- Phase E ✅ — Joint α/dirty solver, 6→7 rename pass, stability analysis refresh (commits `dd7d211`, `6991d88`, `432a8c8`, `c270825`, `c9e3561`, `df6e4bb`); GPS smoke test on 05-02-2025-1: 98.9% wingsuit convergence, mean |Δα|=1.0°
+
+**Wingsuit Segments (legacy 6-segment notes):**
 - Phase 1 ✅ — Segment data, factories, types, registry
 - Phase 2 ✅ — Symmetric tuning, positions, CG, inner wing shape
 - Phase 3 ✅ (mostly) — Throttle controls UI wired, tuning remaining

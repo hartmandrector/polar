@@ -760,6 +760,13 @@ export interface WingsuitControlConstants {
   YAW_ROLL_COUPLING_DEG: number
   /** Differential dirty coupling from yaw throttle */
   YAW_DIRTY_COUPLING: number
+  /** Roll angle applied to leg segment at full yaw input [deg] (Phase C).
+   *  Tilts leg lift sideways → CY × (leg x_arm aft of CG) → yaw moment.
+   *  Sign: positive yaw → positive roll on leg. */
+  YAW_LEG_ROLL_DEG: number
+  /** Roll angle applied to torso segment at full yaw input [deg] (Phase C).
+   *  Smaller, opposite-sign yaw moment (torso fwd of CG); usually 0. */
+  YAW_TORSO_ROLL_DEG: number
 
   // ── Roll throttle ──
   /** Differential α at full roll input [deg] — outer wings see more */
@@ -776,6 +783,32 @@ export interface WingsuitControlConstants {
   DIHEDRAL_INNER_MAX_DEG: number
   /** Max outer wing dihedral at slider=1 [deg] */
   DIHEDRAL_OUTER_MAX_DEG: number
+
+  // ── Arch / hip camber (Phase D) ──
+  /** Max α_0 shift on torso/leg at full hipCamber input [deg]. Small — just
+   *  enough that the polar reflects "the wing is cambered" without sliding the
+   *  operating point off-design. Bulk of trim authority comes from CM0_DELTA. */
+  HIP_CAMBER_ALPHA0_DEG: number
+  /** Max cm_0 add on torso/leg at full hipCamber input. Direct nose-up
+   *  moment couple, no polar-shape distortion. */
+  HIP_CAMBER_CM0_DELTA: number
+
+  // ── Leg-bend (Phase D) ──
+  /** Max α_0 shift on leg at full legBend input [deg]. Small — see
+   *  HIP_CAMBER_ALPHA0_DEG note. */
+  LEG_BEND_ALPHA0_DEG: number
+  /** Max cm_0 add on leg at full legBend input. Knees-bent nose-up couple. */
+  LEG_BEND_CM0_DELTA: number
+
+  // ── Pitch throttle → hip / leg coupling (Phase D.2) ──
+  /** Hip camber offset at full forward pitch (+pitchT). Subtracted from slider. */
+  PITCH_HIP_CAMBER_FWD: number
+  /** Hip camber offset at full back pitch (-pitchT). Added to slider. */
+  PITCH_HIP_CAMBER_BACK: number
+  /** Leg bend offset at full forward pitch. Subtracted from slider. */
+  PITCH_LEG_BEND_FWD: number
+  /** Leg bend offset at full back pitch. Added to slider. */
+  PITCH_LEG_BEND_BACK: number
 }
 
 /** Default wingsuit control constants — conservative starting point. */
@@ -789,6 +822,8 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   YAW_HEAD_Y_SHIFT: 0.02,
   YAW_ROLL_COUPLING_DEG: 0.3,
   YAW_DIRTY_COUPLING: 0.15,
+  YAW_LEG_ROLL_DEG: 12,
+  YAW_TORSO_ROLL_DEG: 0,
 
   ROLL_ALPHA_MAX_DEG: 3.0,
   ROLL_CL_ALPHA_DELTA: 0.15,
@@ -797,6 +832,16 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
 
   DIHEDRAL_INNER_MAX_DEG: 16,
   DIHEDRAL_OUTER_MAX_DEG: 30,
+
+  HIP_CAMBER_ALPHA0_DEG: 3,
+  HIP_CAMBER_CM0_DELTA: 0.10,
+  LEG_BEND_ALPHA0_DEG: 3,
+  LEG_BEND_CM0_DELTA: 0.13,
+
+  PITCH_HIP_CAMBER_FWD: 0.24,
+  PITCH_HIP_CAMBER_BACK: 0.70,
+  PITCH_LEG_BEND_FWD: 0.30,
+  PITCH_LEG_BEND_BACK: 0.70,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
@@ -881,19 +926,26 @@ export function makeWingsuitLiftingSegment(
   side: 'center' | 'right' | 'left',
   segmentPolar: ContinuousPolar,
   rollSensitivity: number,
-  wingType: 'body' | 'inner' | 'outer',
+  wingType: 'body' | 'torso' | 'leg' | 'inner' | 'outer',
   constants?: WingsuitControlConstants,
+  /** Optional override for the segment's reference area [m²]. Defaults to segmentPolar.s.
+   *  Used by the torso/leg split to share a polar but carry distinct geometry. */
+  S_override?: number,
+  /** Optional override for the segment's reference chord [m]. Defaults to segmentPolar.chord. */
+  chord_override?: number,
 ): AeroSegment {
   const ctrl = constants ?? DEFAULT_WINGSUIT_CONSTANTS
   const baseY = position.y
   const sideSign = side === 'right' ? 1 : side === 'left' ? -1 : 0
+  const baseS = S_override ?? segmentPolar.s
+  const baseChord = chord_override ?? segmentPolar.chord
 
   return {
     name,
     position: { ...position },
     orientation: { roll_deg: baseRollDeg },
-    S: segmentPolar.s,
-    chord: segmentPolar.chord,
+    S: baseS,
+    chord: baseChord,
     polar: segmentPolar,
 
     getCoeffs(alpha_deg: number, beta_deg: number, controls: SegmentControls) {
@@ -907,6 +959,17 @@ export function makeWingsuitLiftingSegment(
       } else if (wingType === 'outer') {
         rollDeg = sideSign * ctrl.DIHEDRAL_OUTER_MAX_DEG * dihedral
       }
+
+      // ── Yaw throttle → leg/torso roll differential (Phase C) ──
+      // Tilts the segment lift vector sideways, producing a CY × x_arm yaw moment.
+      // Additive to existing YAW_BODY_Y_SHIFT mechanism.
+      const yawTroll = Math.max(-1, Math.min(1, controls.yawThrottle))
+      if (wingType === 'leg') {
+        rollDeg += yawTroll * ctrl.YAW_LEG_ROLL_DEG
+      } else if (wingType === 'torso') {
+        rollDeg += yawTroll * ctrl.YAW_TORSO_ROLL_DEG
+      }
+
       this.orientation = { roll_deg: rollDeg }
       const theta = rollDeg * DEG2RAD
 
@@ -915,8 +978,12 @@ export function makeWingsuitLiftingSegment(
       const betaLocal = -alpha_deg * Math.sin(theta) + beta_deg * Math.cos(theta)
 
       // ── Pitch throttle → α offset + CP shift ──
+      // Decoupled from leg segment: pitch stick only adjusts the leading-edge
+      // (torso + arm wings). Leg α is set independently by hipCamber + legBend.
       const pitchT = Math.max(-1, Math.min(1, controls.pitchThrottle))
-      const deltaAlphaPitch = pitchT * ctrl.PITCH_ALPHA_MAX_DEG
+      const deltaAlphaPitch = wingType === 'leg'
+        ? 0
+        : pitchT * ctrl.PITCH_ALPHA_MAX_DEG
 
       // ── Roll throttle → differential α ──
       const rollT = Math.max(-1, Math.min(1, controls.rollThrottle))
@@ -927,11 +994,39 @@ export function makeWingsuitLiftingSegment(
       const yawT = Math.max(-1, Math.min(1, controls.yawThrottle))
       const deltaAlphaYaw = yawT * ctrl.YAW_ROLL_COUPLING_DEG * sideSign
 
-      // ── Total α offset ──
-      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw
+      // ── Hip camber / arch (Phase D) ──
+      // Positive hipCamber = "more arch": torso α_0 shifts +Δ (more lift fwd of CG,
+      // pitch-up moment), leg α_0 shifts −Δ (less lift aft of CG, less pitch-down).
+      // The two together produce a net pitch-up moment that balances the geometric
+      // pitch-down at trim α.  Other segments are unaffected.
+      //
+      // Phase D.2: pitch throttle additionally biases hipCamber + legBend so the
+      // gamepad drives the trim mechanism directly.  Slider value is the baseline
+      // (pilot body posture); pitchT shifts it asymmetrically (more authority back
+      // for flare than forward for dive).
+      const pitchHipOffset = pitchT >= 0
+        ? -pitchT * ctrl.PITCH_HIP_CAMBER_FWD
+        : -pitchT * ctrl.PITCH_HIP_CAMBER_BACK
+      const pitchLegOffset = pitchT >= 0
+        ? -pitchT * ctrl.PITCH_LEG_BEND_FWD
+        : -pitchT * ctrl.PITCH_LEG_BEND_BACK
+      const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber + pitchHipOffset))
+      const legBend = Math.max(0, Math.min(1, controls.legBend + pitchLegOffset))
+      let deltaAlphaCamber = 0
+      if (wingType === 'torso') {
+        deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+      } else if (wingType === 'leg') {
+        // Hip arch shifts both segments; knees-bent additionally reverse-cambers
+        // the leg wing (negative α_0 shift) without changing surface area.
+        deltaAlphaCamber = -hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+                         - legBend  * ctrl.LEG_BEND_ALPHA0_DEG
+      }
 
-      // ── Yaw throttle → lateral body shift (body segment only) ──
-      if (wingType === 'body') {
+      // ── Total α offset ──
+      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw + deltaAlphaCamber
+
+      // ── Yaw throttle → lateral body shift (body / torso / leg segments) ──
+      if (wingType === 'body' || wingType === 'torso' || wingType === 'leg') {
         this.position.y = baseY + yawT * ctrl.YAW_BODY_Y_SHIFT
       }
 
@@ -946,8 +1041,20 @@ export function makeWingsuitLiftingSegment(
       // ── Evaluate Kirchhoff model ──
       const c = getAllCoefficients(alphaEffective, betaLocal, controls.delta, polar, dirtyEff)
 
+      // ── Trim authority via cm_0 modulation (Phase D.1) ──
+      // Add a direct nose-up moment couple from arch + bend without distorting
+      // the polar shape. Sign convention: positive Δcm = nose-up.
+      let deltaCm = 0
+      if (wingType === 'torso') {
+        deltaCm = +hipCamber * ctrl.HIP_CAMBER_CM0_DELTA
+      } else if (wingType === 'leg') {
+        deltaCm = +hipCamber * ctrl.HIP_CAMBER_CM0_DELTA
+                + legBend  * ctrl.LEG_BEND_CM0_DELTA
+      }
+
       // ── Pitch throttle CP shift ──
-      const cpShift = pitchT * ctrl.PITCH_CP_SHIFT
+      // Decoupled from leg segment (matches α decoupling above).
+      const cpShift = wingType === 'leg' ? 0 : pitchT * ctrl.PITCH_CP_SHIFT
       const cp = c.cp + cpShift
 
       // ── Lift-vector tilt from dihedral ──
@@ -957,7 +1064,7 @@ export function makeWingsuitLiftingSegment(
       const cl = c.cl * cosT
       const cy = c.cy + c.cl * sinT
 
-      return { cl, cd: c.cd, cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp }
+      return { cl, cd: c.cd, cy, cm: c.cm + deltaCm, cn: c.cn, cl_roll: c.cl_roll, cp }
     },
   }
 }

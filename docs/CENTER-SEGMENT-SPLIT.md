@@ -1,12 +1,79 @@
 # Center Segment Split — Torso + Leg-Wing Refactor
 
-**Status:** Planned — not yet implemented.
-**Owner:** —
-**Affects:** [polar-visualizer/src/polar/polar-data.ts](../polar-visualizer/src/polar/polar-data.ts), [polar-visualizer/src/polar/segment-factories.ts](../polar-visualizer/src/polar/segment-factories.ts), [polar-visualizer/src/viewer/wingsuit-wireframes.ts](../polar-visualizer/src/viewer/wingsuit-wireframes.ts), the GPS control solver, the real-time sim, and most wingsuit segment tests in [polar-visualizer/src/tests/](../polar-visualizer/src/tests/).
+**Status:** ✅ **Implemented** on `split` branch (Phases A–E complete; ready to merge to `master`).
+**Last updated:** 2026-04-30
+**Affects:** [polar-visualizer/src/polar/polar-data.ts](../polar-visualizer/src/polar/polar-data.ts), [polar-visualizer/src/polar/segment-factories.ts](../polar-visualizer/src/polar/segment-factories.ts), [polar-visualizer/src/viewer/wingsuit-wireframes.ts](../polar-visualizer/src/viewer/wingsuit-wireframes.ts), [polar-visualizer/src/ui/controls.ts](../polar-visualizer/src/ui/controls.ts), [polar-visualizer/index.html](../polar-visualizer/index.html), the GPS control solver (Phase E), and most wingsuit segment tests.
 
 ---
 
-## 1. Motivation
+## 0. As-Built Summary (read this first)
+
+The 6-segment wingsuit is now **7 segments**: head + torso + leg + L/R inner + L/R outer. Pitch and yaw both got new mechanisms; the leg segment is now fully decoupled from the pitch throttle and is driven entirely by the new `hipCamber` + `legBend` controls.
+
+### Pitch control chain
+
+```
+gamepad pitch stick ──┐
+                       ├─→ pitchThrottle ─┬─→ α/CP shift on torso + arms (small LE adjustment)
+slider hipCamber ──────┼──────────────────┴─→ hipCamber + legBend offsets ─→ leg α₀, leg cm₀, torso α₀, torso cm₀
+slider legBend  ──────┘                                                       (the trim-baseline mechanism)
+```
+
+The leg segment receives **no** direct pitch-throttle input — `α` and `CP` shifts are gated for `wingType==='leg'` in `segment-factories.ts`. Leg pitch behavior comes from:
+
+1. Geometric lift × lever arm (leg AC at −0.32 m aft of CG → pitch-down with α)
+2. Leg `cm_alpha = +0.60` (positive = "destabilizing alone", but combined with #1 gives the user enough flare authority to access the stall point)
+3. `HIP_CAMBER_CM0_DELTA` and `LEG_BEND_CM0_DELTA` direct nose-up couples (no polar-shape distortion)
+4. Small `HIP_CAMBER_ALPHA0_DEG` and `LEG_BEND_ALPHA0_DEG` α₀ shifts (cosmetic — lets the polar reflect "the wing is cambered")
+
+### Yaw control chain (Phase C)
+
+Layered, additive to existing mechanisms:
+
+- `YAW_BODY_Y_SHIFT` (existing) — lateral CP shift on body/torso/leg
+- `YAW_HEAD_Y_SHIFT` (existing) — head lateral shift
+- `YAW_ROLL_COUPLING_DEG` (existing) — small Δα differential on inner/outer
+- **`YAW_LEG_ROLL_DEG`** (new) — rolls leg segment; tilted lift × x_arm gives strong yaw moment
+- **`YAW_TORSO_ROLL_DEG`** (new) — rolls torso opposite-sign → additive yaw moment (torso fwd of CG)
+
+### Slider defaults & calibration
+
+| Slider | Default | Range | What 0.30 means at gamepad neutral |
+|--------|--------:|------:|------------------------------------|
+| Hip Camber (Arch) | **30** | −100..+100 → −1..+1 | hip arch = 0.30 (mild belly-down) |
+| Leg Bend          | **30** | 0..100   → 0..1     | knees slightly bent |
+
+With both sliders at **30** and pitch stick neutral → wingsuit trims at ~100 mph cruise. Pitch stick full forward → effective hip=0.06, leg=0 → dive (~150 mph). Pitch stick full back → effective hip=1.00, leg=1.00 → flare/stall (~75 mph).
+
+### Tunable constants (current values)
+
+In [polar-visualizer/src/polar/segment-factories.ts](../polar-visualizer/src/polar/segment-factories.ts) `DEFAULT_WINGSUIT_CONSTANTS`:
+
+```ts
+HIP_CAMBER_ALPHA0_DEG: 3        // ±3° α₀ shift on torso/leg at full hip
+HIP_CAMBER_CM0_DELTA:  0.10     // ±0.10 cm₀ on torso/leg at full hip
+LEG_BEND_ALPHA0_DEG:   3        // −3° α₀ shift on leg at full bend
+LEG_BEND_CM0_DELTA:    0.13     // +0.13 cm₀ on leg at full bend (nose-up)
+
+PITCH_HIP_CAMBER_FWD:  0.24     // pitch stick fwd reduces hipCamber by up to 0.24
+PITCH_HIP_CAMBER_BACK: 0.70     // pitch stick back increases hipCamber by up to 0.70
+PITCH_LEG_BEND_FWD:    0.30     // (asymmetric — flare needs more authority than dive)
+PITCH_LEG_BEND_BACK:   0.70
+
+YAW_LEG_ROLL_DEG:      12       // leg rolls 12° at full yaw input
+YAW_TORSO_ROLL_DEG:    -6       // torso rolls -6° at full yaw input (opposite sign, additive)
+```
+
+In [polar-visualizer/src/polar/polar-data.ts](../polar-visualizer/src/polar/polar-data.ts):
+
+```ts
+A5_TORSO_POLAR.cm_0 = 0,    cm_alpha = 0      // pure geometric pitch
+A5_LEG_POLAR.cm_0   = 0,    cm_alpha = 0.60   // strong α-dependent nose-up; needed for stall access
+```
+
+---
+
+## 1. Original Motivation (kept for reference)
 
 The current 6-segment Aura 5 model uses a single `center` segment for everything between the head and the feet. The wireframe in the viewer already renders the center as **two distinct shapes** — a torso box from shoulders to hips, and a triangular leg-wing from hips out past the feet — but aerodynamically the two volumes share a single `ContinuousPolar`, a single position, and a single Kirchhoff blend.
 
@@ -212,9 +279,9 @@ This makes the per-segment AC computation explicit and audit-able — the same f
 
 ---
 
-## 5. Implementation Plan
+## 5. Implementation Plan & As-Built Log
 
-### Phase A — Geometric split, shared polar
+### Phase A — Geometric split, shared polar ✅ (commit `2d49218`)
 *Goal:* land a 7-segment topology with no aero behavior change.
 
 1. Add `A5_HIP_XC = 0.445` (already exists) usage to compute `A5_TORSO_POS` and `A5_LEG_POS` from the user's measured AC values (fall back to §2.3 estimates).
@@ -223,15 +290,19 @@ This makes the per-segment AC computation explicit and audit-able — the same f
 4. Update [wingsuit-wireframes.ts](../polar-visualizer/src/viewer/wingsuit-wireframes.ts) — the two wireframe pieces become the visualizations for `torso` and `leg` instead of both being attached to `center`.
 5. Verify with `npx tsc --noEmit` + `npx vitest run` + visual neutral comparison: at α=0, β=0, all controls neutral, total system force should match the pre-split single-center result to within rounding.
 
-### Phase B — Distinct polars
+### Phase B — Distinct polars ✅ (commits `9908a6c`, `eebabcb`)
 *Goal:* give torso and leg their own `ContinuousPolar`, calibrated so the sum still matches `aurafiveContinuous` at symmetric flight.
+
+**Phase B.1 hot-fix:** initial distinct polars carried `cm_0` and `cm_alpha` from the old single-center polar, which double-counted with the new geometric lift×lever-arm pitch moment. Zeroed both on torso and leg; pitch stability now produced entirely by geometry. Flare authority was reintroduced later (Phase D.2 + leg `cm_alpha=0.6`) once the baseline was clean.
 
 6. Add `A5_TORSO_POLAR` and `A5_LEG_POLAR` per §4.1.
 7. Sweep α from −10° to +50° at β=0 in the visualizer; compare summed CL/CD/CM against `aurafiveContinuous`. Adjust the two polars' parameters until the sum matches within 1–2%.
 8. Re-run tests; loosen or update any wingsuit-segment assertions that were keyed to the old single-segment behaviour. The user has indicated the test suite was loosened during prior work and may not be fully meaningful — treat per-test failures as opportunities to either fix the test or fix a real bug that the split exposes.
 
-### Phase C — Yaw refactor
+### Phase C — Yaw refactor ✅ (commit `20b8cbc`)
 *Goal:* implement leg-vs-arm roll differential as the yaw mechanism.
+
+**Built additively, not as a replacement.** The existing `YAW_BODY_Y_SHIFT` and `YAW_ROLL_COUPLING_DEG` mechanisms still work and provide a baseline yaw moment. New `YAW_LEG_ROLL_DEG = 12` and `YAW_TORSO_ROLL_DEG = -6` add roll-differential lift tilt that produces yaw moment via `CY × x_arm` — leg aft of CG, torso fwd of CG, opposite roll signs make both contributions yaw in the same direction. Carving feel matches real wingsuit flat-turn flying.
 
 9. In [`segment-factories.ts`](../polar-visualizer/src/polar/segment-factories.ts):
     - Add `YAW_LEG_ROLL_DEG` (was `YAW_CENTER_ROLL_DEG` in the older plan; rename for clarity post-split). Default ~6°.
@@ -243,8 +314,14 @@ This makes the per-segment AC computation explicit and audit-able — the same f
 11. Sign-validation step: sweep `yawThrottle = +1` in the viewer and confirm the yaw arc points right; pick the sign of `YAW_LEG_ROLL_DEG` that produces N>0 empirically.
 12. Browser smoke test: yaw input produces clear yaw moment, small-or-zero roll/pitch coupling.
 
-### Phase D — Hip camber & leg bend
+### Phase D — Hip camber & leg bend ✅ (commits `6765200`, `2650dca`, `3069613`)
 *Goal:* expose new pilot controls.
+
+**Phase D (initial):** added `hipCamber` (−1..+1) and `legBend` (0..1) to `SegmentControls`; UI sliders, FlightState plumbing, gamepad wiring through `ws-hip-camber-slider` and `ws-leg-bend-slider`. Initial implementation used α₀ shifts (`HIP_CAMBER_ALPHA0_DEG=15`) and S/chord scaling on legBend.
+
+**Phase D.1 (commit `2650dca`):** S/chord scaling on legBend turned out to have **zero aero effect** — lift/drag don't depend on chord, and per-segment `cm_*` were zero. Replaced with `cm₀` modulation: `HIP_CAMBER_CM0_DELTA = 0.10` and `LEG_BEND_CM0_DELTA = 0.13`. Direct nose-up moment couple, no polar-shape distortion. α₀ shifts retained at small magnitudes (3°) for cosmetic camber.
+
+**Phase D.2 (commit `3069613`):** wired `pitchThrottle` directly into `hipCamber`/`legBend` offsets so the gamepad drives the trim mechanism. Asymmetric per direction (more authority back for flare than forward for dive). Also **fully decoupled the leg segment from pitch throttle** — leg no longer receives `PITCH_ALPHA_MAX_DEG` or `PITCH_CP_SHIFT`. Bumped leg `cm_alpha` to **+0.60** (α-dependent nose-up couple) so full back-stick + full sliders reaches the stall point.
 
 13. Extend `WingsuitControlConstants` with `HIP_CAMBER_ALPHA0_DEG` and `LEG_BEND_S_FRACTION`, `LEG_BEND_CHORD_FRACTION`.
 14. In `makeWingsuitLiftingSegment` `getCoeffs`:
@@ -253,10 +330,11 @@ This makes the per-segment AC computation explicit and audit-able — the same f
 15. Add UI sliders to the debug panel; gamepad binding deferred.
 16. Documentation pass — update [README.md](../README.md) wingsuit-controls section.
 
-### Phase E — Solver retune & polish
-17. Run the GPS control inversion solver against a canonical wingsuit track ([control-solver.ts](../polar-visualizer/src/gps-viewer/control-solver.ts)). Verify convergence rate ≥90% and solved throttle magnitudes remain in normal pilot ranges.
-18. If convergence drops: the dominant new sensitivity knob is `YAW_LEG_ROLL_DEG`. Tune it; do not relax solver tolerances without a clear reason.
-19. Audit follow-up from §3.4: write the segment LE / chord / AC table into [docs/MODEL-GEOMETRY.md](MODEL-GEOMETRY.md).
+### Phase E — Solver retune & polish ✅ (complete)
+17. Joint α/dirty solver shipped in [control-solver.ts](../polar-visualizer/src/gps-viewer/control-solver.ts) (commits `dd7d211`, `6991d88`, `432a8c8`, `c270825`): outer fixed-point on α around the Newton 3×3 throttle solve, with a 1D bisection on `dirty` to match measured L/D, then `matchAOABinarySearch` re-extracts α from the converged controls. Validated against the 05-02-2025-1 GPS track: 1815 wingsuit points, 98.9% converged, mean |Δα| = 1.0°, dirty correctly elevated through the 540° turn (peak 0.66 at t=231 s) and the dirty-flying section before deployment (peak 0.78 at t=274 s). Cruise samples land on the swept polar curve in the chart cursor view.
+18. 6→7 rename pass through `polar-data.ts`, `docs/CONTROL-SOLVER.md`, `docs/contexts/wingsuit-aero.md`, `docs/contexts/README.md`, and `docs/sim/STABILITY-ANALYSIS.md` (commits `c9e3561`, `df6e4bb`).
+19. Stability analysis re-run on 7-segment topology and tables in [docs/sim/STABILITY-ANALYSIS.md](sim/STABILITY-ANALYSIS.md) refreshed: short-period ζ rises from ~0.095 to ~0.15, qDot stays uniformly nose-down across the trimmed envelope (legacy 6-segment had a sign flip near 40 m/s), phugoid damping increases. Lateral divergence behavior near 35–50 m/s is essentially unchanged.
+20. Audit follow-up from §3.4 (segment LE / chord / AC table into [docs/MODEL-GEOMETRY.md](MODEL-GEOMETRY.md)) deferred — not a merge blocker.
 
 ---
 

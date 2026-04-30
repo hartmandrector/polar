@@ -32,11 +32,12 @@ export interface AxisMoments {
 
 // ─── Control Display Shapes ─────────────────────────────────────────────────
 
-/** Wingsuit controls — symmetric pitch/roll/yaw throttles [-1, 1] */
+/** Wingsuit controls — symmetric pitch/roll/yaw throttles [-1, 1] + dirty [0, 1] */
 export interface WingsuitControls {
   pitch: number
   roll: number
   yaw: number
+  dirty: number
 }
 
 /** Canopy controls — asymmetric brakes [0,1] and front risers [0,1] */

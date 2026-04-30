@@ -322,6 +322,7 @@ describe('frameToSimConfig', () => {
       weightShiftLR: 0, elevator: 0, rudder: 0,
       aileronLeft: 0, aileronRight: 0, flap: 0,
       pitchThrottle: 0, yawThrottle: 0, rollThrottle: 0, dihedral: 0.5, wingsuitDeploy: 0,
+      hipCamber: 0, legBend: 0,
       delta: 0, dirty: 0, unzip: 0,
       pilotPitch: 0, deploy: 1,
     }
@@ -350,6 +351,7 @@ describe('frameToSimConfig', () => {
       weightShiftLR: 0, elevator: 0, rudder: 0,
       aileronLeft: 0, aileronRight: 0, flap: 0,
       pitchThrottle: 0, yawThrottle: 0, rollThrottle: 0, dihedral: 0.5, wingsuitDeploy: 0,
+      hipCamber: 0, legBend: 0,
       delta: 0, dirty: 0, unzip: 0,
       pilotPitch: 0, deploy: 1,
     }

@@ -1,7 +1,9 @@
 # Stability Analysis — Natural Modes & Gamepad Filter Design
 
-> Generated from `scripts/eigenvalue-analysis.ts` (commit `8e4ce60`)
-> Polars: **ibexul** (Ibex UL canopy, 16 segments) and **a5segments** (Aura 5 wingsuit, 6 segments)
+> Generated from `scripts/eigenvalue-analysis.ts` (wingsuit tables refreshed against `split` / 7-segment topology, commit `df6e4bb`)
+> Polars: **ibexul** (Ibex UL canopy, 16 segments) and **a5segments** (Aura 5 wingsuit, 7 segments — head + torso + leg + L/R inner + L/R outer)
+>
+> **Note:** The canopy section (§2) still reflects the older `ibexul` baseline and has not been re-run since the canopy rebuild — treat its absolute numbers as rough until the canopy solver rework lands.
 
 ## 1. Executive Summary
 
@@ -10,13 +12,13 @@ The eigenvalue analysis reveals fundamentally different stability characteristic
 | Property | Canopy (ibexul) | Wingsuit (a5segments) |
 |----------|----------------|-----------------------|
 | Speed range | 9–17 m/s | 25–55 m/s |
-| Short period ζ | 0.50–0.92 | ~0.095 |
-| Short period freq | ~1 Hz | 1–2 Hz (scales with V) |
-| Phugoid period | ~6 s | ~20 s |
-| Spiral stability | unstable >11 m/s | unstable >30 m/s |
-| Primary pilot task | Turn management | Pitch management |
+| Short period ζ | 0.50–0.92 | ~0.15 |
+| Short period freq | ~1 Hz | 0.8–1.6 Hz (scales with V) |
+| Phugoid period | ~6 s | ~20–40 s |
+| Lateral stability | spiral unstable >11 m/s | intermittent lateral divergence above ~35 m/s |
+| Primary pilot task | Turn management | Pitch + lateral management |
 
-**Key insight:** The canopy is heavily damped in pitch (ζ=0.5–0.9) — inputs settle quickly. The wingsuit has almost no natural pitch damping (ζ≈0.095) — the pilot IS the pitch stability system. This matches Hartman's flight experience exactly.
+**Key insight:** The canopy is heavily damped in pitch (ζ=0.5–0.9) — inputs settle quickly. The wingsuit is still lightly damped (ζ≈0.15 after the torso/leg split, up from ~0.095 on the legacy 6-segment topology) — the pilot is still effectively the pitch stability system, just with a bit more help from the airframe than before. This continues to match Hartman's flight experience.
 
 ---
 
@@ -72,24 +74,24 @@ Notes:
 
 ---
 
-## 3. Wingsuit Natural Modes (Aura 5, 77.5 kg, 6 segments)
+## 3. Wingsuit Natural Modes (Aura 5, 77.5 kg, 7 segments)
 
 ### 3.1 Trim Conditions
 
 | V [m/s] | V [km/h] | α [°] | θ [°] | γ [°] | qDot [rad/s²] |
 |---------|----------|-------|-------|-------|---------------|
-| 25 | 90 | 17.5 | -5.4 | -23.0 | -8.83 |
-| 30 | 108 | 11.7 | -8.2 | -19.9 | -6.43 |
-| 35 | 126 | 8.2 | -10.8 | -19.0 | -3.83 |
-| 40 | 144 | 5.8 | -13.8 | -19.6 | -0.89 |
-| 45 | 162 | 4.2 | -17.1 | -21.3 | 2.44 |
-| 50 | 180 | 3.0 | -20.9 | -23.9 | 6.18 |
-| 55 | 198 | 2.1 | -25.1 | -27.3 | 10.37 |
+| 25 | 90 | 19.10 | -2.13 | -21.23 | -7.53 |
+| 30 | 108 | 12.62 | -6.10 | -18.73 | -6.79 |
+| 35 | 126 | 8.80 | -9.67 | -18.47 | -6.27 |
+| 40 | 144 | 6.30 | -13.35 | -19.64 | -5.74 |
+| 45 | 162 | 4.55 | -17.33 | -21.87 | -5.16 |
+| 50 | 180 | 3.27 | -21.72 | -24.99 | -4.51 |
+| 55 | 198 | 2.30 | -26.62 | -28.92 | -3.74 |
 
 Notes:
-- **Best glide at ~35 m/s** (γ=-19°, L/D ≈ 2.9) — matches real Aura 5 performance.
-- α decreases smoothly 18° → 2° as speed increases — less lift angle needed at higher q.
-- **qDot flips sign at ~40 m/s**: nose-down moment at low speed → nose-up at high speed. The crossover at 40 m/s means the wingsuit is naturally pitch-trimmed there. Below that, the suit wants to pitch down (increase speed); above, it wants to pitch up (decrease speed). This is **speed stability** — the system has a natural equilibrium near 40 m/s.
+- **Best glide near 35 m/s** (γ ≈ −18.5°, L/D ≈ 3.0) — consistent with real Aura 5 cruise.
+- α decreases smoothly 19° → 2° as speed increases — less lift angle needed at higher q.
+- **qDot is uniformly nose-down across the trimmed envelope** on the 7-segment topology (ranging from −7.5 at 25 m/s to −3.7 at 55 m/s, monotonically softening). The legacy 6-segment polar had a sign flip near 40 m/s; that flip is gone now that the leg carries an explicit nose-down `cm_alpha` and the torso is neutral. The pilot pendulum still has to absorb a constant nose-down moment but the magnitude shrinks at speed, so high-speed flight feels less actively pitch-loaded than low-speed.
 - Flight path angle γ has a minimum near 35 m/s (best glide) and steepens both slower and faster — the classic U-shaped polar curve.
 
 ### 3.2 Mode Table
@@ -98,33 +100,32 @@ Notes:
 
 | Mode | σ [1/s] | ω [rad/s] | f [Hz] | ζ | T½ [s] | Stable |
 |------|---------|-----------|--------|---|--------|--------|
-| Short period | -0.85 | 8.80 | 1.40 | 0.096 | 0.82 | ✓ |
-| Phugoid | -0.11 | 0.32 | 0.05 | 0.33 | 6.30 | ✓ |
-| **Lateral divergence** | **+9.56** | — | — | — | **0.07** | **✗** |
-| Roll damping | -4.35 | — | — | 1.00 | 0.16 | ✓ |
-| Yaw damping | -10.04 | — | — | 1.00 | 0.07 | ✓ |
-| Slow stable | -0.03 | — | — | 1.00 | 23.3 | ✓ |
+| Short period | -1.03 | 6.54 | 1.04 | 0.156 | 0.67 | ✓ |
+| Dutch roll | -3.78 | 3.15 | 0.50 | 0.768 | 0.18 | ✓ |
+| Phugoid | -0.07 | 0.17 | 0.027 | 0.377 | 9.93 | ✓ |
+| **Lateral divergence** | **+2.42** | — | — | — | **0.29** | **✗** |
+| Roll subsidence | -0.045 | — | — | 1.00 | 15.4 | ✓ |
 
 **V = 50 m/s (high speed):**
 
 | Mode | σ [1/s] | ω [rad/s] | f [Hz] | ζ | T½ [s] | Stable |
 |------|---------|-----------|--------|---|--------|--------|
-| Short period | -1.17 | 12.26 | 1.95 | 0.095 | 0.59 | ✓ |
-| Phugoid | -0.13 | 0.31 | 0.05 | 0.40 | 5.19 | ✓ |
-| **Lateral divergence** | **+2.01** | — | — | — | **0.35** | **✗** |
-| Roll damping | -5.95 | — | — | 1.00 | 0.12 | ✓ |
-| Yaw damping | -2.67 | — | — | 1.00 | 0.26 | ✓ |
-| Slow stable | -0.06 | — | — | 1.00 | 10.9 | ✓ |
+| Short period | -1.40 | 9.07 | 1.44 | 0.153 | 0.50 | ✓ |
+| Phugoid | -0.11 | 0.15 | 0.024 | 0.589 | 6.43 | ✓ |
+| **Lateral divergence** | **+10.79** | — | — | — | **0.06** | **✗** |
+| Yaw damping | -5.86 | — | — | 1.00 | 0.12 | ✓ |
+| Roll subsidence | -11.98 | — | — | 1.00 | 0.06 | ✓ |
+| Slow stable | -0.086 | — | — | 1.00 | 8.09 | ✓ |
 
 ### 3.3 Wingsuit Mode Interpretation
 
-**Short period (1–2 Hz, ζ≈0.095):** This is the critical mode. With only 9.5% damping, a pitch disturbance takes ~7 oscillations to halve in amplitude. The pilot must actively damp pitch — using knees, arm position, and body tension. Frequency scales linearly with airspeed (1 Hz at 25 m/s → 2 Hz at 55 m/s), so the pilot's control bandwidth needs to increase with speed.
+**Short period (~0.8–1.6 Hz, ζ≈0.15):** Still the critical pilot-managed mode. With ~15% damping, a pitch disturbance takes ~4 oscillations to halve in amplitude (vs ~7 on the legacy 6-segment topology). The torso/leg split has roughly doubled the natural pitch damping by giving the leg its own positive `cm_alpha` lever arm, but the wingsuit is still the pitch stability system in partnership with the pilot. Frequency scales with airspeed (~1 Hz at 25 m/s → ~1.6 Hz at 55 m/s).
 
-**Phugoid (0.05 Hz, ζ=0.26–0.42):** ~20 second period speed/altitude exchange. This is the "velocity response" Hartman describes — the very long loops around the final sustained speed. Moderately damped. At best glide (35 m/s, ζ=0.33) takes about 4 cycles (80 seconds) to settle to within 5% of trim speed. This dominates the feel of transitions between speed regimes.
+**Phugoid (0.02–0.05 Hz, ζ=0.20–0.64):** Long-period speed/altitude exchange, well-damped at high speed (ζ=0.59 at 50 m/s) and only moderately damped at low speed (ζ=0.20 at 25 m/s). Period stretches from ~22 s at low speed to ~40 s at high speed — slower than the legacy topology, because the larger pitch damping pushes the phugoid frequency down. This dominates the feel of transitions between speed regimes.
 
-**Lateral divergence:** The most concerning mode. At best glide, doubling time is only 0.07s — essentially instantaneous. This represents the wingsuit's tendency to yaw/sideslip divergently without active pilot control. In reality, the pilot uses leg/arm asymmetry and body tension to maintain directional stability. The divergence rate decreases at higher speed (T₂=0.35s at 50 m/s) as aerodynamic damping increases.
+**Lateral divergence:** Still the dominant lateral concern. The mode appears intermittently in the speed sweep — Dutch roll at 25–35 m/s (well damped at 35 m/s, ζ=0.77) and a real lateral divergence at 35, 45, and 50 m/s (T₂ varying from 0.06 s at 50 m/s to 0.29 s at 35 m/s). At 30 and 40 m/s the mode is replaced by a slow yaw damping plus stable roll subsidence. The eigenvalue solver is sensitive to small Jacobian entries here, so the appearance of lateral divergence vs Dutch roll at neighboring speeds is partly classifier-noise around a marginally stable boundary. Operationally: lateral stability is fragile across the wingsuit envelope and the pilot is the primary stabilizer.
 
-**Dutch roll at 25–30 m/s:** At low speed, a coupled yaw-roll oscillation appears (~0.5 Hz). At 30 m/s it's marginally unstable (σ=+0.09). Above 35 m/s this mode splits into separate roll/yaw real modes. This tracks with the known difficulty of flying wingsuits slowly — directional stability degrades.
+**Dutch roll at 25–35 m/s:** At low-to-mid speed a coupled yaw-roll oscillation appears (~0.5–0.75 Hz). It is well damped at 35 m/s (ζ=0.77) but lightly damped at 30 m/s (ζ=0.023). Above 40 m/s the mode splits into separate real lateral divergence + roll/yaw subsidence pairs.
 
 ---
 
@@ -181,10 +182,12 @@ filtered += (raw - filtered) * (dt / τ)
 
 At τ=0.12s:
 - Passes frequencies below ~1.3 Hz (pilot can control phugoid and slow pitch changes)
-- Attenuates the short period at 1.4 Hz by ~30% at best glide
-- At 55 m/s where short period is 2 Hz, attenuation is ~50%
+- Attenuates the short period at ~1.0 Hz by ~30% at best glide
+- At 55 m/s where short period is ~1.6 Hz, attenuation is ~45%
 
 This creates a natural feel: the faster you fly, the more the filter smooths pitch inputs, matching the increasing difficulty of pitch control at speed.
+
+> **7-segment update note:** With ζ rising from ~0.095 to ~0.15 the wingsuit is meaningfully more forgiving than it was on the legacy topology. The recommendations above are still a good starting point — they were tuned against the more demanding 6-segment dynamics — but you can probably loosen τ_pitch toward ~0.08–0.10 s without exciting the short period if a future tuning pass calls for it.
 
 ### 5.3 Speed-Adaptive Filtering (Future)
 
@@ -274,7 +277,7 @@ npx tsx scripts/eigenvalue-analysis.ts a5segments
 
 3. **Single-body model.** The wingsuit analysis treats the 6 segments as one rigid body. In reality, body deformation (arm sweep, knee bend) changes the aerodynamic shape. This is captured in the gamepad throttle response but not in the linearization.
 
-4. **`aurafive` (single-segment) doesn't work** — it has zero aero segments in the continuous polar. Use `a5segments` (6-segment model) for wingsuit analysis.
+4. **`aurafive` (single-segment) doesn't work** — it has zero aero segments in the continuous polar. Use `a5segments` (7-segment model) for wingsuit analysis.
 
 ---
 

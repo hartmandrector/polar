@@ -17,7 +17,7 @@ Each phase owns: active aero segments, control mapping, transition conditions, v
 | Phase | Vehicle | Controls | Entry Condition | Exit Condition | Status |
 |-------|---------|----------|-----------------|----------------|--------|
 | **idle** | Selected model | Sliders | Scenario start | Start button | ✅ |
-| **freefall** | Wingsuit 6-segment | Pitch/roll/yaw sticks | Start button | Line stretch (auto) | ✅ |
+| **freefall** | Wingsuit 7-segment | Pitch/roll/yaw sticks | Start button | Line stretch (auto) | ✅ |
 | **canopy** | 7-cell canopy + pilot | Risers/brakes/weight shift | Line stretch | Altitude ≈ 0 or stop | ✅ |
 | **landed** | Static model | None | Ground contact | Scenario reset | ⬜ |
 

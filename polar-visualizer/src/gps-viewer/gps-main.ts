@@ -261,6 +261,7 @@ async function loadFile(file: File) {
     height: aeroRef,
     mass: polar.m,
     inertia,
+    sRef: polar.s,
   })
   bodyScene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
@@ -268,6 +269,7 @@ async function loadFile(file: File) {
     height: aeroRef,
     mass: polar.m,
     inertia,
+    sRef: polar.s,
   })
 
   // Canopy aero config (ibexul)
@@ -304,6 +306,7 @@ async function loadFile(file: File) {
     height: aeroRef,
     mass: polar.m,
     inertia,
+    sRef: polar.s,
   }
   let convergeCount = 0
   let wingsuitCount = 0
@@ -321,6 +324,8 @@ async function loadFile(file: File) {
         pitchThrottle: sol.pitchThrottle,
         rollThrottle: sol.rollThrottle,
         yawThrottle: sol.yawThrottle,
+        dirty: sol.dirty,
+        alpha: sol.alpha,
         converged: sol.converged,
         mode: 'wingsuit',
       }

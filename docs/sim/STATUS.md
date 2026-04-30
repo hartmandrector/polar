@@ -4,7 +4,7 @@
 
 ### Core Flight
 - **SimRunner**: RK4 integration at 200Hz, Start/Stop UI, HUD overlay (speed, altitude, glide ratio, phase timer)
-- **Wingsuit 6-segment**: Flyable with gamepad. Pitch stable, full speed range ~55–115 mph. Roll throttle feels realistic.
+- **Wingsuit 7-segment**: Flyable with gamepad. Pitch stable, full speed range ~55–115 mph. Roll throttle feels realistic.
 - **Canopy 7-cell**: Flyable with gamepad. Riser and brake controls tuned with force vector tilt, CM trim shifts, and drag bumps. Acro-capable.
 - **Vehicle-aware gamepad**: Auto-selects mapping from polar type. Wingsuit: right stick pitch/roll, triggers yaw. Canopy: triggers brakes, sticks risers/weight shift/twist.
 - **Force/moment vectors**: Real-time rendering during sim. Vehicle-aware scaling.

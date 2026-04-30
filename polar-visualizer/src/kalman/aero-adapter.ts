@@ -62,6 +62,7 @@ const NEUTRAL_CONTROLS: SegmentControls = {
   flap: 0,
   pitchThrottle: 0, rollThrottle: 0, yawThrottle: 0,
   dihedral: 0, wingsuitDeploy: 0,
+  hipCamber: 0, legBend: 0,
   delta: 0, dirty: 0, unzip: 0,
   pilotPitch: 0, deploy: 0,
 }

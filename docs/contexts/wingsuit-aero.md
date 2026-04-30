@@ -1,6 +1,6 @@
 # Context: Wingsuit Aerodynamics
 
-> **Load this context** when working on the Aura 5 wingsuit model: 6-segment
+> **Load this context** when working on the Aura 5 wingsuit model: 7-segment
 > aerodynamics, throttle controls, dirty flying, planform geometry, or
 > wingsuit-specific tuning.
 
@@ -9,9 +9,9 @@
 ## Scope
 
 The wingsuit aero model covers the Aura 5 as a standalone flying body —
-6 aerodynamic segments (head + center + 2 inner wings + 2 outer wings),
-throttle-based control inputs (pitch/yaw/roll/dihedral/dirty), and the
-chord-fraction position system.
+7 aerodynamic segments (head + torso + leg + 2 inner wings + 2 outer wings),
+throttle-based control inputs (pitch/yaw/roll/dihedral/dirty) plus hipCamber/legBend
+trim controls, and the chord-fraction position system.
 
 This does NOT cover the wingsuit pilot hanging under a canopy (that's the
 canopy system context — the pilot becomes a single aero segment there).
@@ -25,7 +25,8 @@ canopy system context — the pilot becomes a single aero segment there).
 |------|-------------|
 | `src/polar/polar-data.ts` lines 1150–1530 | Wingsuit constants (`A5_HEIGHT`, `A5_SYS_CHORD`, `A5_CG_XC`, `a5xc()`), per-segment polars, positions, `makeA5SegmentsAeroSegments()`, mass segments |
 | `src/polar/segment-factories.ts` lines 500+ | `makeWingsuitLiftingSegment()`, `makeWingsuitHeadSegment()`, throttle response closures |
-| `WINGSUIT-SEGMENTS.md` | Phase checklist, tuning notes, cross-coupling design |
+| `CENTER-SEGMENT-SPLIT.md` | Current 7-segment architecture, Phase A–D.2 as-built, control chains |
+| `WINGSUIT-SEGMENTS.md` | Legacy 6-segment phase notes (superseded) |
 
 ### Also Relevant
 | File | What's There |
@@ -44,18 +45,21 @@ canopy system context — the pilot becomes a single aero segment there).
 
 ## Architecture
 
-### 6 Segments
+### 7 Segments
 
-| Segment | Type | x/c | NED x | NED y | S (m²) | Chord (m) |
-|---------|------|-----|-------|-------|--------|-----------|
-| head | parasitic sphere | 0.13 | +0.259 | 0 | 0.07 | 0.13 |
-| center | lifting body | 0.42 | −0.019 | 0 | 1.03 | 1.93 |
-| r1 (inner R) | lifting wing | 0.44 | −0.038 | +0.213 | 0.30 | 1.34 |
-| l1 (inner L) | mirror of r1 | 0.44 | −0.038 | −0.213 | 0.30 | 1.34 |
-| r2 (outer R) | lifting wing | 0.37 | +0.029 | +0.326 | 0.15 | 0.39 |
-| l2 (outer L) | mirror of r2 | 0.37 | +0.029 | −0.326 | 0.15 | 0.39 |
+| Segment | Type | x/c | NED x (m) | NED y (m) | S (m²) | Chord (m) |
+|---------|------|-----|-----------|-----------|--------|-----------|
+| head        | parasitic sphere | 0.13  | +0.486 | 0      | 0.07 | 0.13 |
+| **torso**   | lifting body     | 0.276 | +0.223 | 0      | 0.31 | 0.41 |
+| **leg**     | lifting body     | 0.578 | −0.320 | 0      | 0.72 | 0.95 |
+| r1 (inner R)| lifting wing     | 0.44  | −0.072 | +0.213 | 0.30 | 1.34 |
+| l1 (inner L)| mirror of r1     | 0.44  | −0.072 | −0.213 | 0.30 | 1.34 |
+| r2 (outer R)| lifting wing     | 0.37  | +0.054 | +0.326 | 0.15 | 0.39 |
+| l2 (outer L)| mirror of r2     | 0.37  | +0.054 | −0.326 | 0.15 | 0.39 |
 
-**Total S = 2.00 m²** (must equal `aurafiveContinuous.s`)
+**Total lifting S = 2.00 m²** (matches `aurafiveContinuous.s`; torso + leg = 1.03 = legacy `center.s`).
+
+The `center` segment was split into **torso** (shoulder→hip, AC fwd of CG) and **leg** (hip→feet, AC aft of CG) in Phase A. Fore-aft AC separation = 0.543 m, giving a much larger yaw-from-roll-differential moment arm than the previous single-AC center. See [`CENTER-SEGMENT-SPLIT.md`](../CENTER-SEGMENT-SPLIT.md) for the full derivation.
 
 ### Chord-Fraction Position System
 
@@ -72,20 +76,22 @@ Span positions use GLB measurements scaled by `GLB_TO_NED = 0.2962`.
 
 ### Throttle Controls
 
-The wingsuit responds to 5 control inputs via factory closures:
+The wingsuit responds to 7 control inputs via factory closures:
 
 | Control | Input Range | What It Does |
 |---------|-------------|-------------|
-| `pitchThrottle` | −1 to +1 | Shifts CG and segment pitch (arch/de-arch) |
-| `yawThrottle` | −1 to +1 | Lateral body shift (lean left/right) |
-| `rollThrottle` | −1 to +1 | Differential wing sweep (asymmetric drag) |
-| `dihedral` | 0 to 1 | Wing dihedral angle (arms up/down) |
-| `dirty` | 0 to 1 | Fabric tension — loose suit degrades all aero coefficients |
+| `pitchThrottle` | −1 to +1 | Drives `hipCamber` + `legBend` asymmetrically (back > fwd) and shifts torso/inner-wing α/CP. The leg segment is fully decoupled from pitch's α/CP shift. |
+| `hipCamber`     | −1 to +1 | Trim baseline 0.30 (matches gamepad neutral). Shifts torso + leg α₀ in opposite signs and adds a nose-up cm₀ couple at full arch. |
+| `legBend`       |  0 to +1 | Trim baseline 0.30. Reduces leg α₀ and adds a stronger nose-up cm₀ couple (knees-bent flare). |
+| `yawThrottle`   | −1 to +1 | Lateral body/head shift + leg/torso roll differential (Phase C) → strong yaw at low roll/pitch coupling. |
+| `rollThrottle`  | −1 to +1 | Differential wing roll (asymmetric drag + lift). |
+| `dihedral`      |  0 to 1  | Wing dihedral angle (arms up/down). |
+| `dirty`         |  0 to 1  | Fabric tension — loose suit degrades all aero coefficients (used by GPS solver to match measured L/D). |
 
 Each segment has a `rollSensitivity` that determines how strongly it responds
 to `rollThrottle`:
-- center: 0.3 (constrained by torso)
-- inner wings: 0.6 (constrained by body)
+- torso, leg: 0.3 (constrained by body)
+- inner wings: 0.6 (constrained by shoulders)
 - outer wings: 1.0 (hands/wrists have full freedom)
 
 ### Dirty Flying

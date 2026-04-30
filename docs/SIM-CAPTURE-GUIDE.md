@@ -173,7 +173,7 @@ Show: Moment arcs (pitch, roll, yaw) responding to α and control inputs.
 
 Show: With roll rate, each segment sees different local velocity — force vectors become asymmetric.
 
-- Frame: Body, 6-segment wingsuit
+- Frame: Body, 7-segment wingsuit
 - Apply roll rate → outer wing generates more lift, inner wing less
 - Capture: 3D viewport showing asymmetric force vectors across segments
 
