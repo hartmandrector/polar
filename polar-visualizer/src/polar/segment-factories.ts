@@ -799,6 +799,16 @@ export interface WingsuitControlConstants {
   LEG_BEND_ALPHA0_DEG: number
   /** Max cm_0 add on leg at full legBend input. Knees-bent nose-up couple. */
   LEG_BEND_CM0_DELTA: number
+
+  // ── Pitch throttle → hip / leg coupling (Phase D.2) ──
+  /** Hip camber offset at full forward pitch (+pitchT). Subtracted from slider. */
+  PITCH_HIP_CAMBER_FWD: number
+  /** Hip camber offset at full back pitch (-pitchT). Added to slider. */
+  PITCH_HIP_CAMBER_BACK: number
+  /** Leg bend offset at full forward pitch. Subtracted from slider. */
+  PITCH_LEG_BEND_FWD: number
+  /** Leg bend offset at full back pitch. Added to slider. */
+  PITCH_LEG_BEND_BACK: number
 }
 
 /** Default wingsuit control constants — conservative starting point. */
@@ -827,6 +837,11 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   HIP_CAMBER_CM0_DELTA: 0.10,
   LEG_BEND_ALPHA0_DEG: 3,
   LEG_BEND_CM0_DELTA: 0.13,
+
+  PITCH_HIP_CAMBER_FWD: 0.24,
+  PITCH_HIP_CAMBER_BACK: 0.70,
+  PITCH_LEG_BEND_FWD: 0.30,
+  PITCH_LEG_BEND_BACK: 0.70,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
@@ -963,8 +978,12 @@ export function makeWingsuitLiftingSegment(
       const betaLocal = -alpha_deg * Math.sin(theta) + beta_deg * Math.cos(theta)
 
       // ── Pitch throttle → α offset + CP shift ──
+      // Decoupled from leg segment: pitch stick only adjusts the leading-edge
+      // (torso + arm wings). Leg α is set independently by hipCamber + legBend.
       const pitchT = Math.max(-1, Math.min(1, controls.pitchThrottle))
-      const deltaAlphaPitch = pitchT * ctrl.PITCH_ALPHA_MAX_DEG
+      const deltaAlphaPitch = wingType === 'leg'
+        ? 0
+        : pitchT * ctrl.PITCH_ALPHA_MAX_DEG
 
       // ── Roll throttle → differential α ──
       const rollT = Math.max(-1, Math.min(1, controls.rollThrottle))
@@ -980,8 +999,19 @@ export function makeWingsuitLiftingSegment(
       // pitch-up moment), leg α_0 shifts −Δ (less lift aft of CG, less pitch-down).
       // The two together produce a net pitch-up moment that balances the geometric
       // pitch-down at trim α.  Other segments are unaffected.
-      const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber))
-      const legBend = Math.max(0, Math.min(1, controls.legBend))
+      //
+      // Phase D.2: pitch throttle additionally biases hipCamber + legBend so the
+      // gamepad drives the trim mechanism directly.  Slider value is the baseline
+      // (pilot body posture); pitchT shifts it asymmetrically (more authority back
+      // for flare than forward for dive).
+      const pitchHipOffset = pitchT >= 0
+        ? -pitchT * ctrl.PITCH_HIP_CAMBER_FWD
+        : -pitchT * ctrl.PITCH_HIP_CAMBER_BACK
+      const pitchLegOffset = pitchT >= 0
+        ? -pitchT * ctrl.PITCH_LEG_BEND_FWD
+        : -pitchT * ctrl.PITCH_LEG_BEND_BACK
+      const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber + pitchHipOffset))
+      const legBend = Math.max(0, Math.min(1, controls.legBend + pitchLegOffset))
       let deltaAlphaCamber = 0
       if (wingType === 'torso') {
         deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
@@ -1023,7 +1053,8 @@ export function makeWingsuitLiftingSegment(
       }
 
       // ── Pitch throttle CP shift ──
-      const cpShift = pitchT * ctrl.PITCH_CP_SHIFT
+      // Decoupled from leg segment (matches α decoupling above).
+      const cpShift = wingType === 'leg' ? 0 : pitchT * ctrl.PITCH_CP_SHIFT
       const cp = c.cp + cpShift
 
       // ── Lift-vector tilt from dihedral ──

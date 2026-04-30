@@ -1637,7 +1637,7 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // torso AC at +0.22 m → pitch-up with α).  Re-introduce camber terms only
   // after gross trim is verified.
   cm_0: 0,
-  cm_alpha: 0,
+  cm_alpha: 0.60,
   cp_0: 0.40,                // aft CP (wide trailing flare)
   cp_alpha: 0.025,
   cg: 0.40,
