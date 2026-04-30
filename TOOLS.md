@@ -37,7 +37,8 @@
 
 | Document | Purpose |
 |---|---|
-| `WINGSUIT-SEGMENTS.md` | Wingsuit 6-segment model — phases, checklists, tuning notes |
+| `CENTER-SEGMENT-SPLIT.md` | Current 7-segment wingsuit — torso/leg split, hipCamber/legBend controls (Phases A–D.2 done) |
+| `WINGSUIT-SEGMENTS.md` | Legacy 6-segment phase notes (superseded) |
 | `CONTINUOUS-POLAR.md` | Continuous polar architecture — segment math, interfaces |
 | `POLAR-VISUALIZER.md` | Visualizer architecture — coordinate systems, rendering |
 | `OPENCLAW-SETUP.md` | OpenClaw setup plan and workflow |
@@ -48,5 +49,5 @@
 - NED coordinate system for all physics
 - Chord-fraction positions via `a5xc()` helper
 - CP rendering uses negated offset in `vectors.ts`
-- Check phase checklists in WINGSUIT-SEGMENTS.md before starting work
+- Check phase checklists in CENTER-SEGMENT-SPLIT.md (current) and WINGSUIT-SEGMENTS.md (legacy) before starting work
 - Mark checklist items ✅ when completed

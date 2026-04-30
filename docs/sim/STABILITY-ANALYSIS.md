@@ -274,7 +274,7 @@ npx tsx scripts/eigenvalue-analysis.ts a5segments
 
 3. **Single-body model.** The wingsuit analysis treats the 6 segments as one rigid body. In reality, body deformation (arm sweep, knee bend) changes the aerodynamic shape. This is captured in the gamepad throttle response but not in the linearization.
 
-4. **`aurafive` (single-segment) doesn't work** — it has zero aero segments in the continuous polar. Use `a5segments` (6-segment model) for wingsuit analysis.
+4. **`aurafive` (single-segment) doesn't work** — it has zero aero segments in the continuous polar. Use `a5segments` (7-segment model) for wingsuit analysis.
 
 ---
 

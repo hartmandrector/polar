@@ -20,7 +20,7 @@ This project is possible because of a rare intersection of capabilities:
 
 | Asset | Status | Notes |
 |---|---|---|
-| 6DOF aerodynamic segment model | ✅ Built | Polar Project — 6-segment wingsuit, canopy models |
+| 6DOF aerodynamic segment model | ✅ Built | Polar Project — 7-segment wingsuit, canopy models |
 | GPS/IMU flight pipeline | ✅ Built | FlySight 2 → pipeline → forces, rates, control solver |
 | 360° body-mounted video | ✅ Collecting | Insta360 X5, 8K @ 30fps, helmet-mounted, every jump |
 | Head-mounted IMU fusion | ✅ Built | FlySight fused sensor → quaternion alignment |

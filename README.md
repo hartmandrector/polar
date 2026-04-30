@@ -320,7 +320,7 @@ Sideslip affects all coefficients through crossflow scaling:
 
 ![Effect of sideslip (β) on coefficients](polar-visualizer/docs/gifs/effect-beta-sideslip.gif)
 
-![Effect of sideslip on 6-segment wingsuit](polar-visualizer/docs/gifs/effect-beta-sideslip6seg.gif)
+![Effect of sideslip on 7-segment wingsuit](polar-visualizer/docs/gifs/effect-beta-sideslip6seg.gif)
 
 ![Effect of sideslip on canopy with per-segment forces](polar-visualizer/docs/gifs/effect-canopy-sideslip.gif)
 

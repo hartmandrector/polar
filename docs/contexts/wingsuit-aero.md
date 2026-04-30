@@ -1,6 +1,6 @@
 # Context: Wingsuit Aerodynamics
 
-> **Load this context** when working on the Aura 5 wingsuit model: 6-segment
+> **Load this context** when working on the Aura 5 wingsuit model: 7-segment
 > aerodynamics, throttle controls, dirty flying, planform geometry, or
 > wingsuit-specific tuning.
 
@@ -9,9 +9,9 @@
 ## Scope
 
 The wingsuit aero model covers the Aura 5 as a standalone flying body —
-6 aerodynamic segments (head + center + 2 inner wings + 2 outer wings),
-throttle-based control inputs (pitch/yaw/roll/dihedral/dirty), and the
-chord-fraction position system.
+7 aerodynamic segments (head + torso + leg + 2 inner wings + 2 outer wings),
+throttle-based control inputs (pitch/yaw/roll/dihedral/dirty) plus hipCamber/legBend
+trim controls, and the chord-fraction position system.
 
 This does NOT cover the wingsuit pilot hanging under a canopy (that's the
 canopy system context — the pilot becomes a single aero segment there).
@@ -25,7 +25,8 @@ canopy system context — the pilot becomes a single aero segment there).
 |------|-------------|
 | `src/polar/polar-data.ts` lines 1150–1530 | Wingsuit constants (`A5_HEIGHT`, `A5_SYS_CHORD`, `A5_CG_XC`, `a5xc()`), per-segment polars, positions, `makeA5SegmentsAeroSegments()`, mass segments |
 | `src/polar/segment-factories.ts` lines 500+ | `makeWingsuitLiftingSegment()`, `makeWingsuitHeadSegment()`, throttle response closures |
-| `WINGSUIT-SEGMENTS.md` | Phase checklist, tuning notes, cross-coupling design |
+| `CENTER-SEGMENT-SPLIT.md` | Current 7-segment architecture, Phase A–D.2 as-built, control chains |
+| `WINGSUIT-SEGMENTS.md` | Legacy 6-segment phase notes (superseded) |
 
 ### Also Relevant
 | File | What's There |
