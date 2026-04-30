@@ -1560,7 +1560,7 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   name: 'A5 Torso',
   type: 'Wingsuit',
   cl_alpha: 2.2,             // stubby low-AR fuselage
-  alpha_0: 0,                // roughly symmetric chest cavity
+  alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
   cd_0: 0.13,                // includes head-wake parasitic drag
   k: 0.35,
   cd_n: 1.2,
@@ -1572,8 +1572,11 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   cy_beta: -0.9,
   cn_beta: 0.08,
   cl_beta: -0.04,
-  cm_0: -0.005,              // slight nose-down trim (chest geometry)
-  cm_alpha: 0.10,
+  // Phase B.1: pitching moment is now produced by geometry (lift × lever arm).
+  // Per-segment cm carries only the local airfoil camber moment.  Start at 0
+  // and re-introduce small terms only if calibration sweeps require them.
+  cm_0: 0,
+  cm_alpha: 0,
   cp_0: 0.30,                // CP fwd of geometric center
   cp_alpha: 0.025,
   cg: 0.40,
@@ -1617,7 +1620,7 @@ const A5_LEG_POLAR: ContinuousPolar = {
   name: 'A5 Leg Wing',
   type: 'Wingsuit',
   cl_alpha: 3.2,             // higher than torso — flat cambered panel
-  alpha_0: -2,               // cambered (knees-down arch)
+  alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
   cd_0: 0.08,                // cleaner TE, no head wake
   k: 0.25,                   // better span efficiency than torso
   cd_n: 1.2,
@@ -1629,8 +1632,12 @@ const A5_LEG_POLAR: ContinuousPolar = {
   cy_beta: -0.9,
   cn_beta: 0.08,
   cl_beta: -0.04,
-  cm_0: -0.02,               // more nose-down (large TE area)
-  cm_alpha: -0.30,           // strong pitch authority — drives the flare
+  // Phase B.1: zero per-segment pitching moment.  System pitch stability is
+  // now produced by lift × lever arm (leg AC at −0.32 m → pitch-down with α,
+  // torso AC at +0.22 m → pitch-up with α).  Re-introduce camber terms only
+  // after gross trim is verified.
+  cm_0: 0,
+  cm_alpha: 0,
   cp_0: 0.40,                // aft CP (wide trailing flare)
   cp_alpha: 0.025,
   cg: 0.40,
