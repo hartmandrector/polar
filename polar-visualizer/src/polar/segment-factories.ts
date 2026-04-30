@@ -778,16 +778,20 @@ export interface WingsuitControlConstants {
   DIHEDRAL_OUTER_MAX_DEG: number
 
   // ── Arch / hip camber (Phase D) ──
-  /** Max α_0 shift on torso/leg at full hipCamber input [deg].
-   *  Positive hipCamber → torso α_0 shifts +Δ (more lift fwd of CG, pitch-up),
-   *  leg α_0 shifts −Δ (less lift aft of CG, less pitch-down). */
+  /** Max α_0 shift on torso/leg at full hipCamber input [deg]. Small — just
+   *  enough that the polar reflects "the wing is cambered" without sliding the
+   *  operating point off-design. Bulk of trim authority comes from CM0_DELTA. */
   HIP_CAMBER_ALPHA0_DEG: number
+  /** Max cm_0 add on torso/leg at full hipCamber input. Direct nose-up
+   *  moment couple, no polar-shape distortion. */
+  HIP_CAMBER_CM0_DELTA: number
 
   // ── Leg-bend (Phase D) ──
-  /** Max effective-S reduction on leg at full legBend input [fraction 0–1]. */
-  LEG_BEND_S_FRACTION: number
-  /** Max effective-chord reduction on leg at full legBend input [fraction 0–1]. */
-  LEG_BEND_CHORD_FRACTION: number
+  /** Max α_0 shift on leg at full legBend input [deg]. Small — see
+   *  HIP_CAMBER_ALPHA0_DEG note. */
+  LEG_BEND_ALPHA0_DEG: number
+  /** Max cm_0 add on leg at full legBend input. Knees-bent nose-up couple. */
+  LEG_BEND_CM0_DELTA: number
 }
 
 /** Default wingsuit control constants — conservative starting point. */
@@ -810,9 +814,10 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   DIHEDRAL_INNER_MAX_DEG: 16,
   DIHEDRAL_OUTER_MAX_DEG: 30,
 
-  HIP_CAMBER_ALPHA0_DEG: 6,
-  LEG_BEND_S_FRACTION: 0.20,
-  LEG_BEND_CHORD_FRACTION: 0.10,
+  HIP_CAMBER_ALPHA0_DEG: 3,
+  HIP_CAMBER_CM0_DELTA: 0.10,
+  LEG_BEND_ALPHA0_DEG: 3,
+  LEG_BEND_CM0_DELTA: 0.13,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
@@ -956,11 +961,15 @@ export function makeWingsuitLiftingSegment(
       // The two together produce a net pitch-up moment that balances the geometric
       // pitch-down at trim α.  Other segments are unaffected.
       const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber))
+      const legBend = Math.max(0, Math.min(1, controls.legBend))
       let deltaAlphaCamber = 0
       if (wingType === 'torso') {
         deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
       } else if (wingType === 'leg') {
+        // Hip arch shifts both segments; knees-bent additionally reverse-cambers
+        // the leg wing (negative α_0 shift) without changing surface area.
         deltaAlphaCamber = -hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+                         - legBend  * ctrl.LEG_BEND_ALPHA0_DEG
       }
 
       // ── Total α offset ──
@@ -969,13 +978,6 @@ export function makeWingsuitLiftingSegment(
       // ── Yaw throttle → lateral body shift (body / torso / leg segments) ──
       if (wingType === 'body' || wingType === 'torso' || wingType === 'leg') {
         this.position.y = baseY + yawT * ctrl.YAW_BODY_Y_SHIFT
-      }
-
-      // ── Leg bend (Phase D) — knees-bent flare shrinks leg-wing geometry ──
-      if (wingType === 'leg') {
-        const legBend = Math.max(0, Math.min(1, controls.legBend))
-        this.S = baseS * (1 - legBend * ctrl.LEG_BEND_S_FRACTION)
-        this.chord = baseChord * (1 - legBend * ctrl.LEG_BEND_CHORD_FRACTION)
       }
 
       // ── Dirty coupling from throttle inputs ──
@@ -989,6 +991,17 @@ export function makeWingsuitLiftingSegment(
       // ── Evaluate Kirchhoff model ──
       const c = getAllCoefficients(alphaEffective, betaLocal, controls.delta, polar, dirtyEff)
 
+      // ── Trim authority via cm_0 modulation (Phase D.1) ──
+      // Add a direct nose-up moment couple from arch + bend without distorting
+      // the polar shape. Sign convention: positive Δcm = nose-up.
+      let deltaCm = 0
+      if (wingType === 'torso') {
+        deltaCm = +hipCamber * ctrl.HIP_CAMBER_CM0_DELTA
+      } else if (wingType === 'leg') {
+        deltaCm = +hipCamber * ctrl.HIP_CAMBER_CM0_DELTA
+                + legBend  * ctrl.LEG_BEND_CM0_DELTA
+      }
+
       // ── Pitch throttle CP shift ──
       const cpShift = pitchT * ctrl.PITCH_CP_SHIFT
       const cp = c.cp + cpShift
@@ -1000,7 +1013,7 @@ export function makeWingsuitLiftingSegment(
       const cl = c.cl * cosT
       const cy = c.cy + c.cl * sinT
 
-      return { cl, cd: c.cd, cy, cm: c.cm, cn: c.cn, cl_roll: c.cl_roll, cp }
+      return { cl, cd: c.cd, cy, cm: c.cm + deltaCm, cn: c.cn, cl_roll: c.cl_roll, cp }
     },
   }
 }
