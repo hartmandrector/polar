@@ -760,6 +760,13 @@ export interface WingsuitControlConstants {
   YAW_ROLL_COUPLING_DEG: number
   /** Differential dirty coupling from yaw throttle */
   YAW_DIRTY_COUPLING: number
+  /** Roll angle applied to leg segment at full yaw input [deg] (Phase C).
+   *  Tilts leg lift sideways → CY × (leg x_arm aft of CG) → yaw moment.
+   *  Sign: positive yaw → positive roll on leg. */
+  YAW_LEG_ROLL_DEG: number
+  /** Roll angle applied to torso segment at full yaw input [deg] (Phase C).
+   *  Smaller, opposite-sign yaw moment (torso fwd of CG); usually 0. */
+  YAW_TORSO_ROLL_DEG: number
 
   // ── Roll throttle ──
   /** Differential α at full roll input [deg] — outer wings see more */
@@ -805,6 +812,8 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   YAW_HEAD_Y_SHIFT: 0.02,
   YAW_ROLL_COUPLING_DEG: 0.3,
   YAW_DIRTY_COUPLING: 0.15,
+  YAW_LEG_ROLL_DEG: 12,
+  YAW_TORSO_ROLL_DEG: 0,
 
   ROLL_ALPHA_MAX_DEG: 3.0,
   ROLL_CL_ALPHA_DELTA: 0.15,
@@ -935,6 +944,17 @@ export function makeWingsuitLiftingSegment(
       } else if (wingType === 'outer') {
         rollDeg = sideSign * ctrl.DIHEDRAL_OUTER_MAX_DEG * dihedral
       }
+
+      // ── Yaw throttle → leg/torso roll differential (Phase C) ──
+      // Tilts the segment lift vector sideways, producing a CY × x_arm yaw moment.
+      // Additive to existing YAW_BODY_Y_SHIFT mechanism.
+      const yawTroll = Math.max(-1, Math.min(1, controls.yawThrottle))
+      if (wingType === 'leg') {
+        rollDeg += yawTroll * ctrl.YAW_LEG_ROLL_DEG
+      } else if (wingType === 'torso') {
+        rollDeg += yawTroll * ctrl.YAW_TORSO_ROLL_DEG
+      }
+
       this.orientation = { roll_deg: rollDeg }
       const theta = rollDeg * DEG2RAD
 
