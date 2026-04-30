@@ -443,7 +443,11 @@ export class GPSCharts {
 
     const pt = this.data[this.cursorIdx]
     if (!pt) return null
-    const currentAOA = pt.aero.aoa * R2D // degrees
+    // Prefer the joint-solved α when available — it's the α at which the model
+    // polar (with all solved controls + dirty applied) matches the measured CL/CD,
+    // so the cursor sits on the same swept curve the polar plot is drawing.
+    const aoaRad = pt.solvedControls?.alpha ?? pt.aero.aoa
+    const currentAOA = aoaRad * R2D // degrees
     const sweep = this.lastSweep
     const spd = (view === 'speed' && this.speedMph) ? 2.237 : 1
 

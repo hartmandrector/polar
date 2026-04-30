@@ -15,11 +15,13 @@
 import {
   evaluateAeroForcesDetailed,
   defaultControls,
+  computeWindFrameNED,
   type Vec3NED,
 } from '../polar/aero-segment'
 import type { AeroSegment, SegmentControls } from '../polar/continuous-polar'
 import type { InertiaComponents } from '../polar/inertia'
 import type { GPSPipelinePoint } from '../gps/types'
+import { matchAOABinarySearch, type PolarEvaluator } from '../gps/wse'
 import type { MomentBreakdown, AxisMoments, CanopyControlMap, ControlMomentContrib } from './moment-types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -44,6 +46,9 @@ export interface ControlInversionConfig {
   trimHipCamber?: number
   /** Wingsuit trim baseline: leg bend [0,1] (default 0.30, matches gamepad slider neutral) */
   trimLegBend?: number
+  /** System reference area [m²] for CL/CD normalization in the joint α solve.
+   *  Must match the sRef used by the GPS pipeline's CL/CD extraction (a5segments polar.s). */
+  sRef?: number
 }
 
 export interface ControlInversionResult {
@@ -54,6 +59,10 @@ export interface ControlInversionResult {
   /** Solved dirty input [0, 1] — 1D drag-match outer-loop solve.
    *  0 if measured glide ratio is at least as steep as clean polar predicts. */
   dirty: number
+  /** Solved angle of attack [rad] — jointly re-extracted with solved controls so
+   *  the polar curve at this α matches the measured CL/CD with the same controls
+   *  the moment solver settled on. */
+  alpha: number
   /** Moment breakdown per axis */
   moments: AxisMoments
   /** Did the solver converge? */
@@ -93,11 +102,12 @@ export function solveControlInputs(
   const qDotMeas = (pt.bodyRates?.qDot ?? 0) * D2R
   const rDotMeas = (pt.bodyRates?.rDot ?? 0) * D2R
 
-  // Body velocity from airspeed + AOA
+  // Body velocity from airspeed + AOA — α is updated inside the outer loop
+  // (joint-solve with controls + dirty), so this is mutable and re-derived
+  // each outer iteration.
   const V = pt.processed.airspeed
-  const alpha = pt.aero.aoa
-  const cosA = Math.cos(alpha), sinA = Math.sin(alpha)
-  const bodyVel: Vec3NED = { x: V * cosA, y: 0, z: V * sinA }
+  let alpha = pt.aero.aoa
+  let bodyVel: Vec3NED = { x: V * Math.cos(alpha), y: 0, z: V * Math.sin(alpha) }
 
   // Body rates [rad/s]
   const omega = {
@@ -119,9 +129,10 @@ export function solveControlInputs(
   const rollGain = config.rollGain ?? 1.0
   const trimHipCamber = config.trimHipCamber ?? 0.30
   const trimLegBend   = config.trimLegBend   ?? 0.30
+  const sRef          = config.sRef          ?? 0  // 0 disables α re-extraction
 
-  // Helper: evaluate aero moments for given control vector
-  function evalMoments(pitch: number, roll: number, yaw: number, dirty = 0): Vec3NED {
+  // Build a SegmentControls vector from the solver's free variables + trim baseline.
+  function buildControls(pitch: number, roll: number, yaw: number, dirty: number): SegmentControls {
     const ctrl = defaultControls()
     ctrl.hipCamber     = trimHipCamber
     ctrl.legBend       = trimLegBend
@@ -129,109 +140,165 @@ export function solveControlInputs(
     ctrl.rollThrottle  = roll * rollGain
     ctrl.yawThrottle   = yaw
     ctrl.dirty         = dirty
+    return ctrl
+  }
+
+  // Helper: evaluate aero moments for given control vector
+  function evalMoments(pitch: number, roll: number, yaw: number, dirty = 0): Vec3NED {
     const result = evaluateAeroForcesDetailed(
       config.segments, config.cgMeters, config.height,
-      bodyVel, omega, ctrl, rho,
+      bodyVel, omega, buildControls(pitch, roll, yaw, dirty), rho,
     )
     return result.system.moment
   }
 
-  // Helper: evaluate aero drag (force component along -velocity_unit) [N].
-  // Used by the 1D dirty bisection so we can match measured glide ratio.
-  function evalDrag(pitch: number, roll: number, yaw: number, dirty: number): number {
-    const ctrl = defaultControls()
-    ctrl.hipCamber     = trimHipCamber
-    ctrl.legBend       = trimLegBend
-    ctrl.pitchThrottle = pitch
-    ctrl.rollThrottle  = roll * rollGain
-    ctrl.yawThrottle   = yaw
-    ctrl.dirty         = dirty
+  // Helper: evaluate model L/D at given controls + dirty.
+  // Lift = aero force component perpendicular to velocity (vertical-plane projection),
+  // Drag = aero force component along -velocity_unit.
+  // L/D is V- and ρ-independent (factors cancel) — it's a pure function of α + dirty,
+  // so it's directly comparable to the polar's CL/CD = pt.aero.cl/cd.
+  function evalLD(pitch: number, roll: number, yaw: number, dirty: number): number {
     const result = evaluateAeroForcesDetailed(
       config.segments, config.cgMeters, config.height,
-      bodyVel, omega, ctrl, rho,
+      bodyVel, omega, buildControls(pitch, roll, yaw, dirty), rho,
     )
     const vmag = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.y * bodyVel.y + bodyVel.z * bodyVel.z)
     if (vmag < 1e-6) return 0
     const vx = bodyVel.x / vmag, vy = bodyVel.y / vmag, vz = bodyVel.z / vmag
-    return -(result.system.force.x * vx + result.system.force.y * vy + result.system.force.z * vz)
+    const F = result.system.force
+    const drag = -(F.x * vx + F.y * vy + F.z * vz)
+    const lvx = F.x - (-drag) * vx
+    const lvy = F.y - (-drag) * vy
+    const lvz = F.z - (-drag) * vz
+    const lift = Math.sqrt(lvx * lvx + lvy * lvy + lvz * lvz)
+    if (drag < 1e-6) return Infinity
+    return lift / drag
   }
 
-  // Newton-Raphson iteration — seed from previous timestep if available
+  // Helper: signed CL/CD at given alpha and full SegmentControls. Used by the
+  // outer α fixed-point loop to find the α at which the model polar matches
+  // the measured CL/CD with the solver's current controls.
+  function evalCLCD(alpha_deg: number, ctrl: SegmentControls): { cl: number; cd: number } {
+    const a = alpha_deg * D2R
+    const bv: Vec3NED = { x: V * Math.cos(a), y: 0, z: V * Math.sin(a) }
+    const result = evaluateAeroForcesDetailed(
+      config.segments, config.cgMeters, config.height,
+      bv, omega, ctrl, rho,
+    )
+    const q = 0.5 * rho * V * V
+    const qS = q * sRef
+    if (qS < 1e-10) return { cl: 0, cd: 0 }
+    const { windDir, liftDir } = computeWindFrameNED(alpha_deg, 0)
+    const F = result.system.force
+    const cl = (liftDir.x * F.x + liftDir.y * F.y + liftDir.z * F.z) / qS
+    const cd = -(windDir.x * F.x + windDir.y * F.y + windDir.z * F.z) / qS
+    return { cl, cd }
+  }
+
+  // ── Joint α / controls / dirty solve ──────────────────────────────────────
+  // Outer fixed-point loop on α: each pass solves moments (Newton) + dirty
+  // (bisection) at the current α, then re-extracts α from measured CL/CD using
+  // a polar evaluator built with the just-solved controls. Converges in 2–3
+  // iterations because moment residuals and L/D are weakly coupled to α
+  // shifts of ~1°.
+  //
+  // sRef == 0 disables α re-extraction (back-compat: caller didn't supply
+  // system reference area).  Without it the solver behaves exactly as before.
   let u = prevControls ? [...prevControls] : [0, 0, 0]
   let converged = false
   let iter = 0
+  let totalIter = 0
+  let dirty = 0
 
-  // Get neutral moments for breakdown
+  // Neutral moments for breakdown — evaluated at the seed α; α-drift over the
+  // outer loop is small and this is just a reporting baseline.
   const M0 = evalMoments(0, 0, 0)
 
-  for (iter = 0; iter < MAX_ITER; iter++) {
-    // Current predicted moments
-    const M = evalMoments(u[0], u[1], u[2])
+  const cl_meas = pt.aero?.cl ?? 0
+  const cd_meas = pt.aero?.cd ?? 0
 
-    // Residual: predicted - required
-    const res = [M.x - Lreq, M.y - Mreq, M.z - Nreq]
-    const norm = Math.sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2])
+  const ALPHA_OUTER_MAX = sRef > 0 ? 4 : 1
+  const ALPHA_TOL_RAD = 0.05 * D2R  // 0.05° fixed-point tolerance
 
-    if (norm < CONVERGE_THRESHOLD) {
-      converged = true
-      break
+  for (let outer = 0; outer < ALPHA_OUTER_MAX; outer++) {
+    // Refresh bodyVel from current α
+    bodyVel = { x: V * Math.cos(alpha), y: 0, z: V * Math.sin(alpha) }
+
+    // ── Newton-Raphson on moments at current α ──
+    converged = false
+    for (iter = 0; iter < MAX_ITER; iter++) {
+      const M = evalMoments(u[0], u[1], u[2])
+      const res = [M.x - Lreq, M.y - Mreq, M.z - Nreq]
+      const norm = Math.sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2])
+
+      if (norm < CONVERGE_THRESHOLD) {
+        converged = true
+        break
+      }
+
+      const J: number[][] = [[], [], []]
+      for (let j = 0; j < 3; j++) {
+        const uP = [...u]
+        uP[j] += PERTURBATION
+        const Mp = evalMoments(uP[0], uP[1], uP[2])
+        J[0][j] = (Mp.x - M.x) / PERTURBATION
+        J[1][j] = (Mp.y - M.y) / PERTURBATION
+        J[2][j] = (Mp.z - M.z) / PERTURBATION
+      }
+
+      const du = solve3x3(J, [-res[0], -res[1], -res[2]])
+      if (!du) break
+
+      const damping = 0.7
+      u[0] = clamp(u[0] + du[0] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
+      u[1] = clamp(u[1] + du[1] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
+      u[2] = clamp(u[2] + du[2] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
+    }
+    totalIter += iter
+
+    // ── 1D dirty bisection ──
+    // Match the measured sustained L/D = pt.aero.cl / pt.aero.cd by bisecting
+    // `dirty` so the model's L/D at the current α matches.  L/D is V- and ρ-
+    // independent so the polar's CL/CD == aero force ratio.  Dirty only adds
+    // drag (CL nearly unchanged), so model L/D is monotonically decreasing in
+    // dirty: bisection is robust.
+    dirty = 0
+    if (cl_meas > 0 && cd_meas > 1e-6) {
+      const ldMeas  = cl_meas / cd_meas
+      const ldClean = evalLD(u[0], u[1], u[2], 0)
+      if (ldClean > ldMeas) {
+        const ldDirty = evalLD(u[0], u[1], u[2], 1)
+        if (ldDirty >= ldMeas) {
+          dirty = 1
+        } else {
+          let lo = 0, hi = 1
+          for (let i = 0; i < 16; i++) {
+            const mid = 0.5 * (lo + hi)
+            const ld = evalLD(u[0], u[1], u[2], mid)
+            if (ld > ldMeas) lo = mid
+            else             hi = mid
+          }
+          dirty = 0.5 * (lo + hi)
+        }
+      }
     }
 
-    // Numerical Jacobian (3×3): ∂M/∂u
-    const J: number[][] = [[], [], []]
-    for (let j = 0; j < 3; j++) {
-      const uP = [...u]
-      uP[j] += PERTURBATION
-      const Mp = evalMoments(uP[0], uP[1], uP[2])
-      J[0][j] = (Mp.x - M.x) / PERTURBATION
-      J[1][j] = (Mp.y - M.y) / PERTURBATION
-      J[2][j] = (Mp.z - M.z) / PERTURBATION
-    }
-
-    // Solve J · du = -res via Cramer's rule (3×3)
-    const du = solve3x3(J, [-res[0], -res[1], -res[2]])
-    if (!du) break  // singular Jacobian
-
-    // Update with damping
-    const damping = 0.7
-    u[0] = clamp(u[0] + du[0] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
-    u[1] = clamp(u[1] + du[1] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
-    u[2] = clamp(u[2] + du[2] * damping, -CONTROL_CLAMP, CONTROL_CLAMP)
+    // ── α re-extraction (skip when sRef unset) ──
+    if (sRef <= 0) break
+    const ctrl = buildControls(u[0], u[1], u[2], dirty)
+    const evaluator: PolarEvaluator = (alpha_deg) => evalCLCD(alpha_deg, ctrl)
+    const match = matchAOABinarySearch(cl_meas, cd_meas, evaluator)
+    const newAlpha = match.alpha_deg * D2R
+    const dAlpha = newAlpha - alpha
+    alpha = newAlpha
+    if (Math.abs(dAlpha) < ALPHA_TOL_RAD) break
   }
 
-  // Final evaluation with solved controls
+  // Final evaluation with solved controls (at the converged α)
+  bodyVel = { x: V * Math.cos(alpha), y: 0, z: V * Math.sin(alpha) }
   const Mfinal = evalMoments(u[0], u[1], u[2])
   const finalRes = [Mfinal.x - Lreq, Mfinal.y - Mreq, Mfinal.z - Nreq]
   const finalNorm = Math.sqrt(finalRes[0] * finalRes[0] + finalRes[1] * finalRes[1] + finalRes[2] * finalRes[2])
-
-  // ── 1D dirty solve (outer loop) ───────────────────────────────────────────
-  // Match measured glide ratio by bisecting `dirty` so predicted drag equals
-  // the quasi-steady drag implied by the flight path angle.
-  // D_req = m * g * |sin(gamma)|.  If clean polar (dirty=0) already produces
-  // more drag than required, leave dirty=0 (we don't subtract drag).
-  let dirty = 0
-  const gamma = pt.aero?.gamma ?? 0
-  const Dreq = Math.abs(config.mass * 9.80665 * Math.sin(gamma))
-  if (Dreq > 0) {
-    const Dclean = evalDrag(u[0], u[1], u[2], 0)
-    if (Dclean < Dreq) {
-      // Bisect dirty in [0, 1].  Drag is monotonically increasing in dirty.
-      let lo = 0, hi = 1
-      const Dhi = evalDrag(u[0], u[1], u[2], 1)
-      if (Dhi < Dreq) {
-        // Even fully dirty can't explain it — cap at 1.
-        dirty = 1
-      } else {
-        for (let i = 0; i < 16; i++) {
-          const mid = 0.5 * (lo + hi)
-          const D = evalDrag(u[0], u[1], u[2], mid)
-          if (D < Dreq) lo = mid
-          else          hi = mid
-        }
-        dirty = 0.5 * (lo + hi)
-      }
-    }
-  }
 
   // Gyroscopic terms (ω × Iω)
   const gyroL = (Izz - Iyy) * omega.q * omega.r + Ixz * omega.p * omega.q
@@ -253,13 +320,14 @@ export function solveControlInputs(
     rollThrottle: u[1],
     yawThrottle: u[2],
     dirty,
+    alpha,
     moments: {
       roll:  { aero: M0.x, pilot: pilotL, gyro: gyroL, net: IalphaL },
       pitch: { aero: M0.y, pilot: pilotM, gyro: gyroM, net: IalphaM },
       yaw:   { aero: M0.z, pilot: pilotN, gyro: gyroN, net: IalphaN },
     },
     converged,
-    iterations: iter,
+    iterations: totalIter,
     residual: finalNorm,
   }
 }

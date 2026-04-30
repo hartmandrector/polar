@@ -66,6 +66,8 @@ export interface AeroOverlayConfig {
   mass: number
   rho?: number
   inertia?: InertiaComponents
+  /** System reference area [m²] for CL/CD normalization in the joint α solve. */
+  sRef?: number
 }
 
 // ─── Aero Overlay ───────────────────────────────────────────────────────────
@@ -290,6 +292,7 @@ export class GPSAeroOverlay {
         phi: this.canopyMode ? this.aeroOverrides?.roll : undefined,
         theta: this.canopyMode ? this.aeroOverrides?.theta : undefined,
         riserLength: 6.0,
+        sRef: cfg.sRef,
       }
 
       // Dispatch to wingsuit or canopy solver

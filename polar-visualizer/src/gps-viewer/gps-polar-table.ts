@@ -47,7 +47,12 @@ export function buildPolarEvaluator(
 export function buildPolarEvaluatorFactory(): PolarEvaluatorFactory {
   const polar = a5segmentsContinuous
   const segments = polar.aeroSegments ?? []
+  // Match the wingsuit trim baseline used by the control solver and chart sweep
+  // (hipCamber=0.30, legBend=0.30) so AOA extraction is consistent with the
+  // polar curve the yellow cursor is drawn on.
   const controls = defaultControls()
+  controls.hipCamber = 0.30
+  controls.legBend = 0.30
   const massRef = 1.875
   const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
   const sRef = polar.s
