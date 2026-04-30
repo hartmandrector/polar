@@ -1,7 +1,9 @@
 # Stability Analysis — Natural Modes & Gamepad Filter Design
 
 > Generated from `scripts/eigenvalue-analysis.ts` (commit `8e4ce60`)
-> Polars: **ibexul** (Ibex UL canopy, 16 segments) and **a5segments** (Aura 5 wingsuit, 6 segments)
+> Polars: **ibexul** (Ibex UL canopy, 16 segments) and **a5segments** (Aura 5 wingsuit, 7 segments — head + torso + leg + L/R inner + L/R outer)
+>
+> **Note:** The mode tables below were generated against the legacy 6-segment topology (single `center` segment). The split into torso + leg shifts trim α by ~1° and increases pitch authority; the qualitative conclusions (low pitch damping, spiral instability above 30 m/s) are unchanged but absolute numbers should be re-run on `split` before quoting them.
 
 ## 1. Executive Summary
 
@@ -72,7 +74,7 @@ Notes:
 
 ---
 
-## 3. Wingsuit Natural Modes (Aura 5, 77.5 kg, 6 segments)
+## 3. Wingsuit Natural Modes (Aura 5, 77.5 kg, 7 segments)
 
 ### 3.1 Trim Conditions
 

@@ -1400,7 +1400,7 @@ export const caravanContinuous: ContinuousPolar = {
   referenceLength: 11.0  // Mean aerodynamic chord
 }
 
-// ─── A5 Segments — 6-Segment Wingsuit ────────────────────────────────────────
+// ─── A5 Segments — 7-Segment Wingsuit ────────────────────────────────────────
 
 /**
  * Segment position system — chord-fraction based.
@@ -1823,11 +1823,12 @@ export function makeA5SegmentsAeroSegments(): AeroSegment[] {
 }
 
 /**
- * A5 Segments — 6-segment wingsuit continuous polar.
+ * A5 Segments — 7-segment wingsuit continuous polar.
  *
  * System-level ContinuousPolar that matches aurafiveContinuous at symmetric
  * conditions. The segment model (aeroSegments) distributes forces across
- * the 6 segments for asymmetric flight, turning, and throttle control.
+ * the 7 segments (head + torso + leg + L/R inner + L/R outer) for asymmetric
+ * flight, turning, and throttle control.
  *
  * Uses the same base parameters as aurafiveContinuous. The new capability
  * is entirely in the per-segment aero model, not the system-level polar.
