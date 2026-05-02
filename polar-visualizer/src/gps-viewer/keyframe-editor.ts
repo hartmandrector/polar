@@ -29,8 +29,8 @@ export interface CameraKeyframe {
 }
 
 export interface KeyframeSet {
-  /** Version for future-proofing */
-  version: 1
+  /** Version for future-proofing. v1 = no videoOffset, v2 = videoOffset added. */
+  version: 1 | 2
   /** Keyframes for inertial frame camera */
   inertial: CameraKeyframe[]
   /** Keyframes for body frame camera */
@@ -38,6 +38,8 @@ export interface KeyframeSet {
   /** Capture range markers (GPS pipeline time in seconds) */
   captureStart: number | null
   captureEnd: number | null
+  /** Optional video sync offset in seconds (added in v2). Undefined = leave slider untouched on load. */
+  videoOffset?: number
 }
 
 // ============================================================================
@@ -115,7 +117,7 @@ export function interpolateCamera(
 // ============================================================================
 
 export class KeyframeEditor {
-  private data: KeyframeSet = { version: 1, inertial: [], body: [], captureStart: null, captureEnd: null }
+  private data: KeyframeSet = { version: 2, inertial: [], body: [], captureStart: null, captureEnd: null }
   private enabled = false
 
   // Callbacks for UI updates
@@ -224,6 +226,17 @@ export class KeyframeEditor {
     this.notify()
   }
 
+  // ── Video sync offset (optional, v2+) ──
+
+  /** Current video offset in seconds, or undefined if not set in the loaded JSON. */
+  get videoOffset(): number | undefined { return this.data.videoOffset }
+
+  /** Set or clear the video offset. Pass undefined to omit from saved JSON. */
+  setVideoOffset(s: number | undefined) {
+    this.data.videoOffset = s
+    this.notify()
+  }
+
   // ── Save / Load ──
 
   toJSON(): string {
@@ -233,16 +246,18 @@ export class KeyframeEditor {
   fromJSON(json: string): boolean {
     try {
       const parsed = JSON.parse(json)
-      if (parsed.version !== 1) {
+      if (parsed.version !== 1 && parsed.version !== 2) {
         console.warn('Unknown keyframe version:', parsed.version)
         return false
       }
+      const videoOffset = typeof parsed.videoOffset === 'number' ? parsed.videoOffset : undefined
       this.data = {
-        version: 1,
+        version: 2,
         inertial: Array.isArray(parsed.inertial) ? parsed.inertial : [],
         body: Array.isArray(parsed.body) ? parsed.body : [],
         captureStart: parsed.captureStart ?? null,
         captureEnd: parsed.captureEnd ?? null,
+        videoOffset,
       }
       this.notify()
       return true
@@ -253,7 +268,7 @@ export class KeyframeEditor {
   }
 
   clear() {
-    this.data = { version: 1, inertial: [], body: [], captureStart: null, captureEnd: null }
+    this.data = { version: 2, inertial: [], body: [], captureStart: null, captureEnd: null }
     this.notify()
   }
 

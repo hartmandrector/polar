@@ -29,8 +29,13 @@ import { GPSDeployRenderer } from './gps-deploy-renderer'
 
 const MODEL_PATH = '/models/WSV9.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
-// GLB model is 3.55 units tall, pilot is 1.875m → scale to real meters
-const MODEL_SCALE = 1.875 / 3.55  // ≈ 0.528
+// GLB model is 3.55 units tall. Visual scale is intentionally ~10% larger
+// than physical pilot height (1.875 m) so the mesh "fills out" the aero
+// reference points (shoulders/wingtips line up better with the segment
+// positions and the canopy fits over the pilot more naturally).
+// Physics is unaffected — segment positions still denormalize by massRef =
+// 1.875 m in setAeroConfig.
+const MODEL_SCALE = 2.06 / 3.55  // ≈ 0.580
 
 export class GPSScene {
   private renderer: THREE.WebGLRenderer
@@ -216,7 +221,7 @@ export class GPSScene {
       console.error('Failed to load canopy model:', e)
     }
 
-    // Create deploy renderer (bodyLength in scene units ≈ MODEL_SCALE * 3.55 = 1.875)
+    // Create deploy renderer (bodyLength in scene units = MODEL_SCALE * 3.55 ≈ 2.06)
     this.deployRenderer = new GPSDeployRenderer(this.scene, MODEL_SCALE * 3.55)
     if (this.deployTimeline) {
       this.deployRenderer.setTimeline(this.deployTimeline)
@@ -228,7 +233,7 @@ export class GPSScene {
     this.aeroOverlay.setConfig(config)
     // Build/refresh wingsuit segment wireframes (inertial-frame reference).
     // pilotScale = 1.0 because the wingsuit GLB is rendered at MODEL_SCALE so
-    // its body becomes 1.875 scene units (≈ 1 metre per scene unit).
+    // its body becomes ≈2.06 scene units (visually ≈10% larger than physical).
     if (config.segments.length > 0) {
       if (!this.wingsuitWireframes) {
         this.wingsuitWireframes = createWingsuitWireframes()

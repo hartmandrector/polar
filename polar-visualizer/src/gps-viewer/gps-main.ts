@@ -251,10 +251,10 @@ async function loadFile(file: File) {
 
   // Set aero overlay config from A5 segments model
   const polar = a5segmentsContinuous
-  const massRef = 1.875  // pilot height (for CG/inertia)
-  const aeroRef = polar.referenceLength ?? massRef  // aero reference length (1.93 for A5)
-  const cgMeters = computeCenterOfMass(polar.massSegments ?? [], massRef, polar.m)
-  const inertia = computeInertia(polar.massSegments ?? [], massRef, polar.m)
+  const gpsmassRef = 1.875  // pilot height (for CG/inertia)
+  const aeroRef = polar.referenceLength ?? gpsmassRef  // aero reference length (1.93 for A5)
+  const cgMeters = computeCenterOfMass(polar.massSegments ?? [], gpsmassRef, polar.m)
+  const inertia = computeInertia(polar.massSegments ?? [], gpsmassRef, polar.m)
   scene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
     cgMeters,
@@ -365,7 +365,7 @@ async function loadFile(file: File) {
     aero: {
       segments: polar.aeroSegments ?? [],
       cgMeters,
-      height: massRef,
+      height: gpsmassRef,
       inertia,
     },
   })
@@ -908,7 +908,7 @@ videoRotation.addEventListener('change', () => videoSync.setRotation(parseInt(vi
 videoOpacity.addEventListener('input', () => videoSync.setOpacity(parseFloat(videoOpacity.value) || 0))
 
 function setVideoOffsetFromUI(s: number) {
-  const clamped = Math.max(-60, Math.min(60, s))
+  const clamped = Math.max(-900, Math.min(900, s))
   videoSync.setOffset(clamped)
   videoOffset.value = String(clamped)
   videoOffsetNum.value = clamped.toFixed(2)
@@ -1282,13 +1282,19 @@ kfClear.addEventListener('click', () => {
   }
 })
 
-kfSave.addEventListener('click', () => kfEditor.save())
+kfSave.addEventListener('click', () => {
+  // Stamp the current video offset into the keyframes before saving so
+  // reloading restores the same alignment without manual re-tuning.
+  kfEditor.setVideoOffset(videoSync.offset)
+  kfEditor.save()
+})
 kfLoadBtn.addEventListener('click', () => kfLoadInput.click())
 kfLoadInput.addEventListener('change', async () => {
   const file = kfLoadInput.files?.[0]
   if (!file) return
   const text = await file.text()
   if (kfEditor.fromJSON(text)) {
+    if (kfEditor.videoOffset != null) setVideoOffsetFromUI(kfEditor.videoOffset)
     console.log('Keyframes loaded from', file.name)
   }
 })
@@ -1704,7 +1710,11 @@ function buildCaptureSession(): CaptureSessionState | null {
     controlSolver: controlSolverToggle.checked,
     axisHelpers: axisHelperMode.value,
     keyframeEnabled: kfEnabled.checked,
-    keyframes: JSON.parse(kfEditor.toJSON()),
+    keyframes: (() => {
+      // Stamp current video offset so share URLs / captures carry it.
+      kfEditor.setVideoOffset(videoSync.offset)
+      return JSON.parse(kfEditor.toJSON())
+    })(),
     capture: {
       frameRate,
       startTime: bounds.startTime,
@@ -1777,7 +1787,9 @@ async function applyCaptureSession(state: CaptureSessionState) {
   axisHelperMode.dispatchEvent(new Event('change'))
 
   // Load keyframes
-  kfEditor.fromJSON(JSON.stringify(state.keyframes))
+  if (kfEditor.fromJSON(JSON.stringify(state.keyframes)) && kfEditor.videoOffset != null) {
+    setVideoOffsetFromUI(kfEditor.videoOffset)
+  }
   kfEnabled.checked = state.keyframeEnabled
   kfEnabled.dispatchEvent(new Event('change'))
 
@@ -1903,7 +1915,9 @@ async function applyCaptureSession(state: CaptureSessionState) {
   const kfData = urlParams.get('keyframes')
   if (kfData) {
     try {
-      kfEditor.fromJSON(atob(kfData))
+      if (kfEditor.fromJSON(atob(kfData)) && kfEditor.videoOffset != null) {
+        setVideoOffsetFromUI(kfEditor.videoOffset)
+      }
     } catch (e) {
       console.error('Failed to parse keyframes param:', e)
     }

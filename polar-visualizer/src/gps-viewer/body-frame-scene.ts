@@ -25,9 +25,12 @@ import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
 
-const MODEL_PATH = '/models/WSV8.glb'
+const MODEL_PATH = '/models/WSV9.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
-const MODEL_SCALE = 1.875 / 3.55
+// Visual-only scale: ~10% larger than physical pilot height so mesh
+// shoulders/wingtips align better with aero segment positions. Physics
+// untouched — segment positions still use massRef = 1.875 m.
+const MODEL_SCALE = 2.06 / 3.55
 
 export class BodyFrameScene {
   private renderer: THREE.WebGLRenderer
@@ -192,8 +195,9 @@ export class BodyFrameScene {
     this.aeroOverlay.setConfig(config)
     // Build/refresh wingsuit segment wireframes (body-frame reference geometry).
     // The wingsuit GLB is rendered at MODEL_SCALE so its 3.55-unit body becomes
-    // 1.875 scene units (1 scene unit ≈ 1 metre). Wireframe geometry is authored
-    // in NED metres, so pilotScale = 1.0 to match the GLB's physical extent.
+    // ≈2.06 scene units (visually ≈10% larger than physical pilot height).
+    // Wireframe geometry is authored in NED metres; pilotScale = 1.0 keeps it
+    // anchored at physical CG-relative positions (independent of mesh scale).
     if (config.segments.length > 0) {
       if (!this.wingsuitWireframes) {
         this.wingsuitWireframes = createWingsuitWireframes()
