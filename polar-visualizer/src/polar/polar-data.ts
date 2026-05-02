@@ -1581,7 +1581,10 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   cm_0: 0,
   cm_alpha: 0,
   cp_0: 0.30,                // CP fwd of geometric center
-  cp_alpha: 0.025,
+  // Phase F.2: bumped 0.025 → 0.05.  Low-AR rectangular panel → CP migrates
+  // toward the area centroid (0.5c) as α grows.  Stronger aft drift than the
+  // thin-airfoil 0.025/rad better matches the torso planform.
+  cp_alpha: 0.05,
   cg: 0.40,
   cp_lateral: 0.50,
   s: A5_TORSO_S,
@@ -1645,18 +1648,23 @@ const A5_LEG_POLAR: ContinuousPolar = {
   cy_beta: -0.9,
   cn_beta: 0.08,
   cl_beta: -0.04,
-  // Phase B.1: zero per-segment pitching moment.  System pitch stability is
-  // now produced by lift × lever arm (leg AC at −0.32 m → pitch-down with α,
-  // torso AC at +0.22 m → pitch-up with α).  Re-introduce camber terms only
-  // after gross trim is verified.
-  cm_0: 0,
+  // Phase F.4: −0.03 — nose-down camber moment from the leg-wing's flexible
+  // cambered cross-section (leg curvature + slight reflex from toe-back
+  // posture).  Thin-airfoil estimate cm_0 ≈ −0.6 · (camber/chord).  This
+  // restores some of the natural pitch-down moment that the leg-wing should
+  // contribute before any pilot input.
+  cm_0: -0.03,
   // Step 1 of leg-lift retune: zero out the cm_alpha "crutch" that was
   // masking the lift-arm imbalance between torso (+0.22 m) and leg (−0.32 m).
   // With this removed, system pitch stability is purely lift × lever arm,
   // so the real over-lift on the leg becomes visible for tuning.
   cm_alpha: 0,
   cp_0: 0.40,                // aft CP (wide trailing flare)
-  cp_alpha: 0.025,
+  // Phase F.3: sign flip 0.025 → −0.04.  Apex-aft taper (wide LE at hip,
+  // narrow TE at feet) means more area is forward of geometric mid-chord
+  // → CP migrates *forward* with α in the linear regime, opposite of the
+  // torso.  Was carrying the wrong sign from the legacy single-center polar.
+  cp_alpha: -0.04,
   cg: 0.40,
   cp_lateral: 0.50,
   s: A5_LEG_S,
@@ -1708,7 +1716,11 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   cd_n: 1.0,                 // fabric broadside
   cd_n_lateral: 0.8,
   alpha_stall_fwd: 31.5,
-  s1_fwd: 3.7,
+  // Phase F.5: 3.7 → 2.5 — sharper stall break.  Cambered moderate-AR arm
+  // panels are the closest thing in the model to a real airfoil and should
+  // drive the system stall character.  Body and leg keep their gentler
+  // s1 values (bluff-body and triangular-apex-aft both stall softly).
+  s1_fwd: 2.5,
   alpha_stall_back: -34.5,
   s1_back: 7,
   cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
@@ -1757,7 +1769,10 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   cd_n: 1.0,
   cd_n_lateral: 0.8,
   alpha_stall_fwd: 31.5,
-  s1_fwd: 3.7,
+  // Phase F.5: 3.7 → 2.5 — sharper stall break, matching inner wing.
+  // Tip stall traditionally arrives first in real wings; keeping inner
+  // and outer s1 in lockstep gives a clean coordinated break.
+  s1_fwd: 2.5,
   alpha_stall_back: -34.5,
   s1_back: 7,
   cy_beta: -0.15,
