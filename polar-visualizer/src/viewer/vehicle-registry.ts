@@ -160,7 +160,7 @@ export const VEHICLE_REGISTRY: Record<string, VehicleDefinition> = {
   },
   a5segments: {
     id: 'a5segments',
-    name: 'A5 Segments (Wingsuit 6-seg)',
+    name: 'A5 Segments (Wingsuit 7-seg)',
     modelType: 'wingsuit',
     activeAeroComponentId: 'pilot-a5segments',
     pilot: {

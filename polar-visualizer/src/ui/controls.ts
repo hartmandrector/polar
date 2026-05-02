@@ -322,7 +322,7 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       deltaSlider.min = '-100'
       deltaSlider.max = '100'
     }
-    // Hide delta slider for canopy+slick and for wingsuit 6-seg (throttle controls replace δ)
+    // Hide delta slider for canopy+slick and for wingsuit 7-seg (throttle controls replace δ)
     if (deltaGroup) {
       const hideDelta = (modelType === 'canopy' && canopyPilotType === 'slick') || polarKey === 'a5segments'
       deltaGroup.style.display = hideDelta ? 'none' : ''
