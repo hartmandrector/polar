@@ -822,6 +822,8 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   YAW_HEAD_Y_SHIFT: 0.02,
   YAW_ROLL_COUPLING_DEG: 0.3,
   YAW_DIRTY_COUPLING: 0.15,
+  // Leg roll under yaw input restores yaw authority for the GPS solver
+  // during turns (lateral CP shift alone is too weak). Torso stays neutral.
   YAW_LEG_ROLL_DEG: 12,
   YAW_TORSO_ROLL_DEG: 0,
 

@@ -239,7 +239,13 @@ function updateGamepadViz(modelType: string): void {
     return
   }
 
-  if (statusEl) statusEl.innerHTML = '<span style="color:#0f0;">🎮 Connected</span>'
+  // Diagnostic: show which buttons are currently pressed (helps map Start/View)
+  const pressedIdx: number[] = []
+  for (let i = 0; i < gp.buttons.length; i++) {
+    if (gp.buttons[i]?.pressed) pressedIdx.push(i)
+  }
+  const pressedStr = pressedIdx.length > 0 ? ` btn:[${pressedIdx.join(',')}]` : ''
+  if (statusEl) statusEl.innerHTML = `<span style="color:#0f0;">🎮 Connected</span><span style="color:#ff6;">${pressedStr}</span>`
 
   // Raw axes
   const lx = gp.axes[0] ?? 0
@@ -552,6 +558,7 @@ export function setupSimUI(ctx: SimUIContext): void {
     const gp = navigator.getGamepads()[0]
     const menuPressed = gp ? (gp.buttons[MENU_BUTTON]?.pressed ?? false) : false
     if (menuPressed && !menuWasPressed) {
+      console.log('[gamepad] MENU button (9) → toggleSim')
       toggleSim(ctx)
     }
     menuWasPressed = menuPressed
@@ -559,6 +566,7 @@ export function setupSimUI(ctx: SimUIContext): void {
     // View button (button 8) — cycle view frame (Body ↔ Inertial)
     const viewPressed = gp ? (gp.buttons[VIEW_BUTTON]?.pressed ?? false) : false
     if (viewPressed && !viewWasPressed) {
+      console.log('[gamepad] VIEW button (8) → cycle frame')
       cycleSelect('frame-select', 1)
     }
     viewWasPressed = viewPressed
