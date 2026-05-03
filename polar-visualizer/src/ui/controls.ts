@@ -423,8 +423,8 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
     wsRollSlider.value = '0'
     wsDihedralSlider.value = '50'
     wsDeploySlider.value = '0'
-    wsHipCamberSlider.value = '30'
-    wsLegBendSlider.value = '30'
+    wsHipCamberSlider.value = '40'
+    wsLegBendSlider.value = '40'
     onInput()
   })
 

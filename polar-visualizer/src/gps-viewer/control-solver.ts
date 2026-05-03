@@ -127,8 +127,8 @@ export function solveControlInputs(
     + (Iyy - Ixx) * omega.p * omega.q + Ixz * omega.q * omega.r
 
   const rollGain = config.rollGain ?? 1.0
-  const trimHipCamber = config.trimHipCamber ?? 0.30
-  const trimLegBend   = config.trimLegBend   ?? 0.30
+  const trimHipCamber = config.trimHipCamber ?? 0.40
+  const trimLegBend   = config.trimLegBend   ?? 0.40
   const sRef          = config.sRef          ?? 0  // 0 disables α re-extraction
 
   // Build a SegmentControls vector from the solver's free variables + trim baseline.

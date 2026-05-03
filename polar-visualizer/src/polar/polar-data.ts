@@ -1710,7 +1710,10 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   name: 'A5 Inner Wing',
   type: 'Wingsuit',
   cl_alpha: 2.8,              // reduced — tapered TE has less effective lifting area
-  alpha_0: -1,
+  // Phase G.4: alpha_0 −1 → −4.  Inflated cambered fabric arm-wing has
+  // a more negative zero-lift angle than a clean section.  Adds lift at
+  // every α to bring system trim from ~120 mph back into the 95-mph target.
+  alpha_0: -4,
   cd_0: 0.05,                // fabric drag (tuned for L/D ≈ 2.87)
   k: 0.30,                   // better span efficiency than body
   cd_n: 1.0,                 // fabric broadside
@@ -1726,10 +1729,21 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
   cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
   cl_beta: -0.08,            // dihedral effect
-  cm_0: 0.03,
-  cm_alpha: -0.20,
-  cp_0: 0.23,
-  cp_alpha: 0.04,
+  // Phase G.3: cm_0 +0.03 → −0.02.  The 30° outboard TE twist is yaw
+  // geometry; the section itself is gently cambered nose-down (slack fabric
+  // pressed by airflow), so cm_0 should be slightly negative, not positive.
+  cm_0: -0.02,
+  // Phase G.3: cm_alpha −0.20 → 0.  Phase F discipline — pitch stiffness
+  // comes from lift × CP-lever-arm geometry, not from a hidden cm_alpha
+  // crutch.  The −0.20 was double-counting against the geometric stiffness.
+  cm_alpha: 0,
+  // Phase G.3: cp_0 0.23 → 0.22.  Apex-forward planform (wide LE chord at
+  // hip, narrow TE area from hip notch) is loaded fwd of 0.25c geometric QC.
+  cp_0: 0.22,
+  // Phase G.3: cp_alpha 0.04 → 0.02.  Apex-forward taper has most area
+  // forward of mid-chord; CP drifts aft only weakly with α.  Less drift
+  // than a pure rectangle.
+  cp_alpha: 0.02,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 0.30,                   // 15.0% of 2.0 m² (reduced from 0.39 via triangular planform)
@@ -1763,7 +1777,9 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   name: 'A5 Outer Wing',
   type: 'Wingsuit',
   cl_alpha: 2.6,              // lower AR, tip losses
-  alpha_0: -1,
+  // Phase G.4: alpha_0 −1 → −5.  Slightly more negative than inner wing
+  // because the wingtip panels are even more strongly cambered (hand cup).
+  alpha_0: -5,
   cd_0: 0.07,                // exposed edge — slightly higher
   k: 0.35,
   cd_n: 1.0,
@@ -1778,10 +1794,18 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   cy_beta: -0.15,
   cn_beta: 0.02,
   cl_beta: -0.10,            // strong dihedral effect (far outboard)
-  cm_0: 0.005,
-  cm_alpha: -0.15,
-  cp_0: 0.18,
-  cp_alpha: 0.03,
+  // Phase G.2: cm_0 0.005 → 0.  Hand panel is near-symmetric slack fabric;
+  // no meaningful camber moment.
+  cm_0: 0,
+  // Phase G.2: cm_alpha −0.15 → 0.  Phase F discipline — pitch stiffness
+  // from lift × CP-lever-arm only, no hidden cm_alpha crutch.
+  cm_alpha: 0,
+  // Phase G.2: cp_0 0.18 → 0.25.  Rectangular thin-airfoil canonical CP.
+  // Previous 0.18 was unrealistically forward for a flat hand panel.
+  cp_0: 0.25,
+  // Phase G.2: cp_alpha 0.03 → 0.05.  Low-AR rectangle → CP migrates aft
+  // toward area centroid (0.5c) with α (same argument as torso Phase F.2).
+  cp_alpha: 0.05,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 0.15,                   // 7.5% of 2.0 m² (each side)
