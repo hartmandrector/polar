@@ -1497,7 +1497,13 @@ const A5_CENTER_POLAR: ContinuousPolar = {
   s1_fwd: 3.7,
   alpha_stall_back: -34.5,
   s1_back: 7,
-  cy_beta: -0.9,
+  // Phase K: side-force redistribution.  cy_beta -0.9 -> -0.6.  Real torso
+  // side force in sideslip is reduced by the parachute container streamlining
+  // the back and the chest mount streamlining the front; raw broadside area
+  // overstates side force.  Bulk of the body's lateral force is moved to the
+  // leg segment where loose fabric and post-CG position make it the natural
+  // fin.  Geometric cn from cy*lever stays comparable (torso arm is +0.22).
+  cy_beta: -0.6,
   cn_beta: 0.08,
   cl_beta: -0.04,            // body only — less dihedral effect than system
   cm_0: 0.04,
@@ -1563,7 +1569,13 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   // and arm-wing roots; helps redistribute lift away from the over-lifting leg.
   cl_alpha: 2.8,
   alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
-  cd_0: 0.13,                // includes head-wake parasitic drag
+  // Phase H drag retune: 0.13 -> 0.16.  Adds parachute container + back-rig
+  // parasitic drag that the model wasn't accounting for.  Drag fwd of CG is
+  // mildly destabilizing in pitch/yaw, but matches the reference polar L/D.
+  // Phase J.2: 0.16 -> 0.13.  Top-end too slow; torso has the largest area
+  // and dominates cd_0 contribution at low α, so this is the cleanest knob
+  // for recovering top speed.  Leg drag bump is retained for yaw damping.
+  cd_0: 0.13,
   k: 0.35,
   cd_n: 1.2,
   cd_n_lateral: 1.0,
@@ -1636,8 +1648,17 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // makeWingsuitLiftingSegment).  Not done because the legBend slider already
   // provides this α offset on demand and re-trimming everything downstream would
   // be expensive.  Revisit if posture-driven trim authority becomes limiting.
-  alpha_0: -2,               // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
-  cd_0: 0.08,                // cleaner TE, no head wake
+  // Phase J: revisited — −2 → 0.  Apex-aft taper genuinely sits at lower
+  // local α than the torso; reducing leg lift redistributes some to the torso
+  // and reduces asymmetric leg-wing behavior during slow coordinated turns.
+  alpha_0: 0,                // matches legacy A5_CENTER_POLAR for trim parity (Phase B.1)
+  // Phase H drag retune: 0.08 -> 0.10.  Loose hindwing fabric + hip-junction
+  // interference drag.  Drag aft of CG is yaw-stabilizing (free damping for
+  // the 30 m/s Dutch-roll dip) and pitch-stabilizing.
+  // Phase J.2: 0.10 -> 0.09.  Small rollback paired with torso 0.16 -> 0.13
+  // to recover top-end while keeping most of the aft-of-CG yaw damping that
+  // closed the 30 m/s Dutch-roll dip.
+  cd_0: 0.09,                // cleaner TE, no head wake, but baggy fabric drag
   k: 0.25,                   // better span efficiency than torso
   cd_n: 1.2,
   cd_n_lateral: 1.0,
@@ -1653,7 +1674,12 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // posture).  Thin-airfoil estimate cm_0 ≈ −0.6 · (camber/chord).  This
   // restores some of the natural pitch-down moment that the leg-wing should
   // contribute before any pilot input.
-  cm_0: -0.03,
+  // Phase J.5: −0.03 → −0.05.  CFD pressure contours (proprietary) at α≈10°
+  // explicitly show downforce on the aft portion of the leg wing — TE produces
+  // negative pressure differential.  Slightly more negative cm_0 captures
+  // this baseline downforce.  Stays compatible with hipCamber/legBend
+  // controls which add their own cm_0 modulation on top of this baseline.
+  cm_0: -0.05,
   // Step 1 of leg-lift retune: zero out the cm_alpha "crutch" that was
   // masking the lift-arm imbalance between torso (+0.22 m) and leg (−0.32 m).
   // With this removed, system pitch stability is purely lift × lever arm,
@@ -1713,9 +1739,21 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   // Phase G.4: alpha_0 −1 → −4.  Inflated cambered fabric arm-wing has
   // a more negative zero-lift angle than a clean section.  Adds lift at
   // every α to bring system trim from ~120 mph back into the 95-mph target.
-  alpha_0: -4,
-  cd_0: 0.05,                // fabric drag (tuned for L/D ≈ 2.87)
-  k: 0.30,                   // better span efficiency than body
+  // Phase J: −4 → −3.  Slightly less aggressive baseline lift to reduce
+  // upwind/downwind asymmetry during slow coordinated turns.
+  // Phase J.4: −3 → −1.  XFLR5 spanwise distribution shows the twisted
+  // arm wing carries LESS CL than the torso (~0.42 vs 0.49 at mid-glide),
+  // i.e. the arm wing alpha_0 should be LESS negative than the torso's,
+  // not more negative.  The earlier moves were chasing system trim by
+  // over-loading the wings; lift recovery now comes from k=0.22 (lower
+  // induced drag) and slightly higher trim alpha rather than wing alpha_0.
+  alpha_0: -1,
+  // Phase J.3: cd_0 0.05 -> 0.045, k 0.30 -> 0.22.  Max L/D was sitting
+  // at ~2.7; target 2.9-3.0.  Wings dominate L/D peak (high AR cambered
+  // fabric) so trimming their induced drag is the cleanest knob.  k=0.22
+  // corresponds to span efficiency e ~0.85 at the inner-wing AR.
+  cd_0: 0.045,               // fabric drag (Phase J.3)
+  k: 0.22,                   // better span efficiency than body (Phase J.3)
   cd_n: 1.0,                 // fabric broadside
   cd_n_lateral: 0.8,
   alpha_stall_fwd: 31.5,
@@ -1726,7 +1764,13 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   s1_fwd: 2.5,
   alpha_stall_back: -34.5,
   s1_back: 7,
-  cy_beta: -0.35,             // strong side force from outboard-deflecting camber at TE
+  // Phase K: side-force redistribution.  cy_beta -0.35 -> -0.10.  Arm
+  // wings sit nearly horizontal in flight; sideslip flow doesn't see them
+  // as a vertical fin.  The little side force that remains comes from the
+  // small rolled-down TE strip near the hip junction.  Most of the wing's
+  // sideslip response is correctly captured by cl_beta (dihedral effect)
+  // not cy_beta.  Side force budget moved to torso and (mainly) leg.
+  cy_beta: -0.10,             // residual TE-strip side force only
   cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
   cl_beta: -0.08,            // dihedral effect
   // Phase G.3: cm_0 +0.03 → −0.02.  The 30° outboard TE twist is yaw
@@ -1779,9 +1823,18 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   cl_alpha: 2.6,              // lower AR, tip losses
   // Phase G.4: alpha_0 −1 → −5.  Slightly more negative than inner wing
   // because the wingtip panels are even more strongly cambered (hand cup).
-  alpha_0: -5,
+  // Phase J: −5 → −4.  Less aggressive baseline lift for smoother turns.
+  // Phase J.4: −4 → −2.  XFLR5 spanwise plot shows outer panels CL drops
+  // toward the tip (0.42 → 0.34) before a small hand-cup bump near 90% span.
+  // The earlier large negative alpha_0 was overstating wingtip lift; pulling
+  // it back to −2 keeps the cup contribution while letting the natural
+  // taper-driven CL drop appear in the system response.
+  alpha_0: -2,
   cd_0: 0.07,                // exposed edge — slightly higher
-  k: 0.35,
+  // Phase J.3: k 0.35 -> 0.28.  Outer panels have tip losses (lower e)
+  // but 0.35 was excessive; 0.28 lifts L/D peak without softening the
+  // tip-stall character.
+  k: 0.28,
   cd_n: 1.0,
   cd_n_lateral: 0.8,
   alpha_stall_fwd: 31.5,
@@ -1791,7 +1844,10 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   s1_fwd: 2.5,
   alpha_stall_back: -34.5,
   s1_back: 7,
-  cy_beta: -0.15,
+  // Phase K: side-force redistribution.  cy_beta -0.15 -> -0.04.  Hand
+  // panel is essentially flat-on in slip (no vertical extent) so generates
+  // almost no side force.  Far-outboard cl_beta carries the dihedral effect.
+  cy_beta: -0.04,
   cn_beta: 0.02,
   cl_beta: -0.10,            // strong dihedral effect (far outboard)
   // Phase G.2: cm_0 0.005 → 0.  Hand panel is near-symmetric slack fabric;

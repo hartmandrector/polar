@@ -809,6 +809,11 @@ export interface WingsuitControlConstants {
   PITCH_LEG_BEND_FWD: number
   /** Leg bend offset at full back pitch. Added to slider. */
   PITCH_LEG_BEND_BACK: number
+
+  /** Phase I: max effective sideslip injected on lifting segments at full
+   *  yaw stick [deg].  Lights up cy_β / cn_β / cl_β simultaneously, giving
+   *  natural coordinated-turn behavior and self-limiting yaw authority. */
+  YAW_BETA_INJECT_DEG: number
 }
 
 /** Default wingsuit control constants — conservative starting point. */
@@ -818,14 +823,31 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   PITCH_CL_ALPHA_DELTA: 0.2,
   PITCH_CD0_DELTA: 0.01,
 
-  YAW_BODY_Y_SHIFT: 0.03,
-  YAW_HEAD_Y_SHIFT: 0.02,
-  YAW_ROLL_COUPLING_DEG: 0.3,
+  // Phase H experiment: yaw authority redistributed.
+  //  - YAW_BODY_Y_SHIFT 0.03 -> 0 disables lateral shift on torso+leg.
+  //  - YAW_HEAD_Y_SHIFT 0.02 retained: head still shifts (it's the only
+  //    segment with a real bluff-body sideforce mechanism anyway).
+  //  - YAW_LEG_ROLL_DEG 12 retained.
+  //  - YAW_TORSO_ROLL_DEG 0 -> -12: torso rolls *opposite* sign of leg
+  //    because it sits forward of CG; same yaw direction for +yaw stick.
+  //
+  // Phase I: switched yaw mechanism to effective-β injection on the lifting
+  // segments (torso/leg/inner/outer).  Yaw stick now adds β_offset directly
+  // to each segment's local flow angle, so cy_β / cn_β / cl_β all fire
+  // simultaneously and proportionally.  Head shift, body shift, and direct
+  // roll-differential all zeroed (kept as constants for easy A/B revert).
+  YAW_BODY_Y_SHIFT: 0,
+  YAW_HEAD_Y_SHIFT: 0,
+  YAW_ROLL_COUPLING_DEG: 0,
   YAW_DIRTY_COUPLING: 0.15,
-  // Leg roll under yaw input restores yaw authority for the GPS solver
-  // during turns (lateral CP shift alone is too weak). Torso stays neutral.
-  YAW_LEG_ROLL_DEG: 12,
+  YAW_LEG_ROLL_DEG: 0,
   YAW_TORSO_ROLL_DEG: 0,
+  /** Phase I: max effective sideslip injected at full yaw stick [deg].
+   *  Phase J: 15 -> 3 (too weak in flight) -> -7.  Sign flipped because the
+   *  positive injection produced reversed control direction relative to
+   *  pilot expectation; magnitude 7 gives more authority than 3 while
+   *  staying well below the 15 that ate all the pitch-coupled headroom. */
+  YAW_BETA_INJECT_DEG: -7,
 
   ROLL_ALPHA_MAX_DEG: 3.0,
   ROLL_CL_ALPHA_DELTA: 0.15,
@@ -977,7 +999,16 @@ export function makeWingsuitLiftingSegment(
 
       // ── Local flow angles from dihedral roll ──
       const alphaLocal = alpha_deg * Math.cos(theta) + beta_deg * Math.sin(theta)
-      const betaLocal = -alpha_deg * Math.sin(theta) + beta_deg * Math.cos(theta)
+      const betaDihedral = -alpha_deg * Math.sin(theta) + beta_deg * Math.cos(theta)
+
+      // ── Phase I: yaw throttle → effective β injection ──
+      // Adds a slip angle directly to the segment's local flow before it
+      // hits the polar.  cy_β translates the segment, cn_β provides natural
+      // self-restoring yaw authority, cl_β rolls the pilot into a
+      // coordinated turn.  Replaces the legacy direct-moment mechanisms
+      // (head/body lateral shift, leg/torso roll-differential).
+      const yawTrollBeta = Math.max(-1, Math.min(1, controls.yawThrottle))
+      const betaLocal = betaDihedral + yawTrollBeta * ctrl.YAW_BETA_INJECT_DEG
 
       // ── Pitch throttle → α offset + CP shift ──
       // Decoupled from leg segment: pitch stick only adjusts the leading-edge
