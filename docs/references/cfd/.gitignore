@@ -1,0 +1,5 @@
+﻿# CFD captures contain proprietary material; keep entire folder out of git
+# except this .gitignore and the README index.
+*
+!.gitignore
+!README.md
