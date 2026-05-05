@@ -32,6 +32,9 @@ import type { InertiaComponents } from '../polar/inertia'
 const FORCE_SCALE = 0.003
 /** Velocity arrow scale: m/s → scene meters */
 const VEL_SCALE = 0.08
+/** Extra multiplier applied to canopy-mode force/velocity arrows so they
+ *  remain visible behind the canopy mesh. */
+const CANOPY_VEC_BOOST = 1.5
 /** Moment arc scale: N·m → radians of arc sweep (matches main viewer) */
 const TORQUE_SCALE = 0.002  // (reserved for future torque decomposition)
 /** Minimum arrow length to render (avoids clutter) */
@@ -420,8 +423,12 @@ export class GPSAeroOverlay {
       }
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
 
+      const vecScale = this.canopyMode ? CANOPY_VEC_BOOST : 1.0
+      const fScale = FORCE_SCALE * vecScale
+      const vScale = VEL_SCALE * vecScale
+
       // Lift
-      const liftLen = Math.abs(ps.forces.lift) * FORCE_SCALE
+      const liftLen = Math.abs(ps.forces.lift) * fScale
       if (liftLen > MIN_ARROW) {
         const dir = ps.forces.lift >= 0 ? liftDirWorld.clone() : liftDirWorld.clone().negate()
         sa.lift.setDirection(dir)
@@ -433,7 +440,7 @@ export class GPSAeroOverlay {
       }
 
       // Drag
-      const dragLen = ps.forces.drag * FORCE_SCALE
+      const dragLen = ps.forces.drag * fScale
       if (dragLen > MIN_ARROW) {
         sa.drag.setDirection(dragDirWorld)
         sa.drag.setLength(dragLen, 0.06, 0.03)
@@ -444,7 +451,7 @@ export class GPSAeroOverlay {
       }
 
       // Side force
-      const sideLen = Math.abs(ps.forces.side) * FORCE_SCALE
+      const sideLen = Math.abs(ps.forces.side) * fScale
       if (sideLen > MIN_ARROW) {
         const dir = ps.forces.side >= 0 ? sideDirWorld.clone() : sideDirWorld.clone().negate()
         sa.side.setDirection(dir)
@@ -458,7 +465,7 @@ export class GPSAeroOverlay {
       // Velocity arrow at segment
       const velNED = ps.localVelocity
       const velThree = nedToThreeJS(velNED).applyQuaternion(bodyQuat)
-      const velLen = velThree.length() * VEL_SCALE
+      const velLen = velThree.length() * vScale
       if (velLen > MIN_ARROW) {
         sa.vel.setDirection(velThree.normalize())
         sa.vel.setLength(velLen, 0.04, 0.02)

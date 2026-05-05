@@ -77,6 +77,12 @@ export interface CanopyState {
   /** Which roll method was used */
   rollMethod: RollMethod
 
+  /** Brake-force differential ΔF_b [N] implied by the transversal model when the
+   *  observed (aero) roll is used as γ in eq (7). Positive ⇒ more force on the
+   *  inboard side (i.e. brake/riser pulled on the inside of the turn). NaN when
+   *  not solved (e.g. coordinated/aero modes or invalid frame). */
+  deltaFb_N: number
+
   /** Valid estimate flag */
   valid: boolean
 }
@@ -149,6 +155,45 @@ export function fullTransversalRoll(
   return Math.atan2(B, A) + Math.asin(clampedC / mag)
 }
 
+/**
+ * Asymmetric riser/brake force differential ΔF_b implied by an observed bank
+ * angle that deviates from the coordinated-turn bank.
+ *
+ * Eq (7) as written in Nagy & Roha is degenerate when k₂, k₃ are the mass-split
+ * arms (k₂=mp/M·L, k₃=mc/M·L): both A = Gp·k₃ − Gk·k₂ and B = A/g·v²/R are
+ * identically zero (gravity & centrifugal produce no net moment about the
+ * system CG by definition). So we instead take moments about the canopy AC
+ * (top of the risers), where the pilot mass dangles ~L below:
+ *
+ *   gravity arm  = L · sin(γ)            (pilot weight, outboard when banked)
+ *   centrifugal  = L · cos(γ) · v²/R     (pilot inertia, outboard in turn)
+ *   ΔF_b · k₁    = closing moment (riser asymmetry)
+ *
+ * In a coordinated turn, tan(γ_coord) = v²/(gR) and the two cancel — ΔF_b = 0.
+ * Any deviation of γ_obs from γ_coord drives a nonzero ΔF_b. With k₁ ≈ L the
+ * line length cancels and the result reduces to the residual lateral specific
+ * force on the pilot:
+ *
+ *   ΔF_b ≈ m_p · ( g·sin(γ_obs) − (v²/R)·cos(γ_obs) )
+ *
+ * Sign: positive when γ_obs is *more* banked than coordinated, i.e. the pilot
+ * has loaded the inboard riser/brake to roll harder into the turn.
+ */
+export function solveDeltaFb(
+  observedRoll_rad: number,
+  airspeed_ms: number,
+  headingRate_radS: number,
+  pilotMass_kg: number,
+  _canopyMass_kg: number,
+  _lineLength_m: number,
+): number {
+  if (pilotMass_kg <= 0) return 0
+  const v2overR = airspeed_ms * headingRate_radS
+  const sinG = Math.sin(observedRoll_rad)
+  const cosG = Math.cos(observedRoll_rad)
+  return pilotMass_kg * (GRAVITY * sinG - v2overR * cosG)
+}
+
 // ─── Core Estimation ────────────────────────────────────────────────────────
 
 /**
@@ -165,7 +210,7 @@ export function estimateCanopyState(
     cpN: 0, cpE: 0, cpD: -config.lineLength,
     vcpN: 0, vcpE: 0, vcpD: 0,
     aoa: 0, roll: 0, phi: 0, theta: 0, psi: 0,
-    cnMag: 0, rollMethod: 'aero', valid: false,
+    cnMag: 0, rollMethod: 'aero', deltaFb_N: NaN, valid: false,
   }
 
   if (p.airspeed < config.minAirspeed) return invalid
@@ -241,6 +286,15 @@ export function estimateCanopyState(
   let roll: number
   let usedMethod: RollMethod
 
+  // ΔF_b is a *diagnostic*: it always uses the observed (aero-derived) roll
+  // as γ, independent of which method is chosen to drive the displayed roll.
+  // Computing it from a smoothed/coordinated roll would tautologically give 0
+  // (those roll values are the zero-ΔF_b solutions of eq 7).
+  const deltaFb_N = solveDeltaFb(
+    aeroRoll, vel, psiDot_radS,
+    config.pilotMass, config.canopyMass, config.lineLength,
+  )
+
   if (config.rollMethod === 'aero') {
     roll = aeroRoll
     usedMethod = 'aero'
@@ -248,7 +302,9 @@ export function estimateCanopyState(
     roll = coordinatedTurnRoll(vel, psiDot_radS)
     usedMethod = 'coordinated'
   } else if (config.rollMethod === 'full') {
-    roll = fullTransversalRoll(vel, psiDot_radS, config.pilotMass, config.canopyMass, config.lineLength)
+    // Anchor to the observed roll (the diagnostic ΔF_b above already captures
+    // the riser asymmetry implied by that bank).
+    roll = aeroRoll
     usedMethod = 'full'
   } else {
     // 'blended': during deployment (before deployEndIndex) use full transversal model
@@ -308,6 +364,7 @@ export function estimateCanopyState(
     phi, theta, psi,
     cnMag,
     rollMethod: usedMethod,
+    deltaFb_N,
     valid: true,
   }
 }

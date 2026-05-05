@@ -791,6 +791,12 @@ function updateReadout(index: number) {
     : a.aoa * r2d
   const aoaLabel = isCanopyPhase && drp?.canopyState?.valid ? 'α (Canopy)' : 'α (AOA)'
 
+  // Implied riser-force differential ΔF_b from transversal model (eq 7).
+  // Only valid in canopy phase with full/blended roll mode.
+  const cs = drp?.canopyState
+  const deltaFb_N = (isCanopyPhase && cs?.valid && Number.isFinite(cs.deltaFb_N))
+    ? cs.deltaFb_N : NaN
+
   // Deploy section HTML
   let deployHtml = ''
   if (drp && drp.subPhase !== 'pre_deploy') {
@@ -841,6 +847,7 @@ function updateReadout(index: number) {
     <div class="row"><span class="label">r (yaw)</span><span class="value">${(br?.r ?? 0).toFixed(1)} °/s</span></div>
     <div class="section">Aerodynamics</div>
     <div class="row"><span class="label">${aoaLabel}</span><span class="value">${displayAoaDeg.toFixed(1)}°</span></div>
+    ${Number.isFinite(deltaFb_N) ? `<div class="row"><span class="label">ΔF_b (riser)</span><span class="value">${deltaFb_N!.toFixed(1)} N</span></div>` : ''}
     <div class="row"><span class="label">CL</span><span class="value">${a.cl.toFixed(3)}</span></div>
     <div class="row"><span class="label">CD</span><span class="value">${a.cd.toFixed(3)}</span></div>
     <div class="row"><span class="label">L/D</span><span class="value">${ld.toFixed(2)}</span></div>
