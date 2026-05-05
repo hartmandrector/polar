@@ -52,6 +52,8 @@ const COL_ACCEL_R = 0xbb88ff  // yaw accel (pale purple)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+import type { MassSegment } from '../polar/continuous-polar'
+
 interface SegmentArrows {
   lift: THREE.ArrowHelper
   drag: THREE.ArrowHelper
@@ -68,6 +70,14 @@ export interface AeroOverlayConfig {
   inertia?: InertiaComponents
   /** System reference area [m²] for CL/CD normalization in the joint α solve. */
   sRef?: number
+  /** Inertia mass segments (used by the mass-point overlay). */
+  inertiaMassSegments?: MassSegment[]
+  /** Weight-only segments for CG marker (typically excludes buoyant air mass). */
+  massSegments?: MassSegment[]
+  /** CG offset forward of GLB bbox centre, as a fraction of body length.
+   *  Used by the mass-point overlay to align its CG sphere with the GLB skin's
+   *  true CG (sim does the same via applyCgOffset on the inner model). */
+  cgOffsetFraction?: number
 }
 
 // ─── Aero Overlay ───────────────────────────────────────────────────────────

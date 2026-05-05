@@ -14,6 +14,7 @@ import { bodyToInertialQuat } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { BodyRateAxisHelper, EulerAxisHelper } from './axis-helper'
 import { createWingsuitWireframes, type WingsuitWireframes } from '../viewer/wingsuit-wireframes'
+import { createGpsMassOverlay, type GpsMassOverlay } from './gps-mass-overlay'
 import { createCellWireframes, type CellWireframes } from '../viewer/cell-wireframes'
 import { CANOPY_GEOMETRY } from '../viewer/model-registry'
 import type { GPSPipelinePoint } from '../gps/types'
@@ -62,6 +63,8 @@ export class BodyFrameScene {
   private aeroOverlay: GPSAeroOverlay
   private canopyAeroOverlay: GPSAeroOverlay
   private wingsuitWireframes: WingsuitWireframes | null = null
+  private wingsuitMassOverlay: GpsMassOverlay | null = null
+  private wingsuitCgOffsetScene = 0
   private cellWireframes: CellWireframes | null = null
   private bodyRateAxis: BodyRateAxisHelper
   private eulerAxis: EulerAxisHelper  // shown in "all" mode
@@ -193,18 +196,26 @@ export class BodyFrameScene {
 
   setAeroConfig(config: AeroOverlayConfig) {
     this.aeroOverlay.setConfig(config)
-    // Build/refresh wingsuit segment wireframes (body-frame reference geometry).
-    // The wingsuit GLB is rendered at MODEL_SCALE so its 3.55-unit body becomes
-    // ≈2.06 scene units (visually ≈10% larger than physical pilot height).
-    // Wireframe geometry is authored in NED metres; pilotScale = 1.0 keeps it
-    // anchored at physical CG-relative positions (independent of mesh scale).
-    if (config.segments.length > 0) {
-      if (!this.wingsuitWireframes) {
-        this.wingsuitWireframes = createWingsuitWireframes()
-        this.scene.add(this.wingsuitWireframes.group)
+    // Wingsuit body mass-point overlay (replaces the old cell wireframe).
+    // Same point-mass spheres + CG marker the simulation uses.
+    if (config.segments.length > 0 && config.inertiaMassSegments && config.inertiaMassSegments.length > 0) {
+      if (!this.wingsuitMassOverlay) {
+        // pilotScale = scene-units per metre of pilot body (~2.06/1.875).
+        this.wingsuitMassOverlay = createGpsMassOverlay(2.06 / 1.875)
+        this.scene.add(this.wingsuitMassOverlay.group)
       }
-      this.wingsuitWireframes.update(config.segments, 1.0, config.height)
-      this.wingsuitWireframes.setVisible(this.glbHidden)
+      this.wingsuitMassOverlay.update(
+        config.inertiaMassSegments,
+        config.massSegments,
+        1.875,
+        config.mass,
+      )
+      const HEAD_RADIUS_M = -0.10
+      const PILOT_M_TO_SCENE = 2.06 / 1.875
+      this.wingsuitCgOffsetScene =
+        (config.cgOffsetFraction ?? 0) * (MODEL_SCALE * 3.55)
+        + HEAD_RADIUS_M * PILOT_M_TO_SCENE
+      this.wingsuitMassOverlay.setVisible(this.glbHidden)
     }
   }
 
@@ -241,6 +252,7 @@ export class BodyFrameScene {
   setGlbHidden(hidden: boolean) {
     this.glbHidden = hidden
     this.applyGlbHide()
+    if (this.wingsuitMassOverlay) this.wingsuitMassOverlay.setVisible(hidden)
     if (this.wingsuitWireframes) this.wingsuitWireframes.setVisible(hidden)
     if (this.cellWireframes) this.cellWireframes.setVisible(hidden)
   }
@@ -430,6 +442,13 @@ export class BodyFrameScene {
     if (this.wingsuitWireframes) {
       this.wingsuitWireframes.group.position.set(0, 0, 0)
       this.wingsuitWireframes.group.quaternion.copy(this.model.quaternion)
+    }
+    // Mass overlay: align CG sphere with body skin's true CG.
+    if (this.wingsuitMassOverlay) {
+      const offset = new THREE.Vector3(0, 0, -this.wingsuitCgOffsetScene)
+        .applyQuaternion(this.model.quaternion)
+      this.wingsuitMassOverlay.group.position.copy(this.model.position).add(offset)
+      this.wingsuitMassOverlay.group.quaternion.copy(this.model.quaternion)
     }
 
     // Head model — use bodyQuat for relative rotation computation

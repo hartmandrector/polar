@@ -262,6 +262,9 @@ async function loadFile(file: File) {
     mass: polar.m,
     inertia,
     sRef: polar.s,
+    inertiaMassSegments: polar.inertiaMassSegments ?? polar.massSegments,
+    massSegments: polar.massSegments,
+    cgOffsetFraction: polar.cgOffsetFraction,
   })
   bodyScene.setAeroConfig({
     segments: polar.aeroSegments ?? [],
@@ -270,6 +273,9 @@ async function loadFile(file: File) {
     mass: polar.m,
     inertia,
     sRef: polar.s,
+    inertiaMassSegments: polar.inertiaMassSegments ?? polar.massSegments,
+    massSegments: polar.massSegments,
+    cgOffsetFraction: polar.cgOffsetFraction,
   })
 
   // Canopy aero config (ibexul)
