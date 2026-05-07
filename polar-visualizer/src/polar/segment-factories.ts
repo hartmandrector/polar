@@ -818,7 +818,9 @@ export interface WingsuitControlConstants {
 
 /** Default wingsuit control constants — conservative starting point. */
 export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
-  PITCH_ALPHA_MAX_DEG: 3.5,
+  // Phase L: alpha shift removed; trim authority fully delegated to hipCamber + legBend.
+  // Neutral slider 30/80 maps to: back=-1→100/100, fwd=+1→30/15.
+  PITCH_ALPHA_MAX_DEG: 0,
   PITCH_CP_SHIFT: 0.13,
   PITCH_CL_ALPHA_DELTA: 0.2,
   PITCH_CD0_DELTA: 0.01,
@@ -862,10 +864,13 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   LEG_BEND_ALPHA0_DEG: 3,
   LEG_BEND_CM0_DELTA: 0.13,
 
-  PITCH_HIP_CAMBER_FWD: 0.24,
+  // Phase L: new position-only trim curves (slider neutral = hipCamber 0.30, legBend 0.80)
+  //   fwd (+1):  hip 0.30-0.00=0.30 (flat), leg 0.80-0.65=0.15 (dive)
+  //   back (-1): hip 0.30+0.70=1.00,            leg 0.80+0.20=1.00 (flare)
+  PITCH_HIP_CAMBER_FWD: 0.00,
   PITCH_HIP_CAMBER_BACK: 0.70,
-  PITCH_LEG_BEND_FWD: 0.30,
-  PITCH_LEG_BEND_BACK: 0.70,
+  PITCH_LEG_BEND_FWD: 0.65,
+  PITCH_LEG_BEND_BACK: 0.20,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
