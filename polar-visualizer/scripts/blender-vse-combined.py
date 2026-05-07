@@ -171,7 +171,8 @@ class POLAR_OT_combined_import(bpy.types.Operator):
         # ── Import Video (Channel 1) ────────────────────────────────────
         mp4_path = find_mp4(parent)
         if mp4_path:
-            existing_names = set(sed.sequences_all.keys())
+            _seqs = getattr(sed, 'sequences_all', None) or getattr(sed, 'sequences', None) or {}
+            existing_names = set(_seqs.keys())
 
             bpy.ops.sequencer.movie_strip_add(
                 filepath=mp4_path,
@@ -182,11 +183,12 @@ class POLAR_OT_combined_import(bpy.types.Operator):
                 sound=True,
             )
 
-            new_names = set(sed.sequences_all.keys()) - existing_names
+            _seqs = getattr(sed, 'sequences_all', None) or getattr(sed, 'sequences', None) or {}
+            new_names = set(_seqs.keys()) - existing_names
             # Find the movie strip (not the sound strip)
             video_strip = None
             for name in new_names:
-                strip = sed.sequences_all[name]
+                strip = _seqs[name]
                 if strip.type == 'MOVIE':
                     video_strip = strip
                     break
@@ -226,7 +228,8 @@ class POLAR_OT_combined_import(bpy.types.Operator):
                     f"Skipped '{preset['name']}': no PNG files in {os.path.basename(subfolder)}")
                 continue
 
-            existing_names = set(sed.sequences_all.keys())
+            _seqs = getattr(sed, 'sequences_all', None) or getattr(sed, 'sequences', None) or {}
+            existing_names = set(_seqs.keys())
 
             files = [{"name": f} for f in pngs]
             bpy.ops.sequencer.image_strip_add(
@@ -238,13 +241,13 @@ class POLAR_OT_combined_import(bpy.types.Operator):
                 fit_method='ORIGINAL',
             )
 
-            new_names = set(sed.sequences_all.keys()) - existing_names
+            new_names = set(_seqs.keys()) - existing_names
             if not new_names:
                 self.report({'WARNING'},
-                    f"Failed to create strip for '{preset['name']}'")
+                    f"Failed to create strip for '{preset['name']}'"
                 continue
 
-            strip = sed.sequences_all[new_names.pop()]
+            strip = _seqs[new_names.pop()]
             strip.name = f"polar-{preset['name'].lower().replace(' ', '-')}"
             strip.blend_type = 'ALPHA_OVER'
             strip.transform.offset_x = preset['offset_x']

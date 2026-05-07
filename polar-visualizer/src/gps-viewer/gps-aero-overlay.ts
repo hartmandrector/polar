@@ -263,13 +263,13 @@ export class GPSAeroOverlay {
     }
 
     // Evaluate segment model with trim-baseline controls so arrow forces match
-    // the solver's neutral pass.  Wingsuit trim baseline = hipCamber 0.40, legBend 0.40
+    // the solver's neutral pass.  Wingsuit trim baseline = hipCamber 0.50, legBend 0.50
     // (matches gamepad slider neutral and ControlInversionConfig defaults).
     // Canopy uses true defaults.
     this.controls = defaultControls()
     if (!this.canopyMode) {
-      this.controls.hipCamber = 0.40
-      this.controls.legBend = 0.40
+      this.controls.hipCamber = 0.50
+      this.controls.legBend = 0.50
     }
     const result = evaluateAeroForcesDetailed(
       cfg.segments, cfg.cgMeters, cfg.height,
@@ -327,8 +327,8 @@ export class GPSAeroOverlay {
         // segments with the same hipCamber/legBend the solver assumed.
         solvedControls = {
           ...defaultControls(),
-          hipCamber: solverCfg.trimHipCamber ?? 0.40,
-          legBend: solverCfg.trimLegBend ?? 0.40,
+          hipCamber: solverCfg.trimHipCamber ?? 0.50,
+          legBend: solverCfg.trimLegBend ?? 0.50,
           pitchThrottle: sol.pitchThrottle,
           rollThrottle: sol.rollThrottle,
           yawThrottle: sol.yawThrottle,

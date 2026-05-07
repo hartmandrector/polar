@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stability Analysis — a5segments</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 1.6em; color: #f0f0f0; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 24px; font-size: 0.9em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1600px; margin: 0 auto; }
+  .chart-box { background: #16213e; border-radius: 8px; padding: 16px; }
+  .chart-box.full { grid-column: 1 / -1; }
+  .chart-box h2 { font-size: 1.0em; color: #ccc; margin-bottom: 10px; }
+  canvas { width: 100% !important; }
+  .trim-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .trim-table th, .trim-table td { padding: 6px 10px; text-align: right; font-size: 0.85em; border-bottom: 1px solid #2a2a4a; }
+  .trim-table th { color: #888; font-weight: 500; }
+  .trim-table td { color: #ddd; font-variant-numeric: tabular-nums; }
+  .trim-table tr:hover td { background: #1e2d50; }
+  .stable { color: #4ade80; }
+  .unstable { color: #f87171; }
+  .legend-hint { text-align: center; color: #666; font-size: 0.8em; margin-top: 16px; }
+  
+</style>
+</head>
+<body>
+<h1>Stability Analysis — a5segments</h1>
+<div class="subtitle">
+  Mass: 77.5 kg &nbsp;│&nbsp; Ref: 1.93 m &nbsp;│&nbsp;
+  Wingsuit &nbsp;│&nbsp;
+  2026-04-30 20:53:55
+  
+</div>
+
+<div class="grid">
+
+<!-- 1. Root Locus -->
+<div class="chart-box">
+  <h2>Root Locus (σ–ω plane)</h2>
+  <canvas id="rootLocus"></canvas>
+</div>
+
+<!-- 2. Damping Ratio vs Airspeed -->
+<div class="chart-box">
+  <h2>Damping Ratio (ζ) vs Airspeed</h2>
+  <canvas id="dampingChart"></canvas>
+</div>
+
+<!-- 3. Frequency vs Airspeed -->
+<div class="chart-box">
+  <h2>Natural Frequency vs Airspeed</h2>
+  <canvas id="freqChart"></canvas>
+</div>
+
+<!-- 4. Time to Half vs Airspeed -->
+<div class="chart-box">
+  <h2>Time to Half Amplitude vs Airspeed</h2>
+  <canvas id="t2hChart"></canvas>
+</div>
+
+<!-- 5. Trim Curves -->
+<div class="chart-box">
+  <h2>Trim Conditions vs Airspeed</h2>
+  <canvas id="trimChart"></canvas>
+</div>
+
+<!-- 6. qDot (pendulum moment) -->
+<div class="chart-box">
+  <h2>Residual Pitch Moment (qDot) vs Airspeed</h2>
+  <canvas id="qdotChart"></canvas>
+</div>
+
+<!-- 7. Mode Legend -->
+<div class="chart-box full">
+  <h2>Mode Legend</h2>
+  <table class="trim-table">
+    <thead><tr><th style="text-align:left">Mode</th><th style="text-align:left">Type</th><th style="text-align:left">Description</th></tr></thead>
+    <tbody><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#e6194b;vertical-align:middle;margin-right:6px"></span> Short period</td>
+      <td style="color:#aaa">Oscillatory</td>
+      <td style="color:#999;text-align:left">Fast pitch oscillation. Determines how quickly the vehicle responds to angle-of-attack changes.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#3cb44b;vertical-align:middle;margin-right:6px"></span> Dutch roll</td>
+      <td style="color:#aaa">Oscillatory</td>
+      <td style="color:#999;text-align:left">Coupled yaw-roll oscillation. "Wagging" motion after lateral disturbances.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#4363d8;vertical-align:middle;margin-right:6px"></span> Phugoid</td>
+      <td style="color:#aaa">Oscillatory</td>
+      <td style="color:#999;text-align:left">Slow speed/altitude exchange. Long-period oscillation trading kinetic ↔ potential energy.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#f58231;vertical-align:middle;margin-right:6px"></span> Roll subsidence</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Pure roll damping. How quickly a roll disturbance dies out (non-oscillatory).</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#911eb4;vertical-align:middle;margin-right:6px"></span> Spiral</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Slow lateral divergence/convergence. Unstable spiral = turns tighten without pilot input.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#42d4f4;vertical-align:middle;margin-right:6px"></span> Heading</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Neutral yaw mode (σ≈0). No restoring force to a heading — this is normal.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#f032e6;vertical-align:middle;margin-right:6px"></span> Yaw damping</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Pure yaw damping. How quickly a yaw disturbance dies out (non-oscillatory).</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#bfef45;vertical-align:middle;margin-right:6px"></span> Lateral divergence</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Fast lateral instability. Vehicle yaws/sideslips divergently — requires active pilot control.</td>
+    </tr><tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fabed4;vertical-align:middle;margin-right:6px"></span> Slow mode</td>
+      <td style="color:#aaa">Real</td>
+      <td style="color:#999;text-align:left">Slow stable mode. Long time constant, minor dynamic significance.</td>
+    </tr></tbody>
+  </table>
+</div>
+
+<!-- 8. Trim Table -->
+<div class="chart-box full">
+  <h2>Trim Conditions Table</h2>
+  <table class="trim-table">
+    <thead><tr>
+      <th>V [m/s]</th><th>V [km/h]</th><th>α [°]</th><th>θ [°]</th><th>γ [°]</th><th>qDot [rad/s²]</th><th>Residual</th>
+    </tr></thead>
+    <tbody><tr>
+      <td>25</td>
+      <td>90.0</td>
+      <td>19.10</td>
+      <td>-2.13</td>
+      <td>-21.23</td>
+      <td>-7.531</td>
+      <td>3.6e-8</td>
+    </tr><tr>
+      <td>30</td>
+      <td>108.0</td>
+      <td>12.62</td>
+      <td>-6.10</td>
+      <td>-18.73</td>
+      <td>-6.786</td>
+      <td>1.8e-8</td>
+    </tr><tr>
+      <td>35</td>
+      <td>126.0</td>
+      <td>8.80</td>
+      <td>-9.67</td>
+      <td>-18.47</td>
+      <td>-6.267</td>
+      <td>1.9e-14</td>
+    </tr><tr>
+      <td>40</td>
+      <td>144.0</td>
+      <td>6.30</td>
+      <td>-13.35</td>
+      <td>-19.64</td>
+      <td>-5.743</td>
+      <td>5.8e-7</td>
+    </tr><tr>
+      <td>45</td>
+      <td>162.0</td>
+      <td>4.55</td>
+      <td>-17.33</td>
+      <td>-21.87</td>
+      <td>-5.164</td>
+      <td>7.4e-8</td>
+    </tr><tr>
+      <td>50</td>
+      <td>180.0</td>
+      <td>3.27</td>
+      <td>-21.72</td>
+      <td>-24.99</td>
+      <td>-4.505</td>
+      <td>7.6e-11</td>
+    </tr><tr>
+      <td>55</td>
+      <td>198.0</td>
+      <td>2.30</td>
+      <td>-26.62</td>
+      <td>-28.92</td>
+      <td>-3.742</td>
+      <td>6.6e-7</td>
+    </tr></tbody>
+  </table>
+</div>
+
+</div>
+
+<div class="legend-hint">
+  
+  &nbsp; Click legend entries to toggle &nbsp;│&nbsp; Hover for values
+</div>
+
+<script>
+const CURRENT = [{"airspeed_ms":25,"airspeed_kmh":90,"airspeed_mph":55.925000000000004,"converged":true,"residual":3.6320662436330484e-8,"alpha_deg":19.102017662036513,"theta_deg":-2.1326953737584353,"gamma_deg":-21.234713035794947,"qDot":-7.531236190343823,"modes":[{"name":"Short period","realPart":-0.7870507751838194,"imagPart":5.159339322722672,"frequency_Hz":0.8211343562997047,"period_s":1.2178274996388183,"dampingRatio":0.1508041524979716,"stable":true,"timeToHalf_s":0.8806892800506518},{"name":"Dutch roll","realPart":-0.7323106955847873,"imagPart":4.696790276829449,"frequency_Hz":0.7475173892233583,"period_s":1.3377615215600018,"dampingRatio":0.15405594470263942,"stable":true,"timeToHalf_s":0.9465206294801307},{"name":"Phugoid","realPart":-0.05980120652828815,"imagPart":0.28801307655962494,"frequency_Hz":0.0458387048095688,"period_s":21.815625117558962,"dampingRatio":0.20329763420455618,"stable":true,"timeToHalf_s":11.59085611812968},{"name":"Roll subsidence","realPart":-2.3873126341438593,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.2903462121577229},{"name":"Spiral","realPart":0.02508595645704696,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":27.630885102857285},{"name":"Heading","realPart":-5.287036243495461e-15,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null}]},{"airspeed_ms":30,"airspeed_kmh":108,"airspeed_mph":67.11,"converged":true,"residual":1.827465774863439e-8,"alpha_deg":12.624466158445856,"theta_deg":-6.102100526894524,"gamma_deg":-18.726566685340376,"qDot":-6.786313104696528,"modes":[{"name":"Short period","realPart":-0.9238509810719193,"imagPart":5.754992048877802,"frequency_Hz":0.9159354320334567,"period_s":1.0917800153007649,"dampingRatio":0.15850107060092627,"stable":true,"timeToHalf_s":0.7502802884462009},{"name":"Dutch roll","realPart":-0.1083279101450636,"imagPart":4.698696284646709,"frequency_Hz":0.7478207397890471,"period_s":1.3372188638176714,"dampingRatio":0.023048761913594805,"stable":true,"timeToHalf_s":6.39860198199837},{"name":"Phugoid","realPart":-0.05682741421432795,"imagPart":0.19587146071570882,"frequency_Hz":0.03117391118353505,"period_s":32.07810512170075,"dampingRatio":0.2786361197569765,"stable":true,"timeToHalf_s":12.197408418861006},{"name":"Roll subsidence","realPart":-4.339523559831055,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.15972886677608697},{"name":"Heading","realPart":6.331116186863994e-13,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":false,"timeToHalf_s":null},{"name":"Yaw damping","realPart":-0.020381402660793402,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":34.00880656233316}]},{"airspeed_ms":35,"airspeed_kmh":126,"airspeed_mph":78.295,"converged":true,"residual":1.8865309221807427e-14,"alpha_deg":8.800872009160443,"theta_deg":-9.672415775176153,"gamma_deg":-18.473287784336595,"qDot":-6.266963422512656,"modes":[{"name":"Short period","realPart":-1.0321645442476615,"imagPart":6.539177117676701,"frequency_Hz":1.0407423620316596,"period_s":0.9608525956874424,"dampingRatio":0.1559128906050191,"stable":true,"timeToHalf_s":0.6715471718370021},{"name":"Dutch roll","realPart":-3.77597825169871,"imagPart":3.1452735414358926,"frequency_Hz":0.5005858314956736,"period_s":1.9976594163924966,"dampingRatio":0.7683588652813838,"stable":true,"timeToHalf_s":0.18356757755374178},{"name":"Phugoid","realPart":-0.06977510966886297,"imagPart":0.1712894493056495,"frequency_Hz":0.027261562556482738,"period_s":36.68168315473914,"dampingRatio":0.37725292410605377,"stable":true,"timeToHalf_s":9.934017787280686},{"name":"Lateral divergence","realPart":2.4194077729114762,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.2864945662821539},{"name":"Heading","realPart":-3.255846259264672e-9,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":212893093.02844402},{"name":"Roll subsidence","realPart":-0.04500548024318571,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":15.401395048215154}]},{"airspeed_ms":40,"airspeed_kmh":144,"airspeed_mph":89.48,"converged":true,"residual":5.752656313097208e-7,"alpha_deg":6.295006431592461,"theta_deg":-13.349034988547766,"gamma_deg":-19.64404142014023,"qDot":-5.743079877399597,"modes":[{"name":"Short period","realPart":-1.1481082528048139,"imagPart":7.36691083901336,"frequency_Hz":1.1724802753462382,"period_s":0.8528928128063356,"dampingRatio":0.15398781122219732,"stable":true,"timeToHalf_s":0.603729812817385},{"name":"Dutch roll","realPart":-0.7214339632194435,"imagPart":6.086592980656249,"frequency_Hz":0.968711359459875,"period_s":1.0322992398453659,"dampingRatio":0.11770444336316126,"stable":true,"timeToHalf_s":0.9607908913336063},{"name":"Phugoid","realPart":-0.0835012187891421,"imagPart":0.1607151390387166,"frequency_Hz":0.025578608807712986,"period_s":39.09516766597797,"dampingRatio":0.46104563407814536,"stable":true,"timeToHalf_s":8.301042674721739},{"name":"Heading","realPart":-4.3520742565306136e-14,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null},{"name":"Roll subsidence","realPart":-4.303340244319591,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.16107189792275886},{"name":"Yaw damping","realPart":-0.06233294342776077,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":11.120077802249963}]},{"airspeed_ms":45,"airspeed_kmh":162,"airspeed_mph":100.665,"converged":true,"residual":7.425806746786972e-8,"alpha_deg":4.548685942591902,"theta_deg":-17.32503464091746,"gamma_deg":-21.87372058350936,"qDot":-5.164498790046766,"modes":[{"name":"Short period","realPart":-1.2713637014751704,"imagPart":8.211755514448097,"frequency_Hz":1.3069414815865446,"period_s":0.7651451989924316,"dampingRatio":0.1529995613330483,"stable":true,"timeToHalf_s":0.5451997565729482},{"name":"Phugoid","realPart":-0.09602521264551592,"imagPart":0.15369294135060751,"frequency_Hz":0.024460991334281947,"period_s":40.88141753267806,"dampingRatio":0.5298684826252414,"stable":true,"timeToHalf_s":7.218387353316766},{"name":"Lateral divergence","realPart":12.20925751625808,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.056772263148429564},{"name":"Yaw damping","realPart":-4.65886421285456,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.14878029255444708},{"name":"Heading","realPart":-1.8675727631034533e-11,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null},{"name":"Roll subsidence","realPart":-13.940060199470246,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.04972339937142355},{"name":"Slow mode","realPart":-0.07535762953531333,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":9.198102233764262}]},{"airspeed_ms":50,"airspeed_kmh":180,"airspeed_mph":111.85000000000001,"converged":true,"residual":7.571468867513949e-11,"alpha_deg":3.2709503411131173,"theta_deg":-21.71517120980025,"gamma_deg":-24.986121550913364,"qDot":-4.504835835822632,"modes":[{"name":"Short period","realPart":-1.3991184223153539,"imagPart":9.065579876941978,"frequency_Hz":1.442831849409732,"period_s":0.693081456726301,"dampingRatio":0.1525272220636826,"stable":true,"timeToHalf_s":0.4954170922950749},{"name":"Phugoid","realPart":-0.10779707071640147,"imagPart":0.14802700185005127,"frequency_Hz":0.023559229055508796,"period_s":42.44621068218582,"dampingRatio":0.5886754498488108,"stable":true,"timeToHalf_s":6.430111467346969},{"name":"Lateral divergence","realPart":10.787874359636387,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.06425243356127744},{"name":"Yaw damping","realPart":-5.855923630072717,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.11836684088575417},{"name":"Heading","realPart":-1.014361927786922e-10,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":6833331985.085589},{"name":"Roll subsidence","realPart":-11.983683958865527,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.05784090960168848},{"name":"Slow mode","realPart":-0.08569720997766181,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":8.088328438471029}]},{"airspeed_ms":55,"airspeed_kmh":198,"airspeed_mph":123.03500000000001,"converged":true,"residual":6.607373843921224e-7,"alpha_deg":2.2954362857729587,"theta_deg":-26.621043865429826,"gamma_deg":-28.916480151202784,"qDot":-3.741676068142116,"modes":[{"name":"Short period","realPart":-1.5296925052120294,"imagPart":9.924488820256533,"frequency_Hz":1.57953145340408,"period_s":0.6330991369908335,"dampingRatio":0.15233424532222345,"stable":true,"timeToHalf_s":0.45312844130322044},{"name":"Phugoid","realPart":-0.11904913826158708,"imagPart":0.14252386556729127,"frequency_Hz":0.022683377713599184,"period_s":44.085145194248476,"dampingRatio":0.6410714277470291,"stable":true,"timeToHalf_s":5.822362015228456},{"name":"Spiral","realPart":0.7655095498014637,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.9054716309413962},{"name":"Roll subsidence","realPart":-7.306344331053029,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.09486921901750082},{"name":"Heading","realPart":-2.5753843502229756e-12,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null},{"name":"Yaw damping","realPart":-1.1844582356148177,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.5852018751848628},{"name":"Slow mode","realPart":-0.09429001128773555,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":7.351225979226328}]}];
+const BASELINE = [];
+const CURRENT_TRACES = {"Short period":[{"v":25,"mode":{"name":"Short period","realPart":-0.7870507751838194,"imagPart":5.159339322722672,"frequency_Hz":0.8211343562997047,"period_s":1.2178274996388183,"dampingRatio":0.1508041524979716,"stable":true,"timeToHalf_s":0.8806892800506518}},{"v":30,"mode":{"name":"Short period","realPart":-0.9238509810719193,"imagPart":5.754992048877802,"frequency_Hz":0.9159354320334567,"period_s":1.0917800153007649,"dampingRatio":0.15850107060092627,"stable":true,"timeToHalf_s":0.7502802884462009}},{"v":35,"mode":{"name":"Short period","realPart":-1.0321645442476615,"imagPart":6.539177117676701,"frequency_Hz":1.0407423620316596,"period_s":0.9608525956874424,"dampingRatio":0.1559128906050191,"stable":true,"timeToHalf_s":0.6715471718370021}},{"v":40,"mode":{"name":"Short period","realPart":-1.1481082528048139,"imagPart":7.36691083901336,"frequency_Hz":1.1724802753462382,"period_s":0.8528928128063356,"dampingRatio":0.15398781122219732,"stable":true,"timeToHalf_s":0.603729812817385}},{"v":45,"mode":{"name":"Short period","realPart":-1.2713637014751704,"imagPart":8.211755514448097,"frequency_Hz":1.3069414815865446,"period_s":0.7651451989924316,"dampingRatio":0.1529995613330483,"stable":true,"timeToHalf_s":0.5451997565729482}},{"v":50,"mode":{"name":"Short period","realPart":-1.3991184223153539,"imagPart":9.065579876941978,"frequency_Hz":1.442831849409732,"period_s":0.693081456726301,"dampingRatio":0.1525272220636826,"stable":true,"timeToHalf_s":0.4954170922950749}},{"v":55,"mode":{"name":"Short period","realPart":-1.5296925052120294,"imagPart":9.924488820256533,"frequency_Hz":1.57953145340408,"period_s":0.6330991369908335,"dampingRatio":0.15233424532222345,"stable":true,"timeToHalf_s":0.45312844130322044}}],"Dutch roll":[{"v":25,"mode":{"name":"Dutch roll","realPart":-0.7323106955847873,"imagPart":4.696790276829449,"frequency_Hz":0.7475173892233583,"period_s":1.3377615215600018,"dampingRatio":0.15405594470263942,"stable":true,"timeToHalf_s":0.9465206294801307}},{"v":30,"mode":{"name":"Dutch roll","realPart":-0.1083279101450636,"imagPart":4.698696284646709,"frequency_Hz":0.7478207397890471,"period_s":1.3372188638176714,"dampingRatio":0.023048761913594805,"stable":true,"timeToHalf_s":6.39860198199837}},{"v":35,"mode":{"name":"Dutch roll","realPart":-3.77597825169871,"imagPart":3.1452735414358926,"frequency_Hz":0.5005858314956736,"period_s":1.9976594163924966,"dampingRatio":0.7683588652813838,"stable":true,"timeToHalf_s":0.18356757755374178}},{"v":40,"mode":{"name":"Dutch roll","realPart":-0.7214339632194435,"imagPart":6.086592980656249,"frequency_Hz":0.968711359459875,"period_s":1.0322992398453659,"dampingRatio":0.11770444336316126,"stable":true,"timeToHalf_s":0.9607908913336063}}],"Phugoid":[{"v":25,"mode":{"name":"Phugoid","realPart":-0.05980120652828815,"imagPart":0.28801307655962494,"frequency_Hz":0.0458387048095688,"period_s":21.815625117558962,"dampingRatio":0.20329763420455618,"stable":true,"timeToHalf_s":11.59085611812968}},{"v":30,"mode":{"name":"Phugoid","realPart":-0.05682741421432795,"imagPart":0.19587146071570882,"frequency_Hz":0.03117391118353505,"period_s":32.07810512170075,"dampingRatio":0.2786361197569765,"stable":true,"timeToHalf_s":12.197408418861006}},{"v":35,"mode":{"name":"Phugoid","realPart":-0.06977510966886297,"imagPart":0.1712894493056495,"frequency_Hz":0.027261562556482738,"period_s":36.68168315473914,"dampingRatio":0.37725292410605377,"stable":true,"timeToHalf_s":9.934017787280686}},{"v":40,"mode":{"name":"Phugoid","realPart":-0.0835012187891421,"imagPart":0.1607151390387166,"frequency_Hz":0.025578608807712986,"period_s":39.09516766597797,"dampingRatio":0.46104563407814536,"stable":true,"timeToHalf_s":8.301042674721739}},{"v":45,"mode":{"name":"Phugoid","realPart":-0.09602521264551592,"imagPart":0.15369294135060751,"frequency_Hz":0.024460991334281947,"period_s":40.88141753267806,"dampingRatio":0.5298684826252414,"stable":true,"timeToHalf_s":7.218387353316766}},{"v":50,"mode":{"name":"Phugoid","realPart":-0.10779707071640147,"imagPart":0.14802700185005127,"frequency_Hz":0.023559229055508796,"period_s":42.44621068218582,"dampingRatio":0.5886754498488108,"stable":true,"timeToHalf_s":6.430111467346969}},{"v":55,"mode":{"name":"Phugoid","realPart":-0.11904913826158708,"imagPart":0.14252386556729127,"frequency_Hz":0.022683377713599184,"period_s":44.085145194248476,"dampingRatio":0.6410714277470291,"stable":true,"timeToHalf_s":5.822362015228456}}],"Roll subsidence":[{"v":25,"mode":{"name":"Roll subsidence","realPart":-2.3873126341438593,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.2903462121577229}},{"v":30,"mode":{"name":"Roll subsidence","realPart":-4.339523559831055,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.15972886677608697}},{"v":35,"mode":{"name":"Roll subsidence","realPart":-0.04500548024318571,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":15.401395048215154}},{"v":40,"mode":{"name":"Roll subsidence","realPart":-4.303340244319591,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.16107189792275886}},{"v":45,"mode":{"name":"Roll subsidence","realPart":-13.940060199470246,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.04972339937142355}},{"v":50,"mode":{"name":"Roll subsidence","realPart":-11.983683958865527,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.05784090960168848}},{"v":55,"mode":{"name":"Roll subsidence","realPart":-7.306344331053029,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.09486921901750082}}],"Spiral":[{"v":25,"mode":{"name":"Spiral","realPart":0.02508595645704696,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":27.630885102857285}},{"v":55,"mode":{"name":"Spiral","realPart":0.7655095498014637,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.9054716309413962}}],"Heading":[{"v":25,"mode":{"name":"Heading","realPart":-5.287036243495461e-15,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null}},{"v":30,"mode":{"name":"Heading","realPart":6.331116186863994e-13,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":false,"timeToHalf_s":null}},{"v":35,"mode":{"name":"Heading","realPart":-3.255846259264672e-9,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":212893093.02844402}},{"v":40,"mode":{"name":"Heading","realPart":-4.3520742565306136e-14,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null}},{"v":45,"mode":{"name":"Heading","realPart":-1.8675727631034533e-11,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null}},{"v":50,"mode":{"name":"Heading","realPart":-1.014361927786922e-10,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":6833331985.085589}},{"v":55,"mode":{"name":"Heading","realPart":-2.5753843502229756e-12,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":0,"stable":true,"timeToHalf_s":null}}],"Yaw damping":[{"v":30,"mode":{"name":"Yaw damping","realPart":-0.020381402660793402,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":34.00880656233316}},{"v":40,"mode":{"name":"Yaw damping","realPart":-0.06233294342776077,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":11.120077802249963}},{"v":45,"mode":{"name":"Yaw damping","realPart":-4.65886421285456,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.14878029255444708}},{"v":50,"mode":{"name":"Yaw damping","realPart":-5.855923630072717,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.11836684088575417}},{"v":55,"mode":{"name":"Yaw damping","realPart":-1.1844582356148177,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":0.5852018751848628}}],"Lateral divergence":[{"v":35,"mode":{"name":"Lateral divergence","realPart":2.4194077729114762,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.2864945662821539}},{"v":45,"mode":{"name":"Lateral divergence","realPart":12.20925751625808,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.056772263148429564}},{"v":50,"mode":{"name":"Lateral divergence","realPart":10.787874359636387,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":-1,"stable":false,"timeToHalf_s":0.06425243356127744}}],"Slow mode":[{"v":45,"mode":{"name":"Slow mode","realPart":-0.07535762953531333,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":9.198102233764262}},{"v":50,"mode":{"name":"Slow mode","realPart":-0.08569720997766181,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":8.088328438471029}},{"v":55,"mode":{"name":"Slow mode","realPart":-0.09429001128773555,"imagPart":0,"frequency_Hz":0,"period_s":null,"dampingRatio":1,"stable":true,"timeToHalf_s":7.351225979226328}}]};
+const BASELINE_TRACES = {};
+const COLORS = ["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#42d4f4","#f032e6","#bfef45","#fabed4","#469990"];
+const HAS_BASELINE = false;
+
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
+
+function makeDatasets(tracesObj, colorsArr, dashed) {
+  const datasets = [];
+  let idx = 0;
+  for (const [name, points] of Object.entries(tracesObj)) {
+    const color = colorsArr[idx % colorsArr.length];
+    datasets.push({
+      label: (dashed ? '[baseline] ' : '') + name,
+      data: points,
+      borderColor: dashed ? color + '66' : color,
+      backgroundColor: dashed ? color + '66' : color,
+      borderDash: dashed ? [6, 4] : [],
+      pointRadius: dashed ? 3 : 5,
+      pointStyle: dashed ? 'triangle' : 'circle',
+      tension: 0.3,
+      hidden: dashed,  // baseline hidden by default, click legend to show
+    });
+    idx++;
+  }
+  return datasets;
+}
+
+const gridColor = 'rgba(255,255,255,0.08)';
+const tickColor = '#888';
+
+const defaultScales = {
+  x: { grid: { color: gridColor }, ticks: { color: tickColor } },
+  y: { grid: { color: gridColor }, ticks: { color: tickColor } },
+};
+
+// ─── 1. Root Locus ──────────────────────────────────────────────────────────
+
+(function() {
+  const datasets = [];
+  let idx = 0;
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
+    const color = COLORS[idx % COLORS.length];
+    datasets.push({
+      label: name,
+      data: points.map(p => ({ x: p.mode.realPart, y: Math.abs(p.mode.imagPart) })),
+      borderColor: color,
+      backgroundColor: color,
+      pointRadius: 6,
+      showLine: true,
+      tension: 0.3,
+    });
+    idx++;
+  }
+
+  if (HAS_BASELINE) {
+    idx = 0;
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
+      const color = COLORS[idx % COLORS.length] + '66';
+      datasets.push({
+        label: '[baseline] ' + name,
+        data: points.map(p => ({ x: p.mode.realPart, y: Math.abs(p.mode.imagPart) })),
+        borderColor: color,
+        backgroundColor: color,
+        borderDash: [6, 4],
+        pointRadius: 4,
+        pointStyle: 'triangle',
+        showLine: true,
+        tension: 0.3,
+        hidden: true,
+      });
+      idx++;
+    }
+  }
+
+  new Chart(document.getElementById('rootLocus'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: tickColor, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              return ctx.dataset.label + ': σ=' + p.x.toFixed(3) + ', ω=' + p.y.toFixed(3);
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'σ (real) [1/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: '|ω| (imag) [rad/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor }, beginAtZero: true },
+      },
+      // Draw stability boundary (σ=0 line)
+      annotation: { annotations: { stabilityLine: { type: 'line', xMin: 0, xMax: 0, borderColor: 'rgba(248,113,113,0.5)', borderWidth: 2, borderDash: [4,4] }}}
+    }
+  });
+})();
+
+// ─── 2. Damping Ratio vs Airspeed ───────────────────────────────────────────
+
+(function() {
+  const datasets = [];
+  let idx = 0;
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
+    const color = COLORS[idx % COLORS.length];
+    datasets.push({
+      label: name,
+      data: points.map(p => ({ x: p.v, y: p.mode.dampingRatio })),
+      borderColor: color, backgroundColor: color,
+      pointRadius: 5, showLine: true, tension: 0.3,
+    });
+    idx++;
+  }
+  if (HAS_BASELINE) {
+    idx = 0;
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
+      const color = COLORS[idx % COLORS.length] + '66';
+      datasets.push({
+        label: '[baseline] ' + name,
+        data: points.map(p => ({ x: p.v, y: p.mode.dampingRatio })),
+        borderColor: color, backgroundColor: color, borderDash: [6,4],
+        pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
+      });
+      idx++;
+    }
+  }
+
+  new Chart(document.getElementById('dampingChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, usePointStyle: true } } },
+      scales: {
+        x: { title: { display: true, text: 'Airspeed [m/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: 'ζ (damping ratio)', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+      }
+    }
+  });
+})();
+
+// ─── 3. Frequency vs Airspeed ───────────────────────────────────────────────
+
+(function() {
+  const datasets = [];
+  let idx = 0;
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
+    const color = COLORS[idx % COLORS.length];
+    datasets.push({
+      label: name,
+      data: points.map(p => ({ x: p.v, y: p.mode.frequency_Hz })),
+      borderColor: color, backgroundColor: color,
+      pointRadius: 5, showLine: true, tension: 0.3,
+    });
+    idx++;
+  }
+  if (HAS_BASELINE) {
+    idx = 0;
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
+      const color = COLORS[idx % COLORS.length] + '66';
+      datasets.push({
+        label: '[baseline] ' + name,
+        data: points.map(p => ({ x: p.v, y: p.mode.frequency_Hz })),
+        borderColor: color, backgroundColor: color, borderDash: [6,4],
+        pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
+      });
+      idx++;
+    }
+  }
+
+  new Chart(document.getElementById('freqChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, usePointStyle: true } } },
+      scales: {
+        x: { title: { display: true, text: 'Airspeed [m/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: 'Frequency [Hz]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor }, beginAtZero: true },
+      }
+    }
+  });
+})();
+
+// ─── 4. Time to Half vs Airspeed ────────────────────────────────────────────
+
+(function() {
+  const datasets = [];
+  let idx = 0;
+  for (const [name, points] of Object.entries(CURRENT_TRACES)) {
+    const color = COLORS[idx % COLORS.length];
+    datasets.push({
+      label: name,
+      data: points.map(p => ({ x: p.v, y: Math.min(p.mode.timeToHalf_s, 30) })),  // cap at 30s for readability
+      borderColor: color, backgroundColor: color,
+      pointRadius: 5, showLine: true, tension: 0.3,
+    });
+    idx++;
+  }
+  if (HAS_BASELINE) {
+    idx = 0;
+    for (const [name, points] of Object.entries(BASELINE_TRACES)) {
+      const color = COLORS[idx % COLORS.length] + '66';
+      datasets.push({
+        label: '[baseline] ' + name,
+        data: points.map(p => ({ x: p.v, y: Math.min(p.mode.timeToHalf_s, 30) })),
+        borderColor: color, backgroundColor: color, borderDash: [6,4],
+        pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
+      });
+      idx++;
+    }
+  }
+
+  new Chart(document.getElementById('t2hChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, usePointStyle: true } } },
+      scales: {
+        x: { title: { display: true, text: 'Airspeed [m/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: 'T½ [s] (capped at 30)', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor }, beginAtZero: true },
+      }
+    }
+  });
+})();
+
+// ─── 5. Trim Curves ─────────────────────────────────────────────────────────
+
+(function() {
+  const datasets = [
+    { label: 'α (angle of attack)', data: CURRENT.map(p => ({x: p.airspeed_ms, y: p.alpha_deg})), borderColor: '#e6194b', backgroundColor: '#e6194b', pointRadius: 5, showLine: true, tension: 0.3 },
+    { label: 'θ (pitch angle)', data: CURRENT.map(p => ({x: p.airspeed_ms, y: p.theta_deg})), borderColor: '#3cb44b', backgroundColor: '#3cb44b', pointRadius: 5, showLine: true, tension: 0.3 },
+    { label: 'γ (flight path)', data: CURRENT.map(p => ({x: p.airspeed_ms, y: p.gamma_deg})), borderColor: '#4363d8', backgroundColor: '#4363d8', pointRadius: 5, showLine: true, tension: 0.3 },
+  ];
+
+  if (HAS_BASELINE && BASELINE.length) {
+    datasets.push(
+      { label: '[baseline] α', data: BASELINE.map(p => ({x: p.airspeed_ms, y: p.alpha_deg})), borderColor: '#e6194b66', backgroundColor: '#e6194b66', borderDash: [6,4], pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true },
+      { label: '[baseline] θ', data: BASELINE.map(p => ({x: p.airspeed_ms, y: p.theta_deg})), borderColor: '#3cb44b66', backgroundColor: '#3cb44b66', borderDash: [6,4], pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true },
+      { label: '[baseline] γ', data: BASELINE.map(p => ({x: p.airspeed_ms, y: p.gamma_deg})), borderColor: '#4363d866', backgroundColor: '#4363d866', borderDash: [6,4], pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true },
+    );
+  }
+
+  new Chart(document.getElementById('trimChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, usePointStyle: true } } },
+      scales: {
+        x: { title: { display: true, text: 'Airspeed [m/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: 'Angle [°]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+      }
+    }
+  });
+})();
+
+// ─── 6. qDot vs Airspeed ────────────────────────────────────────────────────
+
+(function() {
+  const datasets = [
+    { label: 'qDot (current)', data: CURRENT.map(p => ({x: p.airspeed_ms, y: p.qDot})), borderColor: '#f58231', backgroundColor: '#f58231', pointRadius: 5, showLine: true, tension: 0.3 },
+  ];
+
+  if (HAS_BASELINE && BASELINE.length) {
+    datasets.push({
+      label: 'qDot (baseline)', data: BASELINE.map(p => ({x: p.airspeed_ms, y: p.qDot})),
+      borderColor: '#f5823166', backgroundColor: '#f5823166',
+      borderDash: [6,4], pointRadius: 3, pointStyle: 'triangle', showLine: true, tension: 0.3, hidden: true,
+    });
+  }
+
+  new Chart(document.getElementById('qdotChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, usePointStyle: true } } },
+      scales: {
+        x: { title: { display: true, text: 'Airspeed [m/s]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { title: { display: true, text: 'qDot [rad/s²]', color: tickColor }, grid: { color: gridColor }, ticks: { color: tickColor } },
+      }
+    }
+  });
+})();
+
+</script>
+</body>
+</html>

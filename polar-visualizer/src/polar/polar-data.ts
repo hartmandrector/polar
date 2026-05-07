@@ -1576,12 +1576,14 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   // and dominates cd_0 contribution at low α, so this is the cleanest knob
   // for recovering top speed.  Leg drag bump is retained for yaw damping.
   cd_0: 0.13,
-  k: 0.35,
-  cd_n: 1.2,
+  k: 0.50,
+  // Phase K: cd_n 1.2 → 0.6.  Torso in deep stall presents a blended
+  // frontal+ventral area (back rig, container) — less broadside than a flat plate.
+  cd_n: 0.6,
   cd_n_lateral: 1.0,
-  // Step 2: 28→38 — give flare margin, match leg stall angle.
-  alpha_stall_fwd: 38,
-  s1_fwd: 5,                 // gentle bluff-body stall
+  // Phase K: 31.5→45 — leading-edge segment; late stall matches arm-wing geometry.
+  alpha_stall_fwd: 45,
+  s1_fwd: 3,                 // sharper bluff-body stall break
   alpha_stall_back: -30,
   s1_back: 7,
   cy_beta: -0.9,
@@ -1591,7 +1593,7 @@ const A5_TORSO_POLAR: ContinuousPolar = {
   // Per-segment cm carries only the local airfoil camber moment.  Start at 0
   // and re-introduce small terms only if calibration sweeps require them.
   cm_0: 0,
-  cm_alpha: 0,
+  cm_alpha: -0.10,           // Phase K: restore pitch stiffness at center LE, largest in taper
   cp_0: 0.30,                // CP fwd of geometric center
   // Phase F.2: bumped 0.025 → 0.05.  Low-AR rectangular panel → CP migrates
   // toward the area centroid (0.5c) as α grows.  Stronger aft drift than the
@@ -1659,10 +1661,11 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // to recover top-end while keeping most of the aft-of-CG yaw damping that
   // closed the 30 m/s Dutch-roll dip.
   cd_0: 0.09,                // cleaner TE, no head wake, but baggy fabric drag
-  k: 0.25,                   // better span efficiency than torso
+  k: 0.32,                   // better span efficiency than torso
   cd_n: 1.2,
   cd_n_lateral: 1.0,
-  alpha_stall_fwd: 38,        // late stall, post-stall lift retention
+  // Phase K: 38→27 — tail (leg) segment stalls earlier to shape the polar.
+  alpha_stall_fwd: 27,        // tail segment — earlier stall for correct lift distribution
   s1_fwd: 3.5,               // sharper stall break
   alpha_stall_back: -34.5,
   s1_back: 7,
@@ -1680,11 +1683,8 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // this baseline downforce.  Stays compatible with hipCamber/legBend
   // controls which add their own cm_0 modulation on top of this baseline.
   cm_0: -0.05,
-  // Step 1 of leg-lift retune: zero out the cm_alpha "crutch" that was
-  // masking the lift-arm imbalance between torso (+0.22 m) and leg (−0.32 m).
-  // With this removed, system pitch stability is purely lift × lever arm,
-  // so the real over-lift on the leg becomes visible for tuning.
-  cm_alpha: 0,
+  // Phase K: restore pitch stiffness on leg — slightly less than torso in center taper.
+  cm_alpha: -0.08,
   cp_0: 0.40,                // aft CP (wide trailing flare)
   // Phase F.3: sign flip 0.025 → −0.04.  Apex-aft taper (wide LE at hip,
   // narrow TE at feet) means more area is forward of geometric mid-chord
@@ -1756,7 +1756,8 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   k: 0.22,                   // better span efficiency than body (Phase J.3)
   cd_n: 1.0,                 // fabric broadside
   cd_n_lateral: 0.8,
-  alpha_stall_fwd: 31.5,
+  // Phase K: 31.5→45 — leading-edge segment; late stall matches torso and outer wing.
+  alpha_stall_fwd: 45,
   // Phase F.5: 3.7 → 2.5 — sharper stall break.  Cambered moderate-AR arm
   // panels are the closest thing in the model to a real airfoil and should
   // drive the system stall character.  Body and leg keep their gentler
@@ -1777,10 +1778,8 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   // geometry; the section itself is gently cambered nose-down (slack fabric
   // pressed by airflow), so cm_0 should be slightly negative, not positive.
   cm_0: -0.02,
-  // Phase G.3: cm_alpha −0.20 → 0.  Phase F discipline — pitch stiffness
-  // comes from lift × CP-lever-arm geometry, not from a hidden cm_alpha
-  // crutch.  The −0.20 was double-counting against the geometric stiffness.
-  cm_alpha: 0,
+  // Phase K: restore pitch stiffness on inner wings — moderate taper from center.
+  cm_alpha: 0.05,
   // Phase G.3: cp_0 0.23 → 0.22.  Apex-forward planform (wide LE chord at
   // hip, narrow TE area from hip notch) is loaded fwd of 0.25c geometric QC.
   cp_0: 0.22,
@@ -1837,7 +1836,8 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   k: 0.28,
   cd_n: 1.0,
   cd_n_lateral: 0.8,
-  alpha_stall_fwd: 31.5,
+  // Phase K: 31.5→45 — leading-edge segment; late stall matches torso and inner wing.
+  alpha_stall_fwd: 45,
   // Phase F.5: 3.7 → 2.5 — sharper stall break, matching inner wing.
   // Tip stall traditionally arrives first in real wings; keeping inner
   // and outer s1 in lockstep gives a clean coordinated break.
@@ -1853,9 +1853,8 @@ const A5_OUTER_WING_POLAR: ContinuousPolar = {
   // Phase G.2: cm_0 0.005 → 0.  Hand panel is near-symmetric slack fabric;
   // no meaningful camber moment.
   cm_0: 0,
-  // Phase G.2: cm_alpha −0.15 → 0.  Phase F discipline — pitch stiffness
-  // from lift × CP-lever-arm only, no hidden cm_alpha crutch.
-  cm_alpha: 0,
+  // Phase K: restore small pitch stiffness at tips — lightest in taper.
+  cm_alpha: 0.02,
   // Phase G.2: cp_0 0.18 → 0.25.  Rectangular thin-airfoil canonical CP.
   // Previous 0.18 was unrealistically forward for a flat hand panel.
   cp_0: 0.25,

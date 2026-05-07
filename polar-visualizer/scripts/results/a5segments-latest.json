@@ -1,0 +1,610 @@
+{
+  "polar": "a5segments",
+  "mass_kg": 77.5,
+  "referenceLength_m": 1.93,
+  "isWingsuit": true,
+  "timestamp": "2026-05-04 04:48:12",
+  "speeds": [
+    {
+      "airspeed_ms": 25,
+      "airspeed_kmh": 90,
+      "airspeed_mph": 55.925000000000004,
+      "converged": true,
+      "residual": 2.7469397650374425e-11,
+      "alpha_deg": 21.339790681382816,
+      "theta_deg": 1.278952075610007,
+      "gamma_deg": -20.06083860577281,
+      "qDot": -7.827397808053145,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -0.7089880870970848,
+          "imagPart": 4.7823241140697474,
+          "frequency_Hz": 0.7611305222217695,
+          "period_s": 1.3138351055492576,
+          "dampingRatio": 0.1466489751828586,
+          "stable": true,
+          "timeToHalf_s": 0.9776570201595357
+        },
+        {
+          "name": "Dutch roll",
+          "realPart": -0.8165845580258175,
+          "imagPart": 4.252829163308165,
+          "frequency_Hz": 0.6768587834658639,
+          "period_s": 1.4774130504438272,
+          "dampingRatio": 0.1885651997341862,
+          "stable": true,
+          "timeToHalf_s": 0.8488369927490478
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.0896048138445374,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 7.735602037659964
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -0.09971168808992102,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 6.951513847953893
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.04275018067166503,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 16.21390061210585
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -2.4132396993690572,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.28722682655235987
+        },
+        {
+          "name": "Heading",
+          "realPart": 1.3713855638921084e-16,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": false,
+          "timeToHalf_s": null
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 30,
+      "airspeed_kmh": 108,
+      "airspeed_mph": 67.11,
+      "converged": true,
+      "residual": 2.160490599964732e-9,
+      "alpha_deg": 14.349526239200319,
+      "theta_deg": -3.7268141624337194,
+      "gamma_deg": -18.07634040163404,
+      "qDot": -8.190340628287077,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -0.7152330018607944,
+          "imagPart": 5.162260906113442,
+          "frequency_Hz": 0.8215993407380009,
+          "period_s": 1.2171382697334576,
+          "dampingRatio": 0.1372393642605737,
+          "stable": true,
+          "timeToHalf_s": 0.9691208022513093
+        },
+        {
+          "name": "Dutch roll",
+          "realPart": -0.9312280546028069,
+          "imagPart": 5.0065556574140135,
+          "frequency_Hz": 0.796818080742134,
+          "period_s": 1.2549916024353114,
+          "dampingRatio": 0.1828653701923704,
+          "stable": true,
+          "timeToHalf_s": 0.7443366607501861
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.18989525803248578,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 3.650155289508952
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -0.22354454034480878,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 3.1007117395521835
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -3.103185294805119,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.22336635254114762
+        },
+        {
+          "name": "Heading",
+          "realPart": -8.520094352260088e-15,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": true,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.004692894730832913,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 147.70141252175986
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 35,
+      "airspeed_kmh": 126,
+      "airspeed_mph": 78.295,
+      "converged": true,
+      "residual": 2.9547053468176297e-7,
+      "alpha_deg": 10.203006701655548,
+      "theta_deg": -7.961483808052723,
+      "gamma_deg": -18.164490509708273,
+      "qDot": -8.64680578909859,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -1.0280611404135673,
+          "imagPart": 5.877778464947683,
+          "frequency_Hz": 0.9354774970955165,
+          "period_s": 1.0689728006337018,
+          "dampingRatio": 0.17229088169361845,
+          "stable": true,
+          "timeToHalf_s": 0.6742275856094578
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.1527660216217982,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 4.537312507070224
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.23551953956694655,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 2.943055942765708
+        },
+        {
+          "name": "Lateral divergence",
+          "realPart": 2.9485258351581574,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 0.23508262070994038
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -1.7618456732465924,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.3934210533222626
+        },
+        {
+          "name": "Heading",
+          "realPart": -5.830891325331322e-12,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": true,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -6.284100581232955,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.11030173237996586
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.03191571870370135,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 21.718050186961925
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 40,
+      "airspeed_kmh": 144,
+      "airspeed_mph": 89.48,
+      "converged": true,
+      "residual": 6.478027756463097e-11,
+      "alpha_deg": 7.485637570650639,
+      "theta_deg": -12.114027156010463,
+      "gamma_deg": -19.599664726661103,
+      "qDot": -9.127682763907437,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -1.1384520200277373,
+          "imagPart": 6.742158887119607,
+          "frequency_Hz": 1.0730479139960374,
+          "period_s": 0.9319248348156174,
+          "dampingRatio": 0.16649876427633417,
+          "stable": true,
+          "timeToHalf_s": 0.608850586907525
+        },
+        {
+          "name": "Dutch roll",
+          "realPart": 1.8127729719454635,
+          "imagPart": 4.44501575490825,
+          "frequency_Hz": 0.7074462295150008,
+          "period_s": 1.4135349914658013,
+          "dampingRatio": -0.37762570956319597,
+          "stable": false,
+          "timeToHalf_s": 0.3823684439734676
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.12975590650861454,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 5.341931625393307
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -0.25002515142755866,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 2.7723098120421503
+        },
+        {
+          "name": "Heading",
+          "realPart": 2.8427926679341908e-11,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": false,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -9.332817270760778,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.07426987590676812
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.051709134081867544,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 13.404733861188483
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 45,
+      "airspeed_kmh": 162,
+      "airspeed_mph": 100.665,
+      "converged": true,
+      "residual": 4.23106414976291e-9,
+      "alpha_deg": 5.592431964277728,
+      "theta_deg": -16.464072951510087,
+      "gamma_deg": -22.056504915787812,
+      "qDot": -9.629827549412742,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -1.2572712357561573,
+          "imagPart": 7.600467370875811,
+          "frequency_Hz": 1.2096519518835471,
+          "period_s": 0.8266840709370176,
+          "dampingRatio": 0.16320239910043635,
+          "stable": true,
+          "timeToHalf_s": 0.5513107759465026
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.11089815952823048,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 6.250303733701696
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.2636704991280029,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 2.628838580168373
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -4.163056843149054,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.1664995715109259
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -17.812380788700974,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.038913786359184126
+        },
+        {
+          "name": "Lateral divergence",
+          "realPart": 15.629877616095643,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 0.04434757568710215
+        },
+        {
+          "name": "Heading",
+          "realPart": -8.404121842886525e-11,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": true,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.06678714276394435,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 10.378452376827044
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 50,
+      "airspeed_kmh": 180,
+      "airspeed_mph": 111.85000000000001,
+      "converged": true,
+      "residual": 7.503700109160407e-7,
+      "alpha_deg": 4.206613907727253,
+      "theta_deg": -21.175006397141775,
+      "gamma_deg": -25.381620304869028,
+      "qDot": -10.145032443503382,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -1.3810109833956754,
+          "imagPart": 8.454967676892542,
+          "frequency_Hz": 1.345649899459647,
+          "period_s": 0.7431353433025599,
+          "dampingRatio": 0.16120103686485468,
+          "stable": true,
+          "timeToHalf_s": 0.5019128659321827
+        },
+        {
+          "name": "Phugoid",
+          "realPart": -2.6821746490712486,
+          "imagPart": 0.8411522159420989,
+          "frequency_Hz": 0.13387353305988642,
+          "period_s": 7.469736378382307,
+          "dampingRatio": 0.9541784212785046,
+          "stable": true,
+          "timeToHalf_s": 0.2584273103915735
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.0938335010016915,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 7.386990500838824
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -0.2761045695876885,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 2.510451679937907
+        },
+        {
+          "name": "Heading",
+          "realPart": -4.8155035514696465e-11,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": true,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -1.6364963834753299,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.42355558347642047
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.07883758563108877,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 8.79209040981349
+        }
+      ]
+    },
+    {
+      "airspeed_ms": 55,
+      "airspeed_kmh": 198,
+      "airspeed_mph": 123.03500000000001,
+      "converged": true,
+      "residual": 4.641608062574043e-7,
+      "alpha_deg": 3.1471593026952758,
+      "theta_deg": -26.380605962878562,
+      "gamma_deg": -29.527765265573834,
+      "qDot": -10.659037758086203,
+      "modes": [
+        {
+          "name": "Short period",
+          "realPart": -1.5076943440943449,
+          "imagPart": 9.307036619640865,
+          "frequency_Hz": 1.4812608835531278,
+          "period_s": 0.6751005248996257,
+          "dampingRatio": 0.15991047129139613,
+          "stable": true,
+          "timeToHalf_s": 0.4597398559429571
+        },
+        {
+          "name": "Dutch roll",
+          "realPart": -2.9080102493018254,
+          "imagPart": 8.037347778729385,
+          "frequency_Hz": 1.2791836283334468,
+          "period_s": 0.7817485917192558,
+          "dampingRatio": 0.340227586891853,
+          "stable": true,
+          "timeToHalf_s": 0.2383578877434702
+        },
+        {
+          "name": "Spiral",
+          "realPart": 0.07720836615592161,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": -1,
+          "stable": false,
+          "timeToHalf_s": 8.97761751828993
+        },
+        {
+          "name": "Yaw damping",
+          "realPart": -0.28713919017096545,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 2.4139762327365997
+        },
+        {
+          "name": "Heading",
+          "realPart": -3.0263569428257142e-12,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 0,
+          "stable": true,
+          "timeToHalf_s": null
+        },
+        {
+          "name": "Roll subsidence",
+          "realPart": -1.8504500250154758,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 0.3745830317974398
+        },
+        {
+          "name": "Slow mode",
+          "realPart": -0.08889083771591474,
+          "imagPart": 0,
+          "frequency_Hz": 0,
+          "period_s": null,
+          "dampingRatio": 1,
+          "stable": true,
+          "timeToHalf_s": 7.79773482139033
+        }
+      ]
+    }
+  ]
+}

@@ -164,7 +164,9 @@ class POLAR_OT_import_overlays(bpy.types.Operator):
                 continue
 
             # Record existing strip names so we can find the newly created one
-            existing_names = set(sed.sequences_all.keys())
+            # sequences_all removed in Blender 4.x; fall back to sequences safely
+            _seqs = getattr(sed, 'sequences_all', None) or getattr(sed, 'sequences', None) or {}
+            existing_names = set(_seqs.keys())
 
             # Import image sequence
             files = [{"name": f} for f in pngs]
@@ -178,13 +180,14 @@ class POLAR_OT_import_overlays(bpy.types.Operator):
             )
 
             # Find the new strip
-            new_names = set(sed.sequences_all.keys()) - existing_names
+            _seqs = getattr(sed, 'sequences_all', None) or getattr(sed, 'sequences', None) or {}
+            new_names = set(_seqs.keys()) - existing_names
             if not new_names:
                 self.report({'WARNING'},
                     f"Failed to create strip for '{preset['name']}'")
                 continue
 
-            strip = sed.sequences_all[new_names.pop()]
+            strip = _seqs[new_names.pop()]
 
             # Rename strip for clarity
             strip.name = f"polar-{preset['name'].lower().replace(' ', '-')}"
