@@ -481,6 +481,24 @@ The same throttle mechanism is used in both the **interactive polar visualizer**
 
 ---
 
+### 7-Segment Trim System (Hip Camber + Leg Bend)
+
+![7-segment wingsuit in trim — mass points, force vectors, hip camber and leg bend controls](polar-visualizer/docs/gifs/7-seg-mass-hip-trim.gif)
+
+The 7-segment model replaces single-segment Kirchhoff CP morphing with a physically motivated **posture-driven trim** system. Earlier single-segment implementations had to shift the center of pressure across a large chord range to balance pitch — which was numerically stable but lacked physical intuition and produced a narrow trim range.
+
+With the torso/leg wing split, pitch trim comes from **geometry and posture, not CP migration**:
+
+- **Hip camber** arches the torso upward, rotating the torso segment to a higher effective α while simultaneously dropping the leg wing. The leg sits aft of the CG — less lift there means less nose-down moment, trimming the pilot nose-up.
+- **Leg bend** independently deflects the leg wing further down, exposing it to a lower effective α and reducing its lift contribution further.
+- The arm wings (L1/R1) receive a small sympathetic α shift (~1.5°) from posture — rib-2 camber tightens at the hip-junction as the arch increases, adding a small lift increment that helps close the trim at lower speeds.
+
+The **pitch stick** on the gamepad biases both hip camber and leg bend together (Phase D.2 / L), so the pilot can sweep from dive posture (legs extended, hips flat) to flare posture (legs bent, hips arched) with a single axis.
+
+Because each segment has its own polar and fixed spatial position, trim stability is set entirely by **lift × lever arm** geometry — no artificial CP offsets are needed. The result is a broader trim range, smoother gamepad response, and more predictable segment-by-segment force breakdown for tuning.
+
+---
+
 ### Canopy Brake Controls & Flap Segments
 
 ![Effect of canopy brakes on per-segment forces](polar-visualizer/docs/gifs/effect-canopy%20brakes.gif)
