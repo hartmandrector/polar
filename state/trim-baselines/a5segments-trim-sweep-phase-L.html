@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>🐻‍❄️ Trim Sweep — a5segments</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px; background: #1a1a2e; color: #e0e0e0; }
+  h1 { color: #4fc3f7; margin: 0 0 4px 0; font-size: 1.6em; font-weight: 600; }
+  .subtitle { color: #90a4ae; font-size: 0.9em; margin-bottom: 4px; }
+  .meta { color: #90a4ae; margin-bottom: 24px; font-size: 0.85em; font-family: 'Courier New', monospace; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(380px, 1fr)); gap: 18px; max-width: 1600px; }
+  .panel { background: #16213e; border-radius: 8px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  .panel h3 { margin: 0 0 4px 0; font-size: 1em; color: #81d4fa; font-weight: 600; }
+  .panel .desc { color: #90a4ae; font-size: 0.8em; margin-bottom: 10px; line-height: 1.4; }
+  table.heat { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.82em; font-family: 'Courier New', monospace; }
+  table.heat th, table.heat td { padding: 0.35em 0.5em; text-align: center; border: 1px solid #0f1626; }
+  table.heat th { background: #0f1626; color: #4fc3f7; font-weight: 600; font-size: 0.85em; }
+  table.heat th.row-label { background: #0f1626; text-align: right; color: #4fc3f7; }
+  table.heat td { position: relative; cursor: default; color: #1a1a2e; font-weight: 600; }
+  table.heat td:hover { outline: 2px solid #4fc3f7; outline-offset: -2px; z-index: 2; }
+  table.heat td:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 110%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f1626;
+    color: #e0e0e0;
+    padding: 0.6em 0.9em;
+    border-radius: 4px;
+    font-size: 0.78em;
+    font-family: 'Courier New', monospace;
+    font-weight: normal;
+    white-space: pre;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.6);
+    border: 1px solid #2a2a4a;
+    text-align: left;
+  }
+  .footnote { color: #607080; font-size: 0.75em; margin-top: 28px; text-align: center; font-family: 'Courier New', monospace; }
+  .footnote a { color: #4fc3f7; text-decoration: none; }
+</style>
+</head>
+<body>
+<h1>🐻‍❄️ Trim Sweep — a5segments</h1>
+<div class="subtitle">Polar Claw · 6DOF flight dynamics</div>
+<div class="meta">
+  Mass 77.5 kg &nbsp;│&nbsp; reference length 1.930 m &nbsp;│&nbsp;
+  8 speeds × 5 pitch settings = 40 trim points
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h3>Trim &alpha; [deg]</h3>
+    <div class="desc">Steady-flight angle of attack at each (speed, pitch throttle) point.</div>
+    <div id="heat-alpha"></div>
+  </div>
+  <div class="panel">
+    <h3>Glide ratio (L/D)</h3>
+    <div class="desc">Computed from flight-path angle: L/D = 1 / tan(|&gamma;|). Real wingsuit ceiling ≈ 3:1.</div>
+    <div id="heat-ld"></div>
+  </div>
+  <div class="panel">
+    <h3>Short-period damping &zeta;</h3>
+    <div class="desc">Pitch oscillation damping. &zeta; ≥ 0.1 is comfortably damped.</div>
+    <div id="heat-sp"></div>
+  </div>
+  <div class="panel">
+    <h3>Dutch-roll damping &zeta;</h3>
+    <div class="desc">Coupled yaw-roll oscillation. — means mode wasn't oscillatory at this trim.</div>
+    <div id="heat-dr"></div>
+  </div>
+  <div class="panel">
+    <h3>Worst lateral &sigma; [1/s]</h3>
+    <div class="desc">Most divergent non-pitch real eigenvalue. &gt;0 means unstable; cell tooltip names the mode.</div>
+    <div id="heat-lat"></div>
+  </div>
+  <div class="panel">
+    <h3>Pendulum moment qDot [rad/s²]</h3>
+    <div class="desc">Residual pitch acceleration after translational trim. Negative = nose-down moment (pendulum stabilises).</div>
+    <div id="heat-qdot"></div>
+  </div>
+</div>
+
+<h2 style="color:#81d4fa; font-size:1.15em; margin: 28px 0 6px 0; font-weight:600;">3-DOF Longitudinal Trim (uDot = wDot = qDot = 0)</h2>
+<div style="color:#90a4ae; font-size:0.85em; margin-bottom: 10px; max-width: 900px;">
+  Solves &alpha;, &theta;, <em>and</em> pitchThrottle simultaneously so the model holds true steady longitudinal flight at each airspeed.
+  Pitch throttle outside [&minus;1, +1] (highlighted) means the trim is beyond available control authority &mdash;
+  the pendulum or pilot input would have to make up the difference in real flight.
+</div>
+<div class="panel" style="max-width: 1200px;">
+  <table class="heat" id="full-trim-table">
+    <thead>
+      <tr>
+        <th>V (m/s)</th><th>pT</th><th>&alpha; [°]</th><th>&theta; [°]</th><th>&gamma; [°]</th>
+        <th>L/D</th><th>SP &zeta;</th><th>DR &zeta;</th><th>lat &sigma;</th>
+      </tr>
+    </thead>
+    <tbody id="full-trim-body"></tbody>
+  </table>
+</div>
+
+<div class="footnote">Generated 2026-05-07T01:34:53.470Z &nbsp;·&nbsp; 🐻‍❄️ Polar Claw</div>
+
+<script>
+const DATA = {"polar":"a5segments","mass":77.5,"refLength":1.93,"speeds":[25,32.857142857142854,40.714285714285715,48.57142857142857,56.42857142857143,64.28571428571428,72.14285714285714,80],"pitches":[-1,-0.5,0,0.5,1],"fullTrim":[{"airspeed_ms":25,"converged":false,"alphaDeg":21.59971228183615,"thetaDeg":-2.811266146075305,"gammaDeg":-24.410978427911452,"pitchThrottle":-1.0282918079022318,"glideRatio":null,"residual":0.2986365469561255,"iterations":6,"shortPeriodZeta":null,"shortPeriodFreqHz":null,"dutchRollZeta":null,"worstLateralSigma":null,"worstLateralLabel":"stable"},{"airspeed_ms":32.857142857142854,"converged":true,"alphaDeg":12.098011377127888,"thetaDeg":-8.089417648285693,"gammaDeg":-20.18742902541358,"pitchThrottle":-0.8885503554899502,"glideRatio":2.719761677414652,"residual":2.7758053947281163e-8,"iterations":6,"shortPeriodZeta":0.05255284598083129,"shortPeriodFreqHz":0.9381004099123226,"dutchRollZeta":0.2242675269462297,"worstLateralSigma":-4.160765065819305e-10,"worstLateralLabel":"Heading"},{"airspeed_ms":40.714285714285715,"converged":true,"alphaDeg":7.506866150968167,"thetaDeg":-14.174234662851699,"gammaDeg":-21.681100813819867,"pitchThrottle":-0.742331541682195,"glideRatio":2.51530378181757,"residual":1.3540063553716337e-7,"iterations":5,"shortPeriodZeta":0.20344664530098505,"shortPeriodFreqHz":0.8437636453846918,"dutchRollZeta":0.9058063939062211,"worstLateralSigma":3.9541589699362154,"worstLateralLabel":"Lateral divergence"},{"airspeed_ms":48.57142857142857,"converged":true,"alphaDeg":4.8570336156475085,"thetaDeg":-21.00304275721604,"gammaDeg":-25.860076372863546,"pitchThrottle":-0.6290035682702575,"glideRatio":2.063076032062509,"residual":4.256970244044871e-9,"iterations":5,"shortPeriodZeta":0.19178967514184736,"shortPeriodFreqHz":1.0713032967258351,"dutchRollZeta":null,"worstLateralSigma":4.131349165024329,"worstLateralLabel":"Lateral divergence"},{"airspeed_ms":56.42857142857143,"converged":true,"alphaDeg":3.142524465745195,"thetaDeg":-29.0828258004744,"gammaDeg":-32.22535026621959,"pitchThrottle":-0.5406350937211495,"glideRatio":1.586416002951239,"residual":1.322046671667589e-8,"iterations":5,"shortPeriodZeta":0.18450910783541644,"shortPeriodFreqHz":1.2960703558063356,"dutchRollZeta":0.8332125912223202,"worstLateralSigma":4.567876186327936,"worstLateralLabel":"Lateral divergence"},{"airspeed_ms":64.28571428571428,"converged":true,"alphaDeg":1.9121317945751115,"thetaDeg":-39.0004331065697,"gammaDeg":-40.91256490114481,"pitchThrottle":-0.468205913720956,"glideRatio":1.1539201438136375,"residual":8.944586784084267e-7,"iterations":8,"shortPeriodZeta":0.17932646817920359,"shortPeriodFreqHz":1.52105178306128,"dutchRollZeta":null,"worstLateralSigma":2.2502810260594273,"worstLateralLabel":"Lateral divergence"},{"airspeed_ms":72.14285714285714,"converged":true,"alphaDeg":0.9120570738921621,"thetaDeg":-52.02428591108846,"gammaDeg":-52.93634298498063,"pitchThrottle":-0.4027898944085982,"glideRatio":0.7552974231781283,"residual":2.875214120591375e-8,"iterations":13,"shortPeriodZeta":0.17509680710775888,"shortPeriodFreqHz":1.7497573425753383,"dutchRollZeta":null,"worstLateralSigma":32.116079360933966,"worstLateralLabel":"Lateral divergence"},{"airspeed_ms":80,"converged":true,"alphaDeg":-0.164478190784711,"thetaDeg":-73.82740693445615,"gammaDeg":-73.66292874367144,"pitchThrottle":-0.3247454223264962,"glideRatio":0.2931229387006521,"residual":2.52534981628613e-9,"iterations":21,"shortPeriodZeta":0.1704943890991397,"shortPeriodFreqHz":1.99440706860304,"dutchRollZeta":null,"worstLateralSigma":14.785205766938532,"worstLateralLabel":"Lateral divergence"}],"cells":[[{"alphaDeg":21.531914272655403,"thetaDeg":-1.5901045479464722,"gammaDeg":-23.122018820601873,"qDot":-0.20460816378902513,"residual":1.5887484082579495e-7,"converged":true,"shortPeriodZeta":0.17675208142127702,"shortPeriodFreqHz":0.7666280559063059,"worstLateralSigma":0.22609162471488214,"worstLateralLabel":"Spiral","dutchRollZeta":null,"glideRatio":2.3419728162710056},{"alphaDeg":21.41422756952411,"thetaDeg":-1.5203766553296856,"gammaDeg":-22.934604224853796,"qDot":-3.76779876683722,"residual":2.7775782621066373e-7,"converged":true,"shortPeriodZeta":0.1749438244397565,"shortPeriodFreqHz":0.7670180761071241,"worstLateralSigma":0.7950465386247652,"worstLateralLabel":"Spiral","dutchRollZeta":0.44527734892811816,"glideRatio":2.363348555618003},{"alphaDeg":21.356660652782434,"thetaDeg":-1.4901934701908504,"gammaDeg":-22.846854122973284,"qDot":-7.223611211848846,"residual":4.3084142562129167e-7,"converged":true,"shortPeriodZeta":0.1699863566377475,"shortPeriodFreqHz":0.771086013479689,"worstLateralSigma":1.0815178121724809,"worstLateralLabel":"Spiral","dutchRollZeta":0.39516830897172645,"glideRatio":2.3734709527996642},{"alphaDeg":21.356660652782434,"thetaDeg":-1.4901934701908504,"gammaDeg":-22.846854122973284,"qDot":-9.260616275854705,"residual":4.3084142562129167e-7,"converged":true,"shortPeriodZeta":0.1670745893206901,"shortPeriodFreqHz":0.7733429333235606,"worstLateralSigma":0.7648451172156092,"worstLateralLabel":"Spiral","dutchRollZeta":0.2764649735086029,"glideRatio":2.3734709527996642},{"alphaDeg":21.356660652782434,"thetaDeg":-1.4901934701908504,"gammaDeg":-22.846854122973284,"qDot":-11.297621339860564,"residual":4.3084142562129167e-7,"converged":true,"shortPeriodZeta":0.16435257397983008,"shortPeriodFreqHz":0.7756536795919515,"worstLateralSigma":0.5936619290849694,"worstLateralLabel":"Spiral","dutchRollZeta":0.21822636363530007,"glideRatio":2.3734709527996642}],[{"alphaDeg":12.153249856331325,"thetaDeg":-8.145827058405509,"gammaDeg":-20.299076914736833,"qDot":1.1029729407632858,"residual":3.7063691215682993e-10,"converged":true,"shortPeriodZeta":0.13266532020064076,"shortPeriodFreqHz":0.8475302456805127,"worstLateralSigma":-3.357036870710317e-14,"worstLateralLabel":"Heading","dutchRollZeta":0.23542892854195524,"glideRatio":2.703485127669694},{"alphaDeg":11.903864238761143,"thetaDeg":-7.933777662709573,"gammaDeg":-19.837641901470718,"qDot":-3.7947906168766306,"residual":1.9761899691127483e-9,"converged":true,"shortPeriodZeta":0.40773554680667806,"shortPeriodFreqHz":0.9747005918531488,"worstLateralSigma":0.6019528491568489,"worstLateralLabel":"Spiral","dutchRollZeta":0.20340259239585498,"glideRatio":2.7718916785140495},{"alphaDeg":11.651254788002003,"thetaDeg":-7.8274220067933085,"gammaDeg":-19.478676794795312,"qDot":-8.560435480472298,"residual":3.5676524925175998e-9,"converged":true,"shortPeriodZeta":0.18056404494376455,"shortPeriodFreqHz":0.8755615687569488,"worstLateralSigma":0.18656659884142549,"worstLateralLabel":"Spiral","dutchRollZeta":0.2594074866992946,"glideRatio":2.827256344753845},{"alphaDeg":11.651254788002003,"thetaDeg":-7.8274220067933085,"gammaDeg":-19.478676794795312,"qDot":-10.561457099690623,"residual":3.5676524925175998e-9,"converged":true,"shortPeriodZeta":0.15892999763508323,"shortPeriodFreqHz":0.9962496524956983,"worstLateralSigma":0.5411221188272904,"worstLateralLabel":"Spiral","dutchRollZeta":0.44149454490084356,"glideRatio":2.827256344753845},{"alphaDeg":11.651254788002003,"thetaDeg":-7.8274220067933085,"gammaDeg":-19.478676794795312,"qDot":-12.562478718908947,"residual":3.5676524925175998e-9,"converged":true,"shortPeriodZeta":0.1969177689751361,"shortPeriodFreqHz":1.1216332621593856,"worstLateralSigma":0.13623445131918716,"worstLateralLabel":"Spiral","dutchRollZeta":0.1437013359067299,"glideRatio":2.827256344753845}],[{"alphaDeg":7.636207442934942,"thetaDeg":-14.392907014564576,"gammaDeg":-22.029114457499517,"qDot":3.3425567853946125,"residual":8.631894388920521e-7,"converged":true,"shortPeriodZeta":0.05154776284119224,"shortPeriodFreqHz":0.883591254719665,"worstLateralSigma":-1.8665624601510444e-14,"worstLateralLabel":"Heading","dutchRollZeta":0.22319064241197176,"glideRatio":2.4714703456286897},{"alphaDeg":7.383201837503063,"thetaDeg":-14.01129019919853,"gammaDeg":-21.394492036701592,"qDot":-3.096912371636452,"residual":5.489340951931877e-11,"converged":true,"shortPeriodZeta":0.18935601674483182,"shortPeriodFreqHz":0.9394384704897312,"worstLateralSigma":10.798745674582365,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":2.552421488637947},{"alphaDeg":7.122290035264076,"thetaDeg":-13.805949018160826,"gammaDeg":-20.9282390534249,"qDot":-9.340537810091433,"residual":5.591234316846416e-10,"converged":true,"shortPeriodZeta":0.1664125774435947,"shortPeriodFreqHz":1.1094979532162867,"worstLateralSigma":0.1242789390086991,"worstLateralLabel":"Spiral","dutchRollZeta":0.2311907873384494,"glideRatio":2.6148732970004565},{"alphaDeg":7.122290035264076,"thetaDeg":-13.805949018160826,"gammaDeg":-20.9282390534249,"qDot":-11.326229462869456,"residual":5.591234316846416e-10,"converged":true,"shortPeriodZeta":0.14751031237982737,"shortPeriodFreqHz":1.2558235778122153,"worstLateralSigma":0.10363906446748256,"worstLateralLabel":"Spiral","dutchRollZeta":0.4176506084457455,"glideRatio":2.6148732970004565},{"alphaDeg":7.122290035264076,"thetaDeg":-13.805949018160826,"gammaDeg":-20.9282390534249,"qDot":-13.311921115647477,"residual":5.591234316846416e-10,"converged":true,"shortPeriodZeta":0.13400296381105403,"shortPeriodFreqHz":1.3868413526003773,"worstLateralSigma":0.08697776272725871,"worstLateralLabel":"Spiral","dutchRollZeta":0.3384466149683093,"glideRatio":2.6148732970004565}],[{"alphaDeg":5.040196976361543,"thetaDeg":-21.46855360012446,"gammaDeg":-26.508750576486,"qDot":6.172872323291064,"residual":1.8980669633526652e-11,"converged":true,"shortPeriodZeta":-0.26669424725211344,"shortPeriodFreqHz":0.8853807825568468,"worstLateralSigma":1.5393775986370688,"worstLateralLabel":"Lateral divergence","dutchRollZeta":0.22093327769679633,"glideRatio":2.004922830490568},{"alphaDeg":4.791793374701262,"thetaDeg":-20.87564720206521,"gammaDeg":-25.667440576766474,"qDot":-2.1116739722769684,"residual":4.145650747532495e-11,"converged":true,"shortPeriodZeta":0.18407116918762312,"shortPeriodFreqHz":1.1295121657214335,"worstLateralSigma":5.518704746962719,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":2.0808718366610925},{"alphaDeg":4.531813794566064,"thetaDeg":-20.54932050343714,"gammaDeg":-25.081134298003203,"qDot":-10.121540474611223,"residual":8.962178104097606e-11,"converged":true,"shortPeriodZeta":0.16118414442664974,"shortPeriodFreqHz":1.3299122000964934,"worstLateralSigma":9.276224018062358,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":2.1366025229580567},{"alphaDeg":4.531813794566064,"thetaDeg":-20.54932050343714,"gammaDeg":-25.081134298003203,"qDot":-12.065657924015069,"residual":8.962178104097606e-11,"converged":true,"shortPeriodZeta":0.14317115998780508,"shortPeriodFreqHz":1.5033765844829075,"worstLateralSigma":9.071579772498144,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":2.1366025229580567},{"alphaDeg":4.531813794566064,"thetaDeg":-20.54932050343714,"gammaDeg":-25.081134298003203,"qDot":-14.009775373418913,"residual":8.962178104097606e-11,"converged":true,"shortPeriodZeta":0.1302440972440762,"shortPeriodFreqHz":1.6588347893085071,"worstLateralSigma":16.077982414007817,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":2.1366025229580567}],[{"alphaDeg":3.3619345698256344,"thetaDeg":-29.90181502642896,"gammaDeg":-33.26374959625459,"qDot":9.590132910106822,"residual":1.0164386304054458e-7,"converged":true,"shortPeriodZeta":0.22088058455610696,"shortPeriodFreqHz":1.0319934041797991,"worstLateralSigma":2.524815603856202,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":1.524455516261671},{"alphaDeg":3.122431304964953,"thetaDeg":-29.026299696125665,"gammaDeg":-32.14873100109062,"qDot":-0.8337627814545527,"residual":1.1816543770299274e-9,"converged":true,"shortPeriodZeta":0.18210468145597872,"shortPeriodFreqHz":1.3167493628805145,"worstLateralSigma":14.4417002001454,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":1.591128761454905},{"alphaDeg":2.866624364390704,"thetaDeg":-28.54021379819732,"gammaDeg":-31.406838162588024,"qDot":-10.89088355725482,"residual":2.5467558500514493e-13,"converged":true,"shortPeriodZeta":0.15869624118865142,"shortPeriodFreqHz":1.5477467140416543,"worstLateralSigma":1.0858080748251266,"worstLateralLabel":"Spiral","dutchRollZeta":null,"glideRatio":1.6378234075084956},{"alphaDeg":2.866624364390704,"thetaDeg":-28.54021379819732,"gammaDeg":-31.406838162588024,"qDot":-12.751465560470157,"residual":2.5467558500514493e-13,"converged":true,"shortPeriodZeta":0.14111339278318835,"shortPeriodFreqHz":1.748627773102462,"worstLateralSigma":0.07733431127130919,"worstLateralLabel":"Spiral","dutchRollZeta":null,"glideRatio":1.6378234075084956},{"alphaDeg":2.866624364390704,"thetaDeg":-28.54021379819732,"gammaDeg":-31.406838162588024,"qDot":-14.612047563685499,"residual":2.5467558500514493e-13,"converged":true,"shortPeriodZeta":0.12846637141128311,"shortPeriodFreqHz":1.9287265155565059,"worstLateralSigma":19.152580268060795,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":1.6378234075084956}],[{"alphaDeg":2.152044801879821,"thetaDeg":-40.36115237759281,"gammaDeg":-42.51319717947263,"qDot":13.63615276334737,"residual":6.936522877526434e-10,"converged":true,"shortPeriodZeta":0.22147159999066013,"shortPeriodFreqHz":1.1819492791593615,"worstLateralSigma":11.539762455769404,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":1.0908039761134793},{"alphaDeg":1.927246257690642,"thetaDeg":-39.06320374478638,"gammaDeg":-40.99045000247702,"qDot":0.800676645325001,"residual":8.020167870957943e-7,"converged":true,"shortPeriodZeta":0.18118723614338794,"shortPeriodFreqHz":1.5030096610447028,"worstLateralSigma":0.03496811018940349,"worstLateralLabel":"Spiral","dutchRollZeta":0.8320768361460682,"glideRatio":1.1507557344933377},{"alphaDeg":1.6789783844488542,"thetaDeg":-38.34249500209679,"gammaDeg":-40.021473386545644,"qDot":-11.563648203522774,"residual":1.1364376080680854e-7,"converged":true,"shortPeriodZeta":0.15731513017912524,"shortPeriodFreqHz":1.7647149724862303,"worstLateralSigma":0.1728137048571199,"worstLateralLabel":"Spiral","dutchRollZeta":null,"glideRatio":1.1908469231006853},{"alphaDeg":1.6789783844488542,"thetaDeg":-38.34249500209679,"gammaDeg":-40.021473386545644,"qDot":-13.273057164312311,"residual":1.1364376080680854e-7,"converged":true,"shortPeriodZeta":0.13998385511787848,"shortPeriodFreqHz":1.9930896919132364,"worstLateralSigma":1.1282368526850122,"worstLateralLabel":"Spiral","dutchRollZeta":null,"glideRatio":1.1908469231006853},{"alphaDeg":1.6789783844488542,"thetaDeg":-38.34249500209679,"gammaDeg":-40.021473386545644,"qDot":-14.98246612510186,"residual":1.1364376080680854e-7,"converged":true,"shortPeriodZeta":0.12749889453148383,"shortPeriodFreqHz":2.197883188486005,"worstLateralSigma":2.9553267245075263,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":1.1908469231006853}],[{"alphaDeg":1.1501785111289125,"thetaDeg":-54.42759736608152,"gammaDeg":-55.577775877210435,"qDot":18.422171539829524,"residual":1.4378138938420738e-11,"converged":true,"shortPeriodZeta":0.22228312302377035,"shortPeriodFreqHz":1.3319571450759227,"worstLateralSigma":18.813595161071767,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":0.6852841789724288},{"alphaDeg":0.9546545112597827,"thetaDeg":-52.31994955889255,"gammaDeg":-53.27460407015233,"qDot":2.943505842965328,"residual":7.269649614728833e-8,"converged":true,"shortPeriodZeta":0.18072084056665866,"shortPeriodFreqHz":1.6890227828659925,"worstLateralSigma":3.9248518699299817,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":0.7460667584793322},{"alphaDeg":0.7212840303835957,"thetaDeg":-51.16845924781714,"gammaDeg":-51.88974327820074,"qDot":-11.948061392242478,"residual":2.33924360998137e-12,"converged":true,"shortPeriodZeta":0.15643257485546092,"shortPeriodFreqHz":1.9812994050336439,"worstLateralSigma":9.953407154693558,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":0.7843892721363301},{"alphaDeg":0.7212840303835957,"thetaDeg":-51.16845924781714,"gammaDeg":-51.88974327820074,"qDot":-13.385590543014375,"residual":2.33924360998137e-12,"converged":true,"shortPeriodZeta":0.13927385075361523,"shortPeriodFreqHz":2.237168904467955,"worstLateralSigma":27.497305952344703,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":0.7843892721363301},{"alphaDeg":0.7212840303835957,"thetaDeg":-51.16845924781714,"gammaDeg":-51.88974327820074,"qDot":-14.823119693786275,"residual":2.33924360998137e-12,"converged":true,"shortPeriodZeta":0.1268984913689727,"shortPeriodFreqHz":2.466653835799262,"worstLateralSigma":9.255556849496717,"worstLateralLabel":"Lateral divergence","dutchRollZeta":0.829942634670823,"glideRatio":0.7843892721363301}],[{"alphaDeg":-0.12765641974044692,"thetaDeg":-82.88084911722166,"gammaDeg":-82.75319269748121,"qDot":24.624890471586767,"residual":6.397396467711642e-8,"converged":true,"shortPeriodZeta":0.38816240103622746,"shortPeriodFreqHz":2.512253290716722,"worstLateralSigma":2.2260969006701625,"worstLateralLabel":"Lateral divergence","dutchRollZeta":0.22380020825776933,"glideRatio":0.12715944350096303},{"alphaDeg":-0.11854587223932826,"thetaDeg":-75.21974286875201,"gammaDeg":-75.10119699651268,"qDot":6.251893107844747,"residual":4.934141634717407e-7,"converged":true,"shortPeriodZeta":0.18049668297816093,"shortPeriodFreqHz":1.8753931467665574,"worstLateralSigma":3.849249236970245,"worstLateralLabel":"Lateral divergence","dutchRollZeta":null,"glideRatio":0.26605705620206344},{"alphaDeg":-0.28427386847943015,"thetaDeg":-72.177020540944,"gammaDeg":-71.89274667246457,"qDot":-11.313263083252597,"residual":1.2621079808299962e-7,"converged":true,"shortPeriodZeta":0.15573622038004653,"shortPeriodFreqHz":2.197561228048333,"worstLateralSigma":0.18183320365780986,"worstLateralLabel":"Dutch roll","dutchRollZeta":-0.016247999278640155,"glideRatio":0.3269905061121433},{"alphaDeg":-0.28427386847943015,"thetaDeg":-72.177020540944,"gammaDeg":-71.89274667246457,"qDot":-12.158868623315643,"residual":1.2621079808299962e-7,"converged":true,"shortPeriodZeta":0.13872806433424298,"shortPeriodFreqHz":2.4808292618559986,"worstLateralSigma":0.3215322702466601,"worstLateralLabel":"Dutch roll","dutchRollZeta":-0.027038188419005158,"glideRatio":0.3269905061121433},{"alphaDeg":-0.28427386847943015,"thetaDeg":-72.177020540944,"gammaDeg":-71.89274667246457,"qDot":-13.00447416337869,"residual":1.2621079808299962e-7,"converged":true,"shortPeriodZeta":0.1264465860419622,"shortPeriodFreqHz":2.7349216312761855,"worstLateralSigma":-5.745404152435185e-15,"worstLateralLabel":"Heading","dutchRollZeta":0.0892529263960087,"glideRatio":0.3269905061121433}]],"timestamp":"2026-05-07T01:34:53.470Z"};
+
+function lerpColor(c1, c2, t) {
+  const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+  const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+  const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+// Diverging gradient: red (low/bad) - amber (mid) - green (high/good).
+function diverging(t) {
+  const RED = [220, 80, 90];
+  const MID = [240, 220, 140];
+  const GREEN = [90, 200, 130];
+  if (t < 0.5) return lerpColor(RED, MID, t * 2);
+  return lerpColor(MID, GREEN, (t - 0.5) * 2);
+}
+
+// Sequential cyan gradient for trim alpha and L/D.
+function sequential(t) {
+  const LO = [180, 220, 240];
+  const HI = [40, 130, 200];
+  return lerpColor(LO, HI, Math.max(0, Math.min(1, t)));
+}
+
+function heatColor(value, kind, range) {
+  if (value === null || !isFinite(value)) return '#2a2a4a';
+  if (kind === 'damping') {
+    const t = Math.max(0, Math.min(1, (value + 0.2) / 0.5));
+    return diverging(t);
+  }
+  if (kind === 'sigma') {
+    const t = Math.max(0, Math.min(1, 1 - (value + 1) / 6));
+    return diverging(t);
+  }
+  if (kind === 'sequential') {
+    const { lo, hi } = range;
+    if (hi === lo) return sequential(0.5);
+    return sequential((value - lo) / (hi - lo));
+  }
+  if (kind === 'qdot') {
+    const t = Math.max(0, Math.min(1, 1 - (value + 15) / 30));
+    return diverging(t);
+  }
+  return '#2a2a4a';
+}
+
+function fmt(n, dec) {
+  if (n === null || !isFinite(n)) return '—';
+  return n.toFixed(dec);
+}
+
+function tooltip(cell, V, p) {
+  const lines = [
+    'V = ' + V.toFixed(0) + ' m/s   pitch = ' + p.toFixed(2),
+    'α = ' + fmt(cell.alphaDeg, 2) + '°   θ = ' + fmt(cell.thetaDeg, 2) + '°   γ = ' + fmt(cell.gammaDeg, 2) + '°',
+    'L/D = ' + fmt(cell.glideRatio, 2),
+    'short-period ζ = ' + fmt(cell.shortPeriodZeta, 3) + '   f = ' + fmt(cell.shortPeriodFreqHz, 2) + ' Hz',
+    'Dutch roll ζ = ' + fmt(cell.dutchRollZeta, 3),
+    'worst lateral σ = ' + fmt(cell.worstLateralSigma, 3) + ' (' + cell.worstLateralLabel + ')',
+    'qDot = ' + fmt(cell.qDot, 2) + ' rad/s²',
+  ];
+  if (!cell.converged) lines.unshift('TRIM FAILED');
+  return lines.join('\n');
+}
+
+function renderTable(elId, kind, getValue, formatValue, range) {
+  const container = document.getElementById(elId);
+  if (!container) return;
+  let html = '<table class="heat"><thead><tr><th class="row-label">V \\ pitch</th>';
+  for (const p of DATA.pitches) html += '<th>' + p.toFixed(2) + '</th>';
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < DATA.speeds.length; i++) {
+    const V = DATA.speeds[i];
+    html += '<tr><th class="row-label">' + V.toFixed(0) + ' m/s</th>';
+    for (let j = 0; j < DATA.pitches.length; j++) {
+      const cell = DATA.cells[i][j];
+      const v = getValue(cell);
+      const bg = heatColor(v, kind, range);
+      const tip = tooltip(cell, V, DATA.pitches[j]).replace(/"/g, '&quot;');
+      html += '<td style="background:' + bg + '" data-tip="' + tip + '">' + formatValue(v) + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function collectRange(getValue) {
+  let lo = Infinity, hi = -Infinity;
+  for (const row of DATA.cells) for (const c of row) {
+    const v = getValue(c);
+    if (v !== null && isFinite(v)) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  return { lo, hi };
+}
+
+renderTable('heat-alpha', 'sequential', c => c.alphaDeg, v => v === null || !isFinite(v) ? '—' : v.toFixed(1) + '°', collectRange(c => c.alphaDeg));
+renderTable('heat-ld', 'sequential', c => c.glideRatio, v => v === null || !isFinite(v) ? '—' : v.toFixed(2), collectRange(c => c.glideRatio));
+renderTable('heat-sp', 'damping', c => c.shortPeriodZeta, v => v === null || !isFinite(v) ? '—' : v.toFixed(3));
+renderTable('heat-dr', 'damping', c => c.dutchRollZeta, v => v === null || !isFinite(v) ? '—' : v.toFixed(3));
+renderTable('heat-lat', 'sigma', c => c.worstLateralSigma, v => v === null || !isFinite(v) ? '—' : v.toFixed(2));
+renderTable('heat-qdot', 'qdot', c => c.qDot, v => v === null || !isFinite(v) ? '—' : v.toFixed(1));
+
+// ─── 3-DOF full trim table ────────────────────────────────────────────
+function renderFullTrim() {
+  const body = document.getElementById('full-trim-body');
+  if (!body) return;
+  let html = '';
+  for (const t of DATA.fullTrim) {
+    if (!t.converged) {
+      html += '<tr><td style="background:#3a1620;color:#ff8080">' + t.airspeed_ms.toFixed(0) + '</td><td colspan="8" style="background:#3a1620;color:#ff8080;text-align:left;padding-left:1em">NO TRIM (residual ' + t.residual.toExponential(1) + ')</td></tr>';
+      continue;
+    }
+    const pT = t.pitchThrottle;
+    const pTOut = pT < -1.05 || pT > 1.05;
+    const pTNear = !pTOut && (pT < -0.95 || pT > 0.95);
+    const pTBg = pTOut ? 'rgb(220,80,90)' : pTNear ? 'rgb(240,200,120)' : heatColor(0.5, 'sequential', { lo: 0, hi: 1 });
+    const ldStr = t.glideRatio === null ? '—' : t.glideRatio.toFixed(2);
+    const spZ = t.shortPeriodZeta;
+    const drZ = t.dutchRollZeta;
+    const lat = t.worstLateralSigma;
+    html += '<tr>';
+    html += '<td style="background:#0f1626;color:#4fc3f7">' + t.airspeed_ms.toFixed(0) + '</td>';
+    html += '<td style="background:' + pTBg + '">' + pT.toFixed(3) + '</td>';
+    html += '<td style="background:' + heatColor(t.alphaDeg, 'sequential', { lo: -5, hi: 20 }) + '">' + t.alphaDeg.toFixed(2) + '</td>';
+    html += '<td style="background:' + heatColor(t.thetaDeg, 'sequential', { lo: -50, hi: 0 }) + '">' + t.thetaDeg.toFixed(2) + '</td>';
+    html += '<td style="background:' + heatColor(t.gammaDeg, 'sequential', { lo: -75, hi: 0 }) + '">' + t.gammaDeg.toFixed(2) + '</td>';
+    html += '<td style="background:' + (t.glideRatio === null ? '#2a2a4a' : heatColor(t.glideRatio, 'sequential', { lo: 0.3, hi: 3.0 })) + '">' + ldStr + '</td>';
+    html += '<td style="background:' + heatColor(spZ, 'damping') + '">' + (spZ === null ? '—' : spZ.toFixed(3)) + '</td>';
+    html += '<td style="background:' + heatColor(drZ, 'damping') + '">' + (drZ === null ? '—' : drZ.toFixed(3)) + '</td>';
+    html += '<td style="background:' + heatColor(lat, 'sigma') + '">' + (!isFinite(lat) ? '—' : lat.toFixed(2)) + '</td>';
+    html += '</tr>';
+  }
+  body.innerHTML = html;
+}
+renderFullTrim();
+</script>
+</body>
+</html>

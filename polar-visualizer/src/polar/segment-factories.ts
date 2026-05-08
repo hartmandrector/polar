@@ -800,6 +800,24 @@ export interface WingsuitControlConstants {
   /** Max cm_0 add on leg at full legBend input. Knees-bent nose-up couple. */
   LEG_BEND_CM0_DELTA: number
 
+  // ── Inner-wing posture coupling (Phase M) ──
+  /** Max α_0 shift on inner wings (L1/R1) at full hipCamber input [deg].
+   *  Smaller than the leg's because the rib-2 chord is dominated by the
+   *  upper arm; only the TE-near-hip portion of the panel reshapes with
+   *  hip arch.  Sign matches torso (+hipCamber → +α). */
+  INNER_HIP_CAMBER_ALPHA0_DEG: number
+  /** Max α_0 shift on inner wings at full legBend input [deg].  Same
+   *  rationale as INNER_HIP_CAMBER_ALPHA0_DEG — leg lifting up tightens
+   *  the TE camber at rib-2 without distorting the upper-arm portion. */
+  INNER_LEG_BEND_ALPHA0_DEG: number
+
+  /** Phase M.1: attenuation factor applied ONLY to the back-stick portion
+   *  of the pitch-induced hipCamber/legBend offset, when computing the
+   *  inner-wing α coupling.  Forward stick and the baseline slider value
+   *  are unaffected.  0 = inner wings ignore back-stick pitch coupling
+   *  entirely; 1 = full coupling (Phase M behavior). */
+  PITCH_INNER_BACK_ATTEN: number
+
   // ── Pitch throttle → hip / leg coupling (Phase D.2) ──
   /** Hip camber offset at full forward pitch (+pitchT). Subtracted from slider. */
   PITCH_HIP_CAMBER_FWD: number
@@ -864,13 +882,26 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   LEG_BEND_ALPHA0_DEG: 3,
   LEG_BEND_CM0_DELTA: 0.13,
 
-  // Phase L: new position-only trim curves (slider neutral = hipCamber 0.30, legBend 0.80)
+  // Phase M: inner-wing posture coupling.  Half the leg's authority because
+  // only the rib-near-hip portion of the panel reshapes — most of the inner
+  // wing is upper-arm fabric, which is unaffected by hip/leg position.
+  INNER_HIP_CAMBER_ALPHA0_DEG: 1.5,
+  INNER_LEG_BEND_ALPHA0_DEG: 1.5,
+
+  // Phase M.1: keep fwd-stick inner-wing behavior unchanged, attenuate the
+  // back-stick pitch-induced contribution to ~30%.  At full back stick this
+  // drops the inner-wing Δα boost from ~+1.4° (over neutral) to ~+0.4°,
+  // restoring stall margin without affecting glide/dive trim.
+  PITCH_INNER_BACK_ATTEN: 0.3,
+
+  // Phase L: position-only trim curves (slider neutral = hipCamber 0.30, legBend 0.80)
   //   fwd (+1):  hip 0.30-0.00=0.30 (flat), leg 0.80-0.65=0.15 (dive)
-  //   back (-1): hip 0.30+0.70=1.00,            leg 0.80+0.20=1.00 (flare)
+  //   back (-1): hip 0.30+0.55=0.85, leg 0.80+0.07=0.87
+  // Phase M.4: split between M.2 (0.80/0.85) and M.3 (0.90/0.92).
   PITCH_HIP_CAMBER_FWD: 0.00,
-  PITCH_HIP_CAMBER_BACK: 0.70,
+  PITCH_HIP_CAMBER_BACK: 0.55,
   PITCH_LEG_BEND_FWD: 0.65,
-  PITCH_LEG_BEND_BACK: 0.20,
+  PITCH_LEG_BEND_BACK: 0.07,
 }
 
 // ─── Wingsuit Head Segment ───────────────────────────────────────────────────
@@ -1058,6 +1089,30 @@ export function makeWingsuitLiftingSegment(
         // the leg wing (negative α_0 shift) without changing surface area.
         deltaAlphaCamber = -hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
                          - legBend  * ctrl.LEG_BEND_ALPHA0_DEG
+      } else if (wingType === 'inner') {
+        // Phase M: small posture-coupled α offset on L1/R1.  Both hipCamber
+        // and legBend reshape the rib-2 chord (TE-near-hip cambers down,
+        // adds lift) — sign matches torso.  Magnitude is ~½ the leg's because
+        // most of the inner-wing panel is upper-arm fabric, unaffected by
+        // hip/leg position.
+        //
+        // Phase M.1: pitch-stick was double-dipping at flare — torso α + leg α
+        // already carry the pitch-up authority; the inner-wing α boost on top
+        // pushed the system into stall too easily on full back stick.  Solve
+        // by attenuating only the BACK-stick component of the pitch-induced
+        // hip/leg offset for the inner-wing α calculation; forward stick and
+        // baseline slider posture are unchanged.
+        const innerPitchAttenBack = ctrl.PITCH_INNER_BACK_ATTEN
+        const innerHipOffset = pitchT >= 0
+          ? pitchHipOffset
+          : pitchHipOffset * innerPitchAttenBack
+        const innerLegOffset = pitchT >= 0
+          ? pitchLegOffset
+          : pitchLegOffset * innerPitchAttenBack
+        const innerHipCamber = Math.max(-1, Math.min(1, controls.hipCamber + innerHipOffset))
+        const innerLegBend  = Math.max( 0, Math.min(1, controls.legBend  + innerLegOffset))
+        deltaAlphaCamber = +innerHipCamber * ctrl.INNER_HIP_CAMBER_ALPHA0_DEG
+                         + innerLegBend   * ctrl.INNER_LEG_BEND_ALPHA0_DEG
       }
 
       // ── Total α offset ──

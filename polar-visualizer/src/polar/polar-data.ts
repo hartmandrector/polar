@@ -1772,26 +1772,39 @@ const A5_INNER_WING_POLAR: ContinuousPolar = {
   // sideslip response is correctly captured by cl_beta (dihedral effect)
   // not cy_beta.  Side force budget moved to torso and (mainly) leg.
   cy_beta: -0.10,             // residual TE-strip side force only
-  cn_beta: 0.12,              // primary weathervane source: TE camber behind CG
+  // Phase M: bumped 0.12 → 0.36 to compensate for the 3× chord reduction
+  // (1.34 → 0.42).  cn_β contributes to yaw moment as cn_β · q · S · ref;
+  // ref scales with chord, so to preserve the absolute weathervane authority
+  // we scale cn_β by old_chord/new_chord ≈ 3.19.
+  cn_beta: 0.36,              // primary weathervane source: TE camber behind CG
   cl_beta: -0.08,            // dihedral effect
-  // Phase G.3: cm_0 +0.03 → −0.02.  The 30° outboard TE twist is yaw
-  // geometry; the section itself is gently cambered nose-down (slack fabric
-  // pressed by airflow), so cm_0 should be slightly negative, not positive.
-  cm_0: -0.02,
+  // Phase M: cm_0 −0.02 → 0.  The slack-fabric camber argument was real but
+  // the contribution at the now-correct chord is small enough to fold into
+  // the system trim.  Keeps the inner wing aerodynamically clean — all pitch
+  // moment now arises from lift × (cp − cg) × chord.
+  cm_0: 0,
   // Phase K: restore pitch stiffness on inner wings — moderate taper from center.
-  cm_alpha: 0.05,
+  cm_alpha: 0.0,
   // Phase G.3: cp_0 0.23 → 0.22.  Apex-forward planform (wide LE chord at
   // hip, narrow TE area from hip notch) is loaded fwd of 0.25c geometric QC.
   cp_0: 0.22,
-  // Phase G.3: cp_alpha 0.04 → 0.02.  Apex-forward taper has most area
-  // forward of mid-chord; CP drifts aft only weakly with α.  Less drift
-  // than a pure rectangle.
-  cp_alpha: 0.02,
+  // Phase M: cp_alpha 0.02 → 0.  Linear CP migration on the arm-wings was
+  // doing work that the Kirchhoff separation model handles physically.  With
+  // cp_alpha=0, attached-flow CP stays at cp_0 and only walks aft via the
+  // Kirchhoff f(α) collapse near stall.  Matches the desired "a couple cm of
+  // drift between max-glide and stall, larger drift past stall, → 0.5c at
+  // 90°" signature.
+  cp_alpha: 0,
   cg: 0.40,
   cp_lateral: 0.50,
   s: 0.30,                   // 15.0% of 2.0 m² (reduced from 0.39 via triangular planform)
   m: 77.5,
-  chord: 1.34,               // mean chord of rect+trap composite (1.74 × 0.772)
+  // Phase M: chord 1.34 → 0.42.  Old value was the streamwise extent of the
+  // shoulder-to-feet rect+trap envelope, not the aero mean geometric chord
+  // (MGC = S/b = 0.30/0.72 ≈ 0.42 m).  At the old chord, every CP/CM/cm_α
+  // term was levered ~3× too hard.  cn_β bumped above to preserve absolute
+  // yaw authority.
+  chord: 0.42,
   controls: {
     dirty: {
       d_cd_0: 0.06,             // loose arm/leg wing fabric flutters
