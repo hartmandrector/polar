@@ -461,6 +461,8 @@ where $\alpha_{y,max}$ is `YAW_ROLL_COUPLING_DEG` and $\sigma$ is `sideSign`.
 
 This models the pilot leaning left/right to yaw the body while maintaining pitch.
 
+**7-segment update (Phase I):** In the 7-segment model, the yaw throttle no longer relies on body-shift and direct differential α. Instead it injects an **effective sideslip angle** β directly into each lifting segment's local flow, lighting up the segment's own `cy_β`, `cn_β`, and `cl_β` coefficients simultaneously. This mimics the aerodynamic environment a pilot enters during a real sideslip turn — the body, arm wings, and leg wing all respond to the slip in proportion to their individual geometry — rather than applying an artificial lateral force through a positional offset.
+
 #### Control Constants
 
 All throttle response is tuned via a single interface, `WingsuitControlConstants` ([src/polar/segment-factories.ts#L722](src/polar/segment-factories.ts#L722)), with parameters like:
