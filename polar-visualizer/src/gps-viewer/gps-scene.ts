@@ -591,9 +591,16 @@ export class GPSScene {
 
     // ── Aero overlay ──
     const showCanopyAero = (isPostLineStretch || (canopyPhase && !this.deployTimeline)) && !isPreLineStretch
-    const origin = new THREE.Vector3(0, 0, 0)
+    // Wingsuit aero vectors: apply the same body-frame CG offset as the mass overlay
+    // so force/moment arrows register with the pilot skin rather than the GLB bbox centre.
+    // (0, 0, -offset) is the forward/head direction in this Three.js scene convention,
+    // same formula used for wingsuitMassOverlay.group.position above.
+    const wsAeroOrigin = this.wingsuitCgOffsetScene !== 0
+      ? new THREE.Vector3(0, 0, 0).applyQuaternion(this.model.quaternion)//new THREE.Vector3(0, 0, -this.wingsuitCgOffsetScene /4).applyQuaternion(this.model.quaternion)
+      : new THREE.Vector3(0, 0, 0)
+    const origin = new THREE.Vector3(0, 0, 0)  // canopy stays at GLB bbox centre
     if (!showCanopyAero) {
-      this.aeroOverlay.update(pt, origin)
+      this.aeroOverlay.update(pt, wsAeroOrigin)
       this.canopyAeroOverlay.hide()
     } else if (effectiveCs) {
       this.aeroOverlay.hide()
