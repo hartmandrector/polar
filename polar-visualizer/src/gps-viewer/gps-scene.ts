@@ -289,7 +289,7 @@ export class GPSScene {
     this.data = points
     this.currentIndex = 0
     this.buildTrail()
-    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this))
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
 
     // Set initial camera position behind the flight direction
     if (points.length > 0) {
@@ -306,7 +306,7 @@ export class GPSScene {
   /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
-    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this))
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
   }
 
   /** Hide the wingsuit + canopy GLB meshes (overlays / helpers / wireframes remain). */
@@ -335,7 +335,7 @@ export class GPSScene {
   setDeployTimeline(timeline: DeployReplayTimeline) {
     this.deployTimeline = timeline
     if (this.deployRenderer) this.deployRenderer.setTimeline(timeline)
-
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
   }
 
   setExitEstimate(est: ExitEstimate | null) {
@@ -433,6 +433,9 @@ export class GPSScene {
     const isFullFlight = drp?.subPhase === 'full_flight'
     const isDeploying = drp && drp.subPhase !== 'pre_deploy'
     const isLanding = mode === 7
+
+    // Canopy trail: visible only when canopy model would be shown
+    this.canopyTrail.setVisible(canopyPhase)
 
     // Use current canopy state, or fall back to last valid when estimator loses lock
     const effectiveCs = (cs && cs.valid) ? cs

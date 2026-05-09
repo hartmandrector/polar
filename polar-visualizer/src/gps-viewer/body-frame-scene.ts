@@ -22,6 +22,7 @@ import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
+import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
@@ -55,6 +56,9 @@ export class BodyFrameScene {
   private trail: THREE.Line | null = null
   private trailPositions: THREE.Vector3[] = []
 
+  // Canopy trail (child of worldGroup)
+  private canopyTrail: GPSCanopyTrail
+
   // Data
   private data: GPSPipelinePoint[] = []
   private currentIndex = 0
@@ -86,6 +90,8 @@ export class BodyFrameScene {
     // World group — holds trail, gets inverse body rotation
     this.worldGroup = new THREE.Group()
     this.scene.add(this.worldGroup)
+
+    this.canopyTrail = new GPSCanopyTrail(this.worldGroup)
 
     // Lighting
     const ambient = new THREE.AmbientLight(0x404060, 1.5)
@@ -233,6 +239,7 @@ export class BodyFrameScene {
     this.data = points
     this.currentIndex = 0
     this.buildTrail()
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
 
     if (points.length > 0) {
       this.camera.position.set(8, 3, 0)
@@ -246,6 +253,7 @@ export class BodyFrameScene {
 
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
   }
 
   /** Hide the wingsuit + canopy GLB meshes (overlays / helpers / wireframes remain visible). */
@@ -273,7 +281,7 @@ export class BodyFrameScene {
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
     this.deployTimeline = timeline
-
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this), this.deployTimeline)
   }
 
   setExitEstimate(est: ExitEstimate | null) {
@@ -358,6 +366,9 @@ export class BodyFrameScene {
     const isFullFlight = drp?.subPhase === 'full_flight'
     const isDeploying = drp && drp.subPhase !== 'pre_deploy' && drp.subPhase !== 'full_flight'
     const isLanding = mode === 7
+
+    // Canopy trail: visible only when canopy model would be shown
+    this.canopyTrail.setVisible(canopyPhase)
 
     // Use current canopy state, or fall back to last valid when estimator loses lock
     const effectiveCs = (cs && cs.valid) ? cs

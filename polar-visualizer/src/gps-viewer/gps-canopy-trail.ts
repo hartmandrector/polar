@@ -17,6 +17,7 @@
 import * as THREE from 'three'
 import type { GPSPipelinePoint } from '../gps/types'
 import type { CanopyState } from './canopy-estimator'
+import type { DeployReplayTimeline } from './deploy-replay'
 
 const CANOPY_TRAIL_COLOR   = 0x55ccff   // distinct cyan vs pilot white
 const CANOPY_TRAIL_OPACITY = 0.5
@@ -28,17 +29,24 @@ export class GPSCanopyTrail {
 
   /**
    * Rebuild the canopy trail from the current dataset + canopy states.
-   * Call this whenever either the GPS data or the canopy estimator output
-   * changes (trim slider, roll method, etc.).
+   * Call this whenever GPS data, canopy estimates, or the deploy timeline
+   * changes (trim slider, roll method, deploy sequence update, etc.).
    *
-   * @param data          GPS pipeline points (defines pilot NED positions)
-   * @param states        Canopy estimates aligned 1:1 with `data`
-   * @param nedToScene    Convert a pipeline point's pilot NED pos to scene coords
+   * Frames are included only when the canopy is actually shown:
+   *   - Flight mode must be canopy phase (mode 5–7)
+   *   - If a deploy timeline is present, the frame must be past line-stretch
+   *     with deployFraction > 0.05 (mirrors the canopy GLB visibility condition)
+   *
+   * @param data            GPS pipeline points (defines pilot NED positions)
+   * @param states          Canopy estimates aligned 1:1 with `data`
+   * @param nedToScene      Convert a pipeline point's pilot NED pos to scene coords
+   * @param deployTimeline  Optional deploy sequence; gates trail start at line-stretch
    */
   rebuild(
     data: GPSPipelinePoint[],
     states: CanopyState[],
     nedToScene: (p: GPSPipelinePoint) => THREE.Vector3,
+    deployTimeline: DeployReplayTimeline | null = null,
   ): void {
     this._dispose()
 
@@ -47,7 +55,21 @@ export class GPSCanopyTrail {
 
     for (let i = 0; i < n; i++) {
       const cs = states[i]
-      if (!cs?.valid) continue
+      const mode = (data[i].flightMode?.mode ?? 0)
+      const isCanopyPhase = mode >= 5 && mode <= 7
+
+      // Skip frames where the canopy model would not be visible
+      if (!cs?.valid || !isCanopyPhase) continue
+
+      // With a deploy timeline, further gate on line-stretch + deploy fraction
+      // (mirrors the canopy GLB visibility condition in gps-scene.ts)
+      if (deployTimeline) {
+        const drp = deployTimeline.points[i]
+        if (!drp) continue
+        const isPreLineStretch = drp.subPhase === 'pc_toss' || drp.subPhase === 'bridle_stretch'
+        const isPostLineStretch = drp.subPhase !== 'pre_deploy' && !isPreLineStretch
+        if (!isPostLineStretch || drp.deployFraction <= 0.05) continue
+      }
 
       // Pilot scene position
       const pilotScene = nedToScene(data[i])
@@ -69,6 +91,11 @@ export class GPSCanopyTrail {
     })
     this.line = new THREE.Line(geometry, material)
     this.worldGroup.add(this.line)
+  }
+
+  /** Show or hide the trail line without rebuilding geometry. */
+  setVisible(visible: boolean): void {
+    if (this.line) this.line.visible = visible
   }
 
   /** Remove and dispose the trail geometry/material. */
