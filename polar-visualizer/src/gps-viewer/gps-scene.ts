@@ -23,6 +23,7 @@ import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
+import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
@@ -61,6 +62,9 @@ export class GPSScene {
   // Trail (child of worldGroup)
   private trail: THREE.Line | null = null
   private trailPositions: THREE.Vector3[] = []
+
+  // Canopy trail (child of worldGroup)
+  private canopyTrail: GPSCanopyTrail
 
   // Data
   private data: GPSPipelinePoint[] = []
@@ -116,6 +120,8 @@ export class GPSScene {
     // World group — holds trail and any world-frame objects
     this.worldGroup = new THREE.Group()
     this.scene.add(this.worldGroup)
+
+    this.canopyTrail = new GPSCanopyTrail(this.worldGroup)
 
     // Lighting
     const ambient = new THREE.AmbientLight(0x404060, 1.5)
@@ -283,6 +289,7 @@ export class GPSScene {
     this.data = points
     this.currentIndex = 0
     this.buildTrail()
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this))
 
     // Set initial camera position behind the flight direction
     if (points.length > 0) {
@@ -299,6 +306,7 @@ export class GPSScene {
   /** Set canopy state estimates (aligned 1:1 with data points) */
   setCanopyStates(states: CanopyState[]) {
     this.canopyStates = states
+    this.canopyTrail.rebuild(this.data, this.canopyStates, this.nedToScene.bind(this))
   }
 
   /** Hide the wingsuit + canopy GLB meshes (overlays / helpers / wireframes remain). */
