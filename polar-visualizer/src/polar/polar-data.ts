@@ -923,8 +923,8 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
   cl_beta: -0.12,
 
   // Pitching moment
-  cm_0: 0.1,
-  cm_alpha: -0.10,
+  cm_0: 0.05,
+  cm_alpha: -0.07,
 
   // Center of pressure
   cp_0: 0.25,
@@ -946,8 +946,8 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
       d_cd_0: 0.04,
       d_cl_alpha: 1.2,
       d_k: 0.02,
-      d_alpha_stall_fwd: -4,
-      cm_delta: -0.04,
+      d_alpha_stall_fwd: -2,
+      cm_delta: -0.08,
     }
   },
 
@@ -1082,12 +1082,12 @@ const IBEX_CANOPY_SEGMENTS: AeroSegment[] = [
   // TE NED x = GLB TE z (-2.874) × glbToNED = -1.429
   // parentCellX = cell QC NED x = -0.113 (constant across span)
   //                         name        TE position (NED norm)                     θ     side     brkSens chordFrac  cellS         cellChord  cellX   polar                refLength
-  makeBrakeFlapSegment('flap_r1', _cellTE(2, 'right'),   12, 'right',  0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
-  makeBrakeFlapSegment('flap_l1', _cellTE(2, 'left'),   -12, 'left',   0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
-  makeBrakeFlapSegment('flap_r2', _cellTE(3, 'right'),   24, 'right',  0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
-  makeBrakeFlapSegment('flap_l2', _cellTE(3, 'left'),   -24, 'left',   0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
-  makeBrakeFlapSegment('flap_r3', _cellTE(4, 'right'),   36, 'right',  1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
-  makeBrakeFlapSegment('flap_l3', _cellTE(4, 'left'),   -36, 'left',   1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH),
+  makeBrakeFlapSegment('flap_r1', _cellTE(2, 'right'),   12, 'right',  0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
+  makeBrakeFlapSegment('flap_l1', _cellTE(2, 'left'),   -12, 'left',   0.4,  0.10,  20.439/7, 3.29, _cellQC(2, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
+  makeBrakeFlapSegment('flap_r2', _cellTE(3, 'right'),   24, 'right',  0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
+  makeBrakeFlapSegment('flap_l2', _cellTE(3, 'left'),   -24, 'left',   0.7,  0.20,  20.439/7, 3.29, _cellQC(3, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
+  makeBrakeFlapSegment('flap_r3', _cellTE(4, 'right'),   36, 'right',  1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'right').x, BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
+  makeBrakeFlapSegment('flap_l3', _cellTE(4, 'left'),   -36, 'left',   1.0,  0.30,  20.439/7, 3.29, _cellQC(4, 'left').x,  BRAKE_FLAP_POLAR, IBEX_REF_LENGTH, 0.22),
 
   // ── 2 parasitic bodies (lines + pilot chute) ──
   // Lines: midpoint between riser convergence and canopy center

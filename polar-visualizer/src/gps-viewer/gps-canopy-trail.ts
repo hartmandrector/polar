@@ -22,6 +22,14 @@ import type { DeployReplayTimeline } from './deploy-replay'
 const CANOPY_TRAIL_COLOR   = 0x55ccff   // distinct cyan vs pilot white
 const CANOPY_TRAIL_OPACITY = 0.5
 
+/**
+ * Scale the cp offset vector (length ≈ lineLength = 3.0 m) along the canopy
+ * normal direction.  1.0 = estimator line-attachment point (bottom of canopy
+ * fabric).  Increase to push the trail up into / above the canopy mesh.
+ * Tune visually — try 1.3–1.8.
+ */
+const CANOPY_TRAIL_POSITION_SCALE = 1.4
+
 export class GPSCanopyTrail {
   private line: THREE.Line | null = null
 
@@ -74,9 +82,11 @@ export class GPSCanopyTrail {
       // Pilot scene position
       const pilotScene = nedToScene(data[i])
 
-      // Offset by canopy-relative NED, converted to Three.js coords (+E→-x, +D→-y, +N→+z)
+      // Offset by canopy-relative NED scaled toward the canopy fabric.
+      // CANOPY_TRAIL_POSITION_SCALE > 1 moves the point further along the
+      // canopy normal (up into/above the mesh). Tune the constant above.
       const canopyScene = pilotScene.clone().add(
-        new THREE.Vector3(-cs.cpE, -cs.cpD, cs.cpN),
+        new THREE.Vector3(-cs.cpE, -cs.cpD, cs.cpN).multiplyScalar(CANOPY_TRAIL_POSITION_SCALE),
       )
       positions.push(canopyScene)
     }

@@ -14,6 +14,18 @@ import { getAllCoefficients, lerpPolar } from './coefficients.ts'
 
 const DEG2RAD = Math.PI / 180
 
+/**
+ * Brake input nonlinearity exponent.
+ * Values < 1 give a more progressive response: more authority at low inputs,
+ * same authority at full deflection. 0.7 gives ~26% more effect at 10% pilot input.
+ */
+const BRAKE_INPUT_EXPONENT = 0.7
+
+/** Map raw [0,1] pilot brake input through the nonlinearity curve. */
+function nonlinBrake(raw: number): number {
+  return raw > 0 ? Math.pow(raw, BRAKE_INPUT_EXPONENT) : 0
+}
+
 // ─── Control Constants ───────────────────────────────────────────────────────
 
 /**
@@ -56,15 +68,15 @@ export interface ControlConstants {
 /** Default control constants — current Ibexul tuning. */
 export const DEFAULT_CONSTANTS: ControlConstants = {
   ALPHA_MAX_RISER: 6,
-  ALPHA_MAX_FRONT_RISER: 6,
+  ALPHA_MAX_FRONT_RISER: 5,
   REAR_RISER_CD_BUMP: 0,
   BRAKE_ALPHA_COUPLING_DEG: 2.5,
   MAX_FLAP_DEFLECTION_DEG: 50,
-  MAX_FLAP_ROLL_INCREMENT_DEG: 20,
+  MAX_FLAP_ROLL_INCREMENT_DEG: 28,
   FRONT_RISER_CM: -0.15,
   REAR_RISER_CM: 0.10,
   FRONT_RISER_CD_BUMP: 0,
-  RISER_PITCH_MAX_RAD: -0.35,  // ~10.9° front riser tilt
+  RISER_PITCH_MAX_RAD: -0.20,  // ~11.5° front riser tilt — aft (drag differential drives yaw)
   REAR_RISER_PITCH_MAX_RAD: 0.06,  // ~3.4° rear riser tilt
   BRAKE_PITCH_MAX_RAD: 0.14,  // ~8° at full brake
   BRAKE_CD_BUMP: 0.12,        // TE distortion drag — asymmetric drag reinforces yaw
@@ -204,11 +216,11 @@ export function makeCanopyCellSegment(
       let brakeInput: number
       if (side === 'center') {
         // Center cell gets partial brake coupling through fabric tension / spanwise continuity
-        brakeInput = (controls.brakeLeft + controls.brakeRight) / 2 * 0.5
+        brakeInput = nonlinBrake((controls.brakeLeft + controls.brakeRight) / 2) * 0.5
       } else if (side === 'right') {
-        brakeInput = controls.brakeRight
+        brakeInput = nonlinBrake(controls.brakeRight)
       } else {
-        brakeInput = controls.brakeLeft
+        brakeInput = nonlinBrake(controls.brakeLeft)
       }
       const deltaEffective = brakeInput * brakeSensitivity
 
@@ -537,6 +549,7 @@ export function makeBrakeFlapSegment(
   parentCellX: number,
   flapPolar: ContinuousPolar,
   referenceLength: number,
+  maxZShift: number = 0,
   constants?: ControlConstants,
 ): AeroSegment {
   const ctrl = constants ?? DEFAULT_CONSTANTS
@@ -576,14 +589,14 @@ export function makeBrakeFlapSegment(
       const chordScale = 0.3 + 0.7 * d
       const chordOffset = DEPLOY_CHORD_OFFSET * (1 - d)
 
-      // Brake input from side routing
-      const brakeInput = side === 'right' ? controls.brakeRight : controls.brakeLeft
-      const effectiveBrake = brakeInput * brakeSensitivity
+      // Brake input from side routing (nonlinear curve for progressive response)
+      const rawBrakePM = side === 'right' ? controls.brakeRight : controls.brakeLeft
+      const effectiveBrakePM = nonlinBrake(rawBrakePM) * brakeSensitivity
 
       // Flap chord and CP shift scale with deployment
       const maxFlapChord = fullMaxFlapChord * chordScale
       const maxCpShift = fullMaxCpShift * chordScale
-      const cpShift = effectiveBrake * maxCpShift
+      const cpShift = effectiveBrakePM * maxCpShift
 
       // Dynamic position: TE to cell center with chord offset
       const teX = parentCellX + chordOffset + (fullTeX - parentCellX) * chordScale + cpShift
@@ -591,7 +604,7 @@ export function makeBrakeFlapSegment(
       return {
         x: teX * massRef_m,
         y: fullTeY * spanScale * massRef_m,
-        z: teZ * massRef_m,
+        z: (teZ + effectiveBrakePM * maxZShift) * massRef_m,
       }
     },
 
@@ -607,9 +620,9 @@ export function makeBrakeFlapSegment(
       const teX = parentCellX + chordOffset + (fullTeX - parentCellX) * chordScale  // TE toward quarter-chord + offset
       this.position.y = fullTeY * spanScale                // trailing edge y collapses
 
-      // ── Brake input from side routing ──
-      const brakeInput = side === 'right' ? controls.brakeRight : controls.brakeLeft
-      const effectiveBrake = brakeInput * brakeSensitivity
+      // ── Brake input from side routing (nonlinear curve for progressive response) ──
+      const rawBrake = side === 'right' ? controls.brakeRight : controls.brakeLeft
+      const effectiveBrake = nonlinBrake(rawBrake) * brakeSensitivity
 
       // ── Riser → geometric cell pitch (flap inherits parent cell's tilt) ──
       const frontRiser = side === 'right' ? controls.frontRiserRight : controls.frontRiserLeft
@@ -628,7 +641,7 @@ export function makeBrakeFlapSegment(
       // cpShift is positive → moves toward nose (less negative x). 
       const cpShift = effectiveBrake * maxCpShift
       this.position.x = teX + cpShift
-      this.position.z = teZ
+      this.position.z = teZ + effectiveBrake * maxZShift
 
       // If no brake input, return zeroes (S=0 means zero force anyway)
       if (effectiveBrake < 0.001) {

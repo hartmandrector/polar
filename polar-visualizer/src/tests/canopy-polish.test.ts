@@ -243,7 +243,9 @@ describe('brake flap segments', () => {
     const sFull = flap.S
 
     expect(sFull).toBeGreaterThan(sHalf)
-    expect(sFull).toBeCloseTo(2 * sHalf, 5) // linear scaling
+    // Nonlinear brake curve: ratio at full vs half is 1/0.5^0.7 ≈ 1.62, not exactly 2
+    expect(sFull / sHalf).toBeGreaterThan(1.4)
+    expect(sFull / sHalf).toBeLessThan(2.1)
   })
 
   it('outer flap chord fraction (30%) > mid (20%) > inner (10%)', () => {
@@ -314,10 +316,15 @@ describe('brake flap segments', () => {
     computeSegmentForce(flap, 8, 0, ctrlZero, rho, V)
     const xZero = flap.position.x
 
-    // Half brake should produce half the forward shift
+    // Half brake should produce proportionally less forward shift (nonlinear curve)
+    // Ratio = nonlinBrake(0.5) / nonlinBrake(1.0) = 0.5^0.7 ≈ 0.62, not 0.5
     const shiftHalf = xHalf - xZero
     const shiftFull = xFull - xZero
-    expect(shiftHalf).toBeCloseTo(shiftFull / 2, 5)
+    expect(shiftHalf).toBeGreaterThan(0)
+    expect(shiftHalf).toBeLessThan(shiftFull)
+    const ratio = shiftHalf / shiftFull
+    expect(ratio).toBeGreaterThan(0.5)
+    expect(ratio).toBeLessThan(0.8)
   })
 
   it('outer flap moves further forward than inner flap at full brake', () => {
