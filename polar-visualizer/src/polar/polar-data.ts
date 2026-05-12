@@ -947,7 +947,7 @@ const CANOPY_CELL_POLAR: ContinuousPolar = {
       d_cl_alpha: 1.2,
       d_k: 0.02,
       d_alpha_stall_fwd: -2,
-      cm_delta: -0.08,
+      cm_delta: -0.14,
     }
   },
 

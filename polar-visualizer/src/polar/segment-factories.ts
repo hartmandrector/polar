@@ -51,12 +51,17 @@ export interface ControlConstants {
   REAR_RISER_CM: number
   /** CD₀ increase per unit front riser input — leading-edge distortion drag */
   FRONT_RISER_CD_BUMP: number
+  /** alpha_0 shift per unit front riser input [deg] — LE distortion reduces effective camber,
+   *  shifting the zero-lift line. This changes trim equilibrium without an immediate force drop. */
+  FRONT_RISER_ALPHA_0_SHIFT: number
   /** Maximum geometric cell pitch from full weight shift [rad] — very subtle */
   WEIGHT_SHIFT_PITCH_MAX_RAD: number
   /** Pitching moment from full weight shift — subtle trim shift */
   WEIGHT_SHIFT_CM: number
-  /** Maximum geometric cell pitch from full riser input [rad] — tilts force vector */
-  RISER_PITCH_MAX_RAD: number
+  /** Maximum geometric cell pitch from full riser input [rad] — tilts force vector.
+   *  Zero = no lift-vector tilt from front risers (prevents symmetric drag penalty on double fronts).
+   *  Set non-zero only if turn behaviour needs drag-differential reinforcement. */
+  FRONT_RISER_PITCH_MAX_RAD: number
   /** Maximum geometric cell pitch from full rear riser input [rad] — less tilt than fronts */
   REAR_RISER_PITCH_MAX_RAD: number
   /** Maximum geometric cell pitch from full brake input [rad] — TE down = nose up (negative) */
@@ -68,18 +73,19 @@ export interface ControlConstants {
 /** Default control constants — current Ibexul tuning. */
 export const DEFAULT_CONSTANTS: ControlConstants = {
   ALPHA_MAX_RISER: 6,
-  ALPHA_MAX_FRONT_RISER: 5,
+  ALPHA_MAX_FRONT_RISER: 0, // small immediate α drop for roll initiation — alpha_0 shift handles trim equilibrium
   REAR_RISER_CD_BUMP: 0,
   BRAKE_ALPHA_COUPLING_DEG: 2.5,
   MAX_FLAP_DEFLECTION_DEG: 50,
   MAX_FLAP_ROLL_INCREMENT_DEG: 28,
-  FRONT_RISER_CM: -0.15,
+  FRONT_RISER_CM: -0.16,
   REAR_RISER_CM: 0.10,
-  FRONT_RISER_CD_BUMP: 0,
-  RISER_PITCH_MAX_RAD: -0.20,  // ~11.5° front riser tilt — aft (drag differential drives yaw)
+  FRONT_RISER_CD_BUMP: 0.05,        // drag bump per cell on pulled side — asymmetric drag drives yaw into turn; symmetric on double fronts
+  FRONT_RISER_ALPHA_0_SHIFT: 11.0,   // ° per cell: LE deformation reduces effective camber — asymmetric CL difference drives roll; symmetric on double fronts → speedbar effect
+  FRONT_RISER_PITCH_MAX_RAD: 0,     // zeroed: front risers use CM+alpha_0 for pitch; no drag-tilt penalty on double fronts
   REAR_RISER_PITCH_MAX_RAD: 0.06,  // ~3.4° rear riser tilt
-  BRAKE_PITCH_MAX_RAD: 0.14,  // ~8° at full brake
-  BRAKE_CD_BUMP: 0.12,        // TE distortion drag — asymmetric drag reinforces yaw
+  BRAKE_PITCH_MAX_RAD: 0.24,  // ~8° at full brake
+  BRAKE_CD_BUMP: 0.25,               // TE distortion drag — asymmetric drag reinforces yaw
   WEIGHT_SHIFT_PITCH_MAX_RAD: 0.04,  // ~2.3° — very subtle, similar to gentle front riser
   WEIGHT_SHIFT_CM: -0.02,     // tiny trim shift toward pulled side
 }
@@ -238,10 +244,10 @@ export function makeCanopyCellSegment(
       const weightShiftCM = wsInput * ctrl.WEIGHT_SHIFT_CM
 
       // ── Geometric cell pitch (tilts force vector in body x-z plane) ──
-      // Front riser: positive pitch (nose down) → lift tilts forward → yaw toward input
-      // Rear riser: negative pitch (nose up) → lift tilts backward → yaw toward input
-      // Brake: negative pitch (nose up) — TE pulled down acts like rear riser
-      const riserPitch = (frontRiser * ctrl.RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD) * riserSensitivity
+      // Front riser: FRONT_RISER_PITCH_MAX_RAD now zeroed — turns driven by CM+alpha_0 asymmetry
+      // Rear riser: negative cellPitchRad → lift tilts backward
+      // Brake: negative pitch — TE pulled down acts like rear riser
+      const riserPitch = (frontRiser * ctrl.FRONT_RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD) * riserSensitivity
       const brakePitch = -brakeInput * brakeSensitivity * ctrl.BRAKE_PITCH_MAX_RAD
       const cellPitchRad = riserPitch + brakePitch + weightShiftPitch
 
@@ -257,16 +263,24 @@ export function makeCanopyCellSegment(
       const brakeDragBump = brakeInput * brakeSensitivity * ctrl.BRAKE_CD_BUMP
       const totalDragBump = riserDragBump + brakeDragBump
 
+      // ── Front riser → alpha_0 shift (camber reduction at LE) ──
+      // Pulling front risers deforms the leading edge, reducing effective camber.
+      // Less camber → zero-lift angle moves toward 0 (less negative) → (alpha - alpha_0)
+      // shrinks at the same geometric AoA → less CL → canopy re-trims to lower AoA naturally.
+      // Positive shift here means alpha_0 becomes less negative.
+      const frontRiserAlpha0 = +frontRiser * ctrl.FRONT_RISER_ALPHA_0_SHIFT * riserSensitivity
+
       // ── Evaluate Kirchhoff model at (α_effective + brake α coupling, β_local, δ_effective) ──
       // During deployment, morph polar coefficients to model uninflated fabric
       const evalPolar = d < 1 ? {
         ...polar,
+        alpha_0: polar.alpha_0 + frontRiserAlpha0,
         cd_0: (polar.cd_0 + totalDragBump) * (DEPLOY_CD0_MULTIPLIER + (1 - DEPLOY_CD0_MULTIPLIER) * d),
         cl_alpha: polar.cl_alpha * (DEPLOY_CL_ALPHA_FRACTION + (1 - DEPLOY_CL_ALPHA_FRACTION) * d),
         cd_n: polar.cd_n * (DEPLOY_CD_N_MULTIPLIER + (1 - DEPLOY_CD_N_MULTIPLIER) * d),
         alpha_stall_fwd: polar.alpha_stall_fwd + DEPLOY_STALL_FWD_OFFSET * (1 - d),
         s1_fwd: polar.s1_fwd * (DEPLOY_S1_FWD_MULTIPLIER + (1 - DEPLOY_S1_FWD_MULTIPLIER) * d),
-      } : (totalDragBump > 0 ? { ...polar, cd_0: polar.cd_0 + totalDragBump } : polar)
+      } : (totalDragBump > 0 || frontRiserAlpha0 !== 0 ? { ...polar, cd_0: polar.cd_0 + totalDragBump, alpha_0: polar.alpha_0 + frontRiserAlpha0 } : polar)
       const c = getAllCoefficients(alphaEffective + deltaAlphaBrake, betaLocal, deltaEffective, evalPolar)
 
       // ── Riser + weight shift pitching moment — direct trim shift ──
@@ -627,7 +641,7 @@ export function makeBrakeFlapSegment(
       // ── Riser → geometric cell pitch (flap inherits parent cell's tilt) ──
       const frontRiser = side === 'right' ? controls.frontRiserRight : controls.frontRiserLeft
       const rearRiser = side === 'right' ? controls.rearRiserRight : controls.rearRiserLeft
-      const cellPitchRad = (frontRiser * ctrl.RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD)
+      const cellPitchRad = (frontRiser * ctrl.FRONT_RISER_PITCH_MAX_RAD - rearRiser * ctrl.REAR_RISER_PITCH_MAX_RAD)
 
       // ── Variable area and chord ──
       // Flap area grows from 0 to maxFlapS as brake is applied
