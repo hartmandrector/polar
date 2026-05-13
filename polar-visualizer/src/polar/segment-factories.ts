@@ -769,14 +769,14 @@ export function makeParasiticSegment(
  */
 export interface WingsuitControlConstants {
   // ── Pitch throttle ──
-  /** Max LE α change at full pitch input [deg] */
+  /** Max LE α change at full pitch input [deg].
+   *  Phase L: zeroed (0) — pitch authority fully delegated to hipCamber + legBend
+   *  posture shifts.  Reserved as a tuning knob; set nonzero to re-enable
+   *  direct α forcing (not recommended — see Phase L rationale). */
   PITCH_ALPHA_MAX_DEG: number
-  /** Max CP shift at full pitch input [chord fraction] */
+  /** Max CP shift at full pitch input [chord fraction].
+   *  Still active — shifts AC fore/aft independently of the α_0 posture path. */
   PITCH_CP_SHIFT: number
-  /** Max cl_alpha change at full pitch input [1/rad] */
-  PITCH_CL_ALPHA_DELTA: number
-  /** Max cd_0 increase at pitch extremes */
-  PITCH_CD0_DELTA: number
 
   // ── Yaw throttle ──
   /** Lateral CP shift for body segment at full yaw [NED y, normalized] */
@@ -796,12 +796,20 @@ export interface WingsuitControlConstants {
   YAW_TORSO_ROLL_DEG: number
 
   // ── Roll throttle ──
-  /** Differential α at full roll input [deg] — outer wings see more */
+  /** Differential α at full roll input [deg] — outer wings see more.
+   *  NOTE: unlike pitch, this remains direct α forcing (not α_0-based).
+   *  Phase N will migrate to shoulder-camber α_0 shifts for physically
+   *  motivated stall behaviour at deep roll inputs. */
   ROLL_ALPHA_MAX_DEG: number
-  /** Differential cl_alpha change at full roll [1/rad] */
-  ROLL_CL_ALPHA_DELTA: number
-  /** Differential cd_0 from adverse yaw at full roll */
-  ROLL_CD0_DELTA: number
+  /** Phase N: max α_0 shift on outer wings (L2/R2) at full roll input [deg].
+   *  Shoulder dip reduces effective camber of the lowered arm-wing zero-lift line:
+   *  right roll → right wing α_0 shifts positive (less lift) → drops;
+   *  left wing shifts negative (more lift) → rises.  Stall boundaries stay fixed
+   *  in geometric AoA space — natural stall behaviour at deep roll inputs. */
+  ROLL_ALPHA0_DEG: number
+  /** Phase N: max α_0 shift on inner wings (L1/R1) at full roll input [deg].
+   *  ~½ outer magnitude — rib-2 is partly upper-arm fabric unaffected by shoulder. */
+  INNER_ROLL_ALPHA0_DEG: number
   /** Differential dirty coupling from roll throttle */
   ROLL_DIRTY_COUPLING: number
 
@@ -863,12 +871,13 @@ export interface WingsuitControlConstants {
 
 /** Default wingsuit control constants — conservative starting point. */
 export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
-  // Phase L: alpha shift removed; trim authority fully delegated to hipCamber + legBend.
-  // Neutral slider 30/80 maps to: back=-1→100/100, fwd=+1→30/15.
+  // Phase L: direct α forcing disabled (PITCH_ALPHA_MAX_DEG = 0).
+  // All pitch authority runs through hipCamber + legBend → α_0 + cm_0 shifts.
+  // Neutral sliders: hipCamber=0.30, legBend=0.80.
+  //   back stick (−1): hipCamber→0.85, legBend→0.87 (flare / stall approach)
+  //   fwd  stick (+1): hipCamber→0.30, legBend→0.15 (dive)
   PITCH_ALPHA_MAX_DEG: 0,
-  PITCH_CP_SHIFT: 0.13,
-  PITCH_CL_ALPHA_DELTA: 0.2,
-  PITCH_CD0_DELTA: 0.01,
+  PITCH_CP_SHIFT: 0.06,   // restored (was 0.13); halved to add trim authority without overpowering posture path
 
   // Phase H experiment: yaw authority redistributed.
   //  - YAW_BODY_Y_SHIFT 0.03 -> 0 disables lateral shift on torso+leg.
@@ -896,9 +905,9 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
    *  staying well below the 15 that ate all the pitch-coupled headroom. */
   YAW_BETA_INJECT_DEG: -7,
 
-  ROLL_ALPHA_MAX_DEG: 3.0,
-  ROLL_CL_ALPHA_DELTA: 0.15,
-  ROLL_CD0_DELTA: 0.005,
+  ROLL_ALPHA_MAX_DEG: 0,      // Phase N: zeroed — roll via α_0 shoulder-camber shifts (ROLL_ALPHA0_DEG); restore to 3.0 to revert
+  ROLL_ALPHA0_DEG: 3.0,       // outer-wing (L2/R2) α_0 shift at full roll — shoulder-camber mechanism
+  INNER_ROLL_ALPHA0_DEG: 1.5, // inner-wing (L1/R1) α_0 shift at full roll (~½ outer)
   ROLL_DIRTY_COUPLING: 0.10,
 
   DIHEDRAL_INNER_MAX_DEG: 16,
@@ -925,7 +934,7 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   //   fwd (+1):  hip 0.30-0.00=0.30 (flat), leg 0.80-0.65=0.15 (dive)
   //   back (-1): hip 0.30+0.55=0.85, leg 0.80+0.07=0.87
   // Phase M.4: split between M.2 (0.80/0.85) and M.3 (0.90/0.92).
-  PITCH_HIP_CAMBER_FWD: 0.00,
+  PITCH_HIP_CAMBER_FWD: 0.1,
   PITCH_HIP_CAMBER_BACK: 0.55,
   PITCH_LEG_BEND_FWD: 0.65,
   PITCH_LEG_BEND_BACK: 0.07,
@@ -1073,33 +1082,15 @@ export function makeWingsuitLiftingSegment(
       const yawTrollBeta = Math.max(-1, Math.min(1, controls.yawThrottle))
       const betaLocal = betaDihedral + yawTrollBeta * ctrl.YAW_BETA_INJECT_DEG
 
-      // ── Pitch throttle → α offset + CP shift ──
-      // Decoupled from leg segment: pitch stick only adjusts the leading-edge
-      // (torso + arm wings). Leg α is set independently by hipCamber + legBend.
+      // ── Phase L: Pitch throttle — all authority via posture, no direct α forcing ──
+      // pitchT biases effective hipCamber + legBend (see α_0 section below).
+      // PITCH_ALPHA_MAX_DEG = 0: direct α shift is disabled.  The body settles
+      // naturally to the new trim AoA through α_0 and cm_0 shifts — posture-driven
+      // rather than AoA-forced.  CP shift (PITCH_CP_SHIFT) remains active.
+      //   back stick (pitchT < 0): hipCamber → max arch, legBend → bent  (flare)
+      //   fwd  stick (pitchT > 0): hipCamber → neutral, legBend → near-flat (dive)
+      //   neutral    (pitchT = 0): slider baselines (hipCamber 0.30, legBend 0.80)
       const pitchT = Math.max(-1, Math.min(1, controls.pitchThrottle))
-      const deltaAlphaPitch = wingType === 'leg'
-        ? 0
-        : pitchT * ctrl.PITCH_ALPHA_MAX_DEG
-
-      // ── Roll throttle → differential α ──
-      const rollT = Math.max(-1, Math.min(1, controls.rollThrottle))
-      // Positive rollThrottle → right side gets +α, left gets -α
-      const deltaAlphaRoll = rollT * ctrl.ROLL_ALPHA_MAX_DEG * rollSensitivity * sideSign
-
-      // ── Yaw throttle → differential α coupling (body twist) ──
-      const yawT = Math.max(-1, Math.min(1, controls.yawThrottle))
-      const deltaAlphaYaw = yawT * ctrl.YAW_ROLL_COUPLING_DEG * sideSign
-
-      // ── Hip camber / arch (Phase D) ──
-      // Positive hipCamber = "more arch": torso α_0 shifts +Δ (more lift fwd of CG,
-      // pitch-up moment), leg α_0 shifts −Δ (less lift aft of CG, less pitch-down).
-      // The two together produce a net pitch-up moment that balances the geometric
-      // pitch-down at trim α.  Other segments are unaffected.
-      //
-      // Phase D.2: pitch throttle additionally biases hipCamber + legBend so the
-      // gamepad drives the trim mechanism directly.  Slider value is the baseline
-      // (pilot body posture); pitchT shifts it asymmetrically (more authority back
-      // for flare than forward for dive).
       const pitchHipOffset = pitchT >= 0
         ? -pitchT * ctrl.PITCH_HIP_CAMBER_FWD
         : -pitchT * ctrl.PITCH_HIP_CAMBER_BACK
@@ -1108,8 +1099,30 @@ export function makeWingsuitLiftingSegment(
         : -pitchT * ctrl.PITCH_LEG_BEND_BACK
       const hipCamber = Math.max(-1, Math.min(1, controls.hipCamber + pitchHipOffset))
       const legBend = Math.max(0, Math.min(1, controls.legBend + pitchLegOffset))
+
+      // ── Roll throttle → differential α (direct; Phase N: planned α_0 migration) ──
+      // Right rollThrottle: right wing +α, left wing −α; outer wings scaled more.
+      // Unlike pitch, this is still direct α forcing — Phase N will replace with
+      // shoulder-camber α_0 shifts for physically motivated stall behaviour.
+      const rollT = Math.max(-1, Math.min(1, controls.rollThrottle))
+      const deltaAlphaRoll = rollT * ctrl.ROLL_ALPHA_MAX_DEG * rollSensitivity * sideSign
+
+      // ── Yaw throttle → differential α coupling (body twist) ──
+      const yawT = Math.max(-1, Math.min(1, controls.yawThrottle))
+      const deltaAlphaYaw = yawT * ctrl.YAW_ROLL_COUPLING_DEG * sideSign
+
+      // ── Primary pitch mechanism: posture → α_0 shift per segment (Phase D / M) ──
+      // hipCamber and legBend map to per-segment α_0 offsets (zero-lift line change)
+      // and cm_0 couples (deltaCm block below).  Sign per wing type:
+      //   Torso:  +hipCamber → +α_0 (arm-panel zero-lift line lifts as torso arches)
+      //   Leg:    +hipCamber → −α_0 (leg panel opens, effective camber increases)
+      //           +legBend   → −α_0 (knees bent deepens leg camber further)
+      //   Inner:  +hipCamber/+legBend → +α_0, ~½ magnitude (Phase M — rib-2 TE-near-hip
+      //           reshapes with arch; upper-arm fabric unaffected); back-stick component
+      //           attenuated to avoid double-dipping at full flare (Phase M.1)
       let deltaAlphaCamber = 0
       if (wingType === 'torso') {
+        // Torso is center (sideSign=0) — no differential roll contribution
         deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
       } else if (wingType === 'leg') {
         // Hip arch shifts both segments; knees-bent additionally reverse-cambers
@@ -1140,10 +1153,15 @@ export function makeWingsuitLiftingSegment(
         const innerLegBend  = Math.max( 0, Math.min(1, controls.legBend  + innerLegOffset))
         deltaAlphaCamber = +innerHipCamber * ctrl.INNER_HIP_CAMBER_ALPHA0_DEG
                          + innerLegBend   * ctrl.INNER_LEG_BEND_ALPHA0_DEG
+                         + rollT * ctrl.INNER_ROLL_ALPHA0_DEG * rollSensitivity * sideSign
+      } else if (wingType === 'outer') {
+        // Phase N: shoulder-camber α_0 shift for roll authority.
+        // No posture coupling on outer wings — only roll throttle.
+        deltaAlphaCamber = rollT * ctrl.ROLL_ALPHA0_DEG * rollSensitivity * sideSign
       }
 
       // ── Total α offset ──
-      const alphaEffective = alphaLocal + deltaAlphaPitch + deltaAlphaRoll + deltaAlphaYaw + deltaAlphaCamber
+      const alphaEffective = alphaLocal + deltaAlphaRoll + deltaAlphaYaw + deltaAlphaCamber
 
       // ── Yaw throttle → lateral body shift (body / torso / leg segments) ──
       if (wingType === 'body' || wingType === 'torso' || wingType === 'leg') {
