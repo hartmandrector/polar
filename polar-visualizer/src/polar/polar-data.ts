@@ -1677,14 +1677,9 @@ const A5_LEG_POLAR: ContinuousPolar = {
   // posture).  Thin-airfoil estimate cm_0 ≈ −0.6 · (camber/chord).  This
   // restores some of the natural pitch-down moment that the leg-wing should
   // contribute before any pilot input.
-  // Phase J.5: −0.03 → −0.05.  CFD pressure contours (proprietary) at α≈10°
-  // explicitly show downforce on the aft portion of the leg wing — TE produces
-  // negative pressure differential.  Slightly more negative cm_0 captures
-  // this baseline downforce.  Stays compatible with hipCamber/legBend
-  // controls which add their own cm_0 modulation on top of this baseline.
   cm_0: -0.05,
   // Phase K: restore pitch stiffness on leg — slightly less than torso in center taper.
-  cm_alpha: -0.08,
+  cm_alpha: 0.0,//-0.08,
   cp_0: 0.40,                // aft CP (wide trailing flare)
   // Phase F.3: sign flip 0.025 → −0.04.  Apex-aft taper (wide LE at hip,
   // narrow TE at feet) means more area is forward of geometric mid-chord

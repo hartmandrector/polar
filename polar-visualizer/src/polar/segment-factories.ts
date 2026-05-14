@@ -777,6 +777,26 @@ export interface WingsuitControlConstants {
   /** Max CP shift at full pitch input [chord fraction].
    *  Still active — shifts AC fore/aft independently of the α_0 posture path. */
   PITCH_CP_SHIFT: number
+  /** Phase O: additional α_0 shift on the torso panel during deep back stick (flare).
+   *  Activates linearly from pitchT = -0.5 → 0, reaching full value at pitchT = -1.0.
+   *  Physically: at full flare the torso rounds sharply, re-cambering the arm-panel
+   *  zero-lift line beyond what hipCamber alone produces.  Zero = disabled. */
+  TORSO_FLARE_ALPHA0_DEG: number
+  /** Phase O: same flare α_0 boost on inner wings (L1/R1) at deep back stick.
+   *  ~½ the torso value — upper-arm fabric partially follows the shoulder rounding
+   *  but is less affected than the torso centre-panel.  Zero = disabled. */
+  INNER_FLARE_ALPHA0_DEG: number
+  /** Phase O: positive α_0 boost on the leg wing at deep back stick (flare).
+   *  At full flare the pilot tucks the legs up, increasing the leg panel's
+   *  effective angle of attack relative to the flow.  Leg is AFT of CG, so
+   *  more lift → nose-up moment — the primary trim-gap lever at slow speeds.
+   *  Positive = higher effective α, more CL from leg.  Zero = disabled. */
+  LEG_FLARE_ALPHA0_DEG: number
+  /** Phase O: α_0 boost on outer wings (L2/R2) at deep back stick.
+   *  Outer wings are forward of CG → more lift → nose-down, but increased
+   *  CL at slow speed improves total lift margin.  Smaller than torso/inner.
+   *  Zero = disabled. */
+  OUTER_FLARE_ALPHA0_DEG: number
 
   // ── Yaw throttle ──
   /** Lateral CP shift for body segment at full yaw [NED y, normalized] */
@@ -877,7 +897,12 @@ export const DEFAULT_WINGSUIT_CONSTANTS: WingsuitControlConstants = {
   //   back stick (−1): hipCamber→0.85, legBend→0.87 (flare / stall approach)
   //   fwd  stick (+1): hipCamber→0.30, legBend→0.15 (dive)
   PITCH_ALPHA_MAX_DEG: 0,
-  PITCH_CP_SHIFT: 0.06,   // restored (was 0.13); halved to add trim authority without overpowering posture path
+  PITCH_CP_SHIFT: 0.000,
+  TORSO_FLARE_ALPHA0_DEG: 0,//6,  // Phase O: torso deep-flare α_0 boost (pitchT < -0.5)
+  INNER_FLARE_ALPHA0_DEG: 0,//3,  // Phase O: inner-wing (L1/R1) deep-flare boost (~½ torso)
+  LEG_FLARE_ALPHA0_DEG: -2.0,  // Phase O: leg-wing α_0 REDUCTION at deep flare — leg is AFT of CG,
+                                 // so less lift from leg → moment balance tips nose-up.
+  OUTER_FLARE_ALPHA0_DEG: 0,//2, // Phase O: outer-wing α_0 boost at deep flare (forward of CG → more lift)
 
   // Phase H experiment: yaw authority redistributed.
   //  - YAW_BODY_Y_SHIFT 0.03 -> 0 disables lateral shift on torso+leg.
@@ -1120,15 +1145,24 @@ export function makeWingsuitLiftingSegment(
       //   Inner:  +hipCamber/+legBend → +α_0, ~½ magnitude (Phase M — rib-2 TE-near-hip
       //           reshapes with arch; upper-arm fabric unaffected); back-stick component
       //           attenuated to avoid double-dipping at full flare (Phase M.1)
+      // Phase O: deep-flare torso α_0 boost — ramps in over the second half of back stick
+      // pitchT ∈ [-1, -0.5]: flareT = (|pitchT| - 0.5) / 0.5 = 0 → 1
+      const flareT = pitchT < -0.5 ? (-pitchT - 0.5) / 0.5 : 0
+
       let deltaAlphaCamber = 0
       if (wingType === 'torso') {
-        // Torso is center (sideSign=0) — no differential roll contribution
+        // Torso is center (sideSign=0) — no differential roll contribution.
+        // Phase O: deep-flare boost adds on top of the posture-driven hipCamber term.
         deltaAlphaCamber = +hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
+                         + flareT * ctrl.TORSO_FLARE_ALPHA0_DEG
       } else if (wingType === 'leg') {
         // Hip arch shifts both segments; knees-bent additionally reverse-cambers
         // the leg wing (negative α_0 shift) without changing surface area.
+        // Phase O: at deep flare the pilot tucks legs up, increasing leg panel
+        // effective AoA (positive delta — leg is AFT of CG, more CL = nose-up).
         deltaAlphaCamber = -hipCamber * ctrl.HIP_CAMBER_ALPHA0_DEG
                          - legBend  * ctrl.LEG_BEND_ALPHA0_DEG
+                         + flareT   * ctrl.LEG_FLARE_ALPHA0_DEG
       } else if (wingType === 'inner') {
         // Phase M: small posture-coupled α offset on L1/R1.  Both hipCamber
         // and legBend reshape the rib-2 chord (TE-near-hip cambers down,
@@ -1154,10 +1188,12 @@ export function makeWingsuitLiftingSegment(
         deltaAlphaCamber = +innerHipCamber * ctrl.INNER_HIP_CAMBER_ALPHA0_DEG
                          + innerLegBend   * ctrl.INNER_LEG_BEND_ALPHA0_DEG
                          + rollT * ctrl.INNER_ROLL_ALPHA0_DEG * rollSensitivity * sideSign
+                         + flareT * ctrl.INNER_FLARE_ALPHA0_DEG
       } else if (wingType === 'outer') {
         // Phase N: shoulder-camber α_0 shift for roll authority.
-        // No posture coupling on outer wings — only roll throttle.
+        // Phase O: deep-flare boost on outer panels.
         deltaAlphaCamber = rollT * ctrl.ROLL_ALPHA0_DEG * rollSensitivity * sideSign
+                         + flareT * ctrl.OUTER_FLARE_ALPHA0_DEG
       }
 
       // ── Total α offset ──
