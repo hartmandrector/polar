@@ -639,6 +639,23 @@ function renderHtml(
   </div>
 </div>
 
+<h2 style="color:#81d4fa; font-size:1.15em; margin: 28px 0 6px 0; font-weight:600;">Control Design Charts</h2>
+<div style="color:#90a4ae; font-size:0.85em; margin-bottom:10px; max-width:900px;">
+  Required trim surface and cubic pitch response families &mdash; reference for designing Phase P smooth pitch authority.
+</div>
+<div class="grid">
+  <div class="panel">
+    <h3>Required trim surface: qDot vs pitch throttle</h3>
+    <div class="desc">Each curve = one airspeed. Dashed zero line = trim point. Negative residual at full back stick = slow-speed gap. Goal: drive all curves through zero with a smooth pitch response function.</div>
+    <svg id="svg-qdot-curves" viewBox="0 0 500 300" width="100%" style="display:block"></svg>
+  </div>
+  <div class="panel">
+    <h3>Cubic pitch response family: f(pitchT, k)</h3>
+    <div class="desc">f = &minus;pitchT &middot; (1 + k &middot; pitchT&sup2;). k=0 is linear (dashed). k&gt;0 adds authority progressively toward full back stick without changing neutral (pitchT=0) feel.</div>
+    <svg id="svg-cubic-family" viewBox="0 0 500 300" width="100%" style="display:block"></svg>
+  </div>
+</div>
+
 <h2 style="color:#81d4fa; font-size:1.15em; margin: 28px 0 6px 0; font-weight:600;">3-DOF Longitudinal Trim (uDot = wDot = qDot = 0)</h2>
 <div style="color:#90a4ae; font-size:0.85em; margin-bottom: 10px; max-width: 900px;">
   Solves &alpha;, &theta;, <em>and</em> pitchThrottle simultaneously so the model holds true steady longitudinal flight at each airspeed.
@@ -766,6 +783,101 @@ renderTable('heat-sp', 'damping', c => c.shortPeriodZeta, v => v === null || !is
 renderTable('heat-dr', 'damping', c => c.dutchRollZeta, v => v === null || !isFinite(v) ? '—' : v.toFixed(3));
 renderTable('heat-lat', 'sigma', c => c.worstLateralSigma, v => v === null || !isFinite(v) ? '—' : v.toFixed(2));
 renderTable('heat-qdot', 'qdot', c => c.qDot, v => v === null || !isFinite(v) ? '—' : v.toFixed(1));
+
+// --- qDot surface line chart ---
+function renderQdotCurves() {
+  var el = document.getElementById('svg-qdot-curves');
+  if (!el) return;
+  var W = 500, H = 300, ml = 55, mr = 60, mt = 24, mb = 38;
+  var pw = W - ml - mr, ph = H - mt - mb;
+  var toX = function(p) { return ml + (p + 1) / 2 * pw; };
+  var allQ = DATA.cells.flat().filter(function(c) { return c.converged; }).map(function(c) { return c.qDot; });
+  var rawMin = Math.min.apply(null, allQ), rawMax = Math.max.apply(null, allQ);
+  var pad = (rawMax - rawMin) * 0.08;
+  var qMin = rawMin - pad, qMax = rawMax + pad;
+  var toY = function(q) { return mt + ph * (1 - (q - qMin) / (qMax - qMin)); };
+  var svg = '';
+  var step = (qMax - qMin) > 25 ? 10 : 5;
+  for (var q = Math.ceil(qMin / step) * step; q <= qMax + 0.01; q += step) {
+    var y = toY(q); if (y < mt - 2 || y > mt + ph + 2) continue;
+    var isZ = Math.abs(q) < 0.001;
+    svg += '<line x1="' + ml + '" y1="' + y.toFixed(1) + '" x2="' + (W-mr) + '" y2="' + y.toFixed(1) + '" stroke="' + (isZ ? '#4fc3f7' : '#fff') + '" stroke-width="' + (isZ ? 1.5 : 0.5) + '" stroke-dasharray="' + (isZ ? '5,4' : 'none') + '" opacity="' + (isZ ? 0.7 : 0.12) + '"/>';
+    svg += '<text x="' + (ml-4) + '" y="' + (y+4).toFixed(1) + '" text-anchor="end" fill="' + (isZ ? '#4fc3f7' : '#90a4ae') + '" font-size="10">' + q + '</text>';
+  }
+  for (var p = -1; p <= 1.01; p += 0.5) {
+    var x = toX(p).toFixed(1);
+    svg += '<line x1="' + x + '" y1="' + (mt+ph) + '" x2="' + x + '" y2="' + (mt+ph+5) + '" stroke="#90a4ae" stroke-width="1"/>';
+    svg += '<text x="' + x + '" y="' + (mt+ph+16) + '" text-anchor="middle" fill="#90a4ae" font-size="10">' + p.toFixed(1) + '</text>';
+  }
+  svg += '<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ph) + '" stroke="#607080" stroke-width="1"/>';
+  svg += '<line x1="' + ml + '" y1="' + (mt+ph) + '" x2="' + (W-mr) + '" y2="' + (mt+ph) + '" stroke="#607080" stroke-width="1"/>';
+  svg += '<text x="' + (W/2) + '" y="' + (H-2) + '" text-anchor="middle" fill="#90a4ae" font-size="11">pitch throttle</text>';
+  svg += '<text x="11" y="' + (mt+ph/2).toFixed(0) + '" text-anchor="middle" fill="#90a4ae" font-size="11" transform="rotate(-90 11 ' + (mt+ph/2).toFixed(0) + ')">qDot [rad/s\u00b2]</text>';
+  svg += '<text x="' + (ml+pw/2).toFixed(0) + '" y="' + (mt-8) + '" text-anchor="middle" fill="#81d4fa" font-size="11" font-weight="600">Required trim surface: qDot vs pitchT</text>';
+  var nS = DATA.speeds.length;
+  for (var i = 0; i < nS; i++) {
+    var ti = i / Math.max(nS - 1, 1);
+    var ri = Math.round(80 + 160 * ti), gi = Math.round(140 - 90 * ti), bi = Math.round(220 - 160 * ti);
+    var color = 'rgb(' + ri + ',' + gi + ',' + bi + ')';
+    var speedIdx = i;
+    var pts = DATA.pitches.map(function(pp, j) { return DATA.cells[speedIdx][j].converged ? [toX(pp), toY(DATA.cells[speedIdx][j].qDot)] : null; }).filter(Boolean);
+    if (pts.length < 2) continue;
+    var d = pts.map(function(pp, k) { return (k === 0 ? 'M' : 'L') + pp[0].toFixed(1) + ',' + pp[1].toFixed(1); }).join(' ');
+    svg += '<path d="' + d + '" stroke="' + color + '" stroke-width="2" fill="none"/>';
+    var lp = pts[pts.length - 1];
+    svg += '<text x="' + (lp[0]+4).toFixed(0) + '" y="' + (lp[1]+4).toFixed(0) + '" fill="' + color + '" font-size="9">' + DATA.speeds[speedIdx].toFixed(0) + '</text>';
+  }
+  el.innerHTML = svg;
+}
+
+// --- Cubic pitch response family chart ---
+function renderCubicFamily() {
+  var el = document.getElementById('svg-cubic-family');
+  if (!el) return;
+  var W = 500, H = 300, ml = 55, mr = 55, mt = 24, mb = 38;
+  var pw = W - ml - mr, ph = H - mt - mb;
+  var kValues = [0, 0.3, 0.5, 0.8, 1.2];
+  var kColors = ['#90a4ae', '#4fc3f7', '#81d4fa', '#4db6ac', '#ffb74d'];
+  var yMax = 2.4, yMin = -2.4;
+  var toX = function(p) { return ml + (p + 1) / 2 * pw; };
+  var toY = function(r) { return mt + ph * (1 - (r - yMin) / (yMax - yMin)); };
+  var svg = '';
+  for (var rv = -2; rv <= 2.01; rv += 0.5) {
+    var y = toY(rv); if (y < mt - 2 || y > mt + ph + 2) continue;
+    var isZ = Math.abs(rv) < 0.001;
+    svg += '<line x1="' + ml + '" y1="' + y.toFixed(1) + '" x2="' + (W-mr) + '" y2="' + y.toFixed(1) + '" stroke="' + (isZ ? '#4fc3f7' : '#fff') + '" stroke-width="' + (isZ ? 1.5 : 0.5) + '" stroke-dasharray="' + (isZ ? '5,4' : 'none') + '" opacity="' + (isZ ? 0.5 : 0.1) + '"/>';
+    svg += '<text x="' + (ml-4) + '" y="' + (y+4).toFixed(1) + '" text-anchor="end" fill="' + (isZ ? '#4fc3f7' : '#90a4ae') + '" font-size="10">' + rv.toFixed(1) + '</text>';
+  }
+  var xZ = toX(0).toFixed(1);
+  svg += '<line x1="' + xZ + '" y1="' + mt + '" x2="' + xZ + '" y2="' + (mt+ph) + '" stroke="#4fc3f7" stroke-width="1" stroke-dasharray="5,4" opacity="0.4"/>';
+  for (var p = -1; p <= 1.01; p += 0.5) {
+    var x = toX(p).toFixed(1);
+    svg += '<line x1="' + x + '" y1="' + (mt+ph) + '" x2="' + x + '" y2="' + (mt+ph+5) + '" stroke="#90a4ae" stroke-width="1"/>';
+    svg += '<text x="' + x + '" y="' + (mt+ph+16) + '" text-anchor="middle" fill="#90a4ae" font-size="10">' + p.toFixed(1) + '</text>';
+  }
+  svg += '<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ph) + '" stroke="#607080" stroke-width="1"/>';
+  svg += '<line x1="' + ml + '" y1="' + (mt+ph) + '" x2="' + (W-mr) + '" y2="' + (mt+ph) + '" stroke="#607080" stroke-width="1"/>';
+  svg += '<text x="' + (W/2) + '" y="' + (H-2) + '" text-anchor="middle" fill="#90a4ae" font-size="11">pitch throttle</text>';
+  svg += '<text x="11" y="' + (mt+ph/2).toFixed(0) + '" text-anchor="middle" fill="#90a4ae" font-size="11" transform="rotate(-90 11 ' + (mt+ph/2).toFixed(0) + ')">f(pitchT, k)</text>';
+  svg += '<text x="' + (ml+pw/2).toFixed(0) + '" y="' + (mt-8) + '" text-anchor="middle" fill="#81d4fa" font-size="11" font-weight="600">f(pitchT) = \u2212pitchT \u00b7 (1 + k \u00b7 pitchT\u00b2)</text>';
+  for (var ki = 0; ki < kValues.length; ki++) {
+    var k = kValues[ki];
+    var kcolor = kColors[ki];
+    var pts2 = [];
+    for (var n = 0; n <= 200; n++) {
+      var tt = -1 + 2 * n / 200;
+      pts2.push([toX(tt), toY(-tt * (1 + k * tt * tt))]);
+    }
+    var d2 = pts2.map(function(pp, ii) { return (ii === 0 ? 'M' : 'L') + pp[0].toFixed(1) + ',' + pp[1].toFixed(1); }).join(' ');
+    svg += '<path d="' + d2 + '" stroke="' + kcolor + '" stroke-width="' + (ki === 0 ? 1.5 : 2) + '" fill="none"' + (ki === 0 ? ' stroke-dasharray="5,3"' : '') + '/>';
+    var lp2 = pts2[0];
+    svg += '<text x="' + (lp2[0]-3).toFixed(0) + '" y="' + (lp2[1]+4).toFixed(0) + '" text-anchor="end" fill="' + kcolor + '" font-size="9">k=' + k.toFixed(1) + '</text>';
+  }
+  el.innerHTML = svg;
+}
+
+renderQdotCurves();
+renderCubicFamily();
 
 // ─── 3-DOF full trim table ────────────────────────────────────────────
 function renderFullTrim() {
