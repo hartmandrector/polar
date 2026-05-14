@@ -190,7 +190,7 @@ export interface ForceVectors {
 
 const FORCE_SCALE_CANOPY = 0.03   // N → visual units (tuned for ~25 mph canopy)
 const FORCE_SCALE_WINGSUIT = 0.0075  // ¼ scale for ~100 mph wingsuit
-const TORQUE_SCALE = 0.002  // N·m → radians of arc sweep
+const TORQUE_SCALE = 0.02  // N·m → radians of arc sweep (10× wingsuit boost for legibility)
 
 export function createForceVectors(): ForceVectors {
   const group = new THREE.Group()
