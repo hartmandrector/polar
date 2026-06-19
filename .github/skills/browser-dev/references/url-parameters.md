@@ -14,8 +14,14 @@ You can preload almost any scenario via the URL — far easier than driving the 
 | `axis` | `none`, `euler`, `body`, `both` | Axis-helper visibility |
 | `kf` | `0` / `1` | Enable keyframe overrides |
 | `sensor` | path to fused sensor CSV | Override auto-detected SENSOR fusion file |
+| `glb` | `0` / `1` | `0` = hide 3D model (and show wireframes if available), `1` = show model |
+| `headingLock` | `0` / `1` | Lock inertial scene camera to flight heading |
 | `keyframes` | base64-encoded keyframe JSON | Inject keyframe data |
 | `session` | base64-encoded full session state | Restore complete capture session |
+| `startTime` | number (seconds) | Capture start time override |
+| `endTime` | number (seconds) | Capture end time override |
+| `frameRate` | number (fps) | Capture frame rate override (default 60) |
+| `totalFrames` | number | Total frame count override (normally auto-computed from time range + fps) |
 
 **Recommended GPS test URL** (track loaded + sensible defaults):
 

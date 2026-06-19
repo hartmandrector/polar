@@ -244,7 +244,7 @@ class POLAR_OT_combined_import(bpy.types.Operator):
             new_names = set(_seqs.keys()) - existing_names
             if not new_names:
                 self.report({'WARNING'},
-                    f"Failed to create strip for '{preset['name']}'"
+                    f"Failed to create strip for '{preset['name']}'")
                 continue
 
             strip = _seqs[new_names.pop()]

@@ -40,6 +40,12 @@ Thumbs.db
 *.fbx
 *.zip
 
+# Large video proxy files (GoPro LRV, Insta360 INSV)
+*.LRV
+*.lrv
+*.insv
+*.INSV
+
 # Corvid model
 polar-visualizer/public/models/Corvid 2 Hartman.3dm
 polar-visualizer/public/models/Corvid 2 Hartman.zip

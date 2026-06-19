@@ -760,6 +760,9 @@ hideGlbToggle.addEventListener('change', () => {
   bodyScene?.setGlbHidden(hidden)
 })
 
+// ─── Heading Lock toggle ─────────────────────────────────────────────────────
+const headingLockToggle = document.getElementById('heading-lock') as HTMLInputElement
+
 // ─── Axis helper mode ───────────────────────────────────────────────────────
 const axisHelperSelect = document.getElementById('axis-helper-mode') as HTMLSelectElement
 axisHelperSelect.addEventListener('change', () => {
@@ -1509,7 +1512,35 @@ function applyKeyframeCameras(t: number) {
 
   const inertialState = kfEditor.getInertialCamera(t)
   if (inertialState && scene) {
-    scene.setCameraState(inertialState.position, inertialState.zoom)
+    if (headingLockToggle.checked && result) {
+      // Override inertial camera azimuth with GPS velocity heading.
+      // Preserves keyframe pitch (phi) and distance (radius) — only theta changes.
+      // Average velocity over a ±15-sample window before atan2 for extra heading smoothness.
+      const idx = findTimeIndex(t)
+      const lo = Math.max(0, idx - 15)
+      const hi = Math.min(result.points.length - 1, idx + 15)
+      let sumN = 0, sumE = 0
+      for (let i = lo; i <= hi; i++) {
+        sumN += result.points[i].processed.velN
+        sumE += result.points[i].processed.velE
+      }
+      const count = hi - lo + 1
+      const velN = sumN / count
+      const velE = sumE / count
+      const speed = Math.sqrt(velN * velN + velE * velE)
+      if (speed > 0.5) {
+        // NED→Three.js: North(+x)→+z, East(+y)→-x, so vehicle velocity = (-velE, 0, velN).
+        // Camera behind pilot = opposite direction = (velE, 0, -velN).
+        // Spherical theta = atan2(x, z) = atan2(velE, -velN).
+        const sph = new THREE.Spherical().setFromVector3(inertialState.position)
+        sph.theta = Math.atan2(velE, -velN)
+        scene.setCameraState(new THREE.Vector3().setFromSpherical(sph), inertialState.zoom)
+      } else {
+        scene.setCameraState(inertialState.position, inertialState.zoom)
+      }
+    } else {
+      scene.setCameraState(inertialState.position, inertialState.zoom)
+    }
   } else {
     scene?.releaseKeyframeOverride()
   }
@@ -1722,6 +1753,8 @@ function buildCaptureSession(): CaptureSessionState | null {
     displayOverlays: overlayToggle.checked,
     controlSolver: controlSolverToggle.checked,
     axisHelpers: axisHelperMode.value,
+    glbHidden: hideGlbToggle.checked,
+    headingLock: headingLockToggle.checked,
     keyframeEnabled: kfEnabled.checked,
     keyframes: (() => {
       // Stamp current video offset so share URLs / captures carry it.
@@ -1798,6 +1831,16 @@ async function applyCaptureSession(state: CaptureSessionState) {
   controlSolverToggle.dispatchEvent(new Event('change'))
   axisHelperMode.value = state.axisHelpers
   axisHelperMode.dispatchEvent(new Event('change'))
+
+  // Apply GLB hidden state
+  if (state.glbHidden != null) {
+    hideGlbToggle.checked = state.glbHidden
+    hideGlbToggle.dispatchEvent(new Event('change'))
+  }
+  // Apply heading lock state
+  if (state.headingLock != null) {
+    headingLockToggle.checked = state.headingLock
+  }
 
   // Load keyframes
   if (kfEditor.fromJSON(JSON.stringify(state.keyframes)) && kfEditor.videoOffset != null) {
@@ -1879,6 +1922,18 @@ async function applyCaptureSession(state: CaptureSessionState) {
   if (kfMode != null) {
     kfEnabled.checked = kfMode !== '0' && kfMode !== 'false'
     kfEnabled.dispatchEvent(new Event('change'))
+  }
+
+  const glbParam = urlParams.get('glb')
+  if (glbParam != null) {
+    // glb=1 → show model, glb=0 → hide model
+    hideGlbToggle.checked = glbParam === '0'
+    hideGlbToggle.dispatchEvent(new Event('change'))
+  }
+
+  const headingLockParam = urlParams.get('headingLock')
+  if (headingLockParam != null) {
+    headingLockToggle.checked = headingLockParam !== '0' && headingLockParam !== 'false'
   }
 
   // 3. Load fused CSV sensor — looks in same folder as track by default

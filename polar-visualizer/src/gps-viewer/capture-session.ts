@@ -34,6 +34,12 @@ export interface CaptureSessionState {
   /** Axis helpers mode: 'none' | 'frame' | 'all' */
   axisHelpers: string
 
+  /** Hide the GLB model */
+  glbHidden?: boolean
+
+  /** Lock inertial camera azimuth to GPS velocity heading each frame */
+  headingLock?: boolean
+
   /** Keyframe mode enabled */
   keyframeEnabled: boolean
 
