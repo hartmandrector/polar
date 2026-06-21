@@ -58,7 +58,7 @@ The entire system is built on two mathematical foundations — if you understand
 
 The real-time simulation extends these foundations forward — composing forces, frames, and equations of motion into a flyable 6DOF world. The GPS flight viewer works in the opposite direction — decomposing real flight data back through the same math to recover what the aerodynamics were doing.
 
-- **[Real-Time Simulation](docs/sim/sim-overview.md)** — 6DOF rigid-body physics at 200Hz with Xbox gamepad control. Vehicle-aware mappings auto-select canopy (brakes/risers) or wingsuit (pitch/roll/yaw) inputs. Full wingsuit-to-canopy deployment sequence: pilot chute toss → bridle tension chain → canopy bag tumbling → line stretch → instant canopy handoff with GLB preloading. Live force vectors and per-segment debug tuning during flight. [Status →](docs/sim/STATUS.md)
+- **[Real-Time Simulation](docs/sim/sim-overview.md)** — 6DOF rigid-body physics at 200Hz with Xbox gamepad or keyboard control. Vehicle-aware mappings auto-select canopy (brakes/risers) or wingsuit (pitch/roll/yaw) inputs. Full wingsuit-to-canopy deployment sequence: pilot chute toss → bridle tension chain → canopy bag tumbling → line stretch → instant canopy handoff with GLB preloading. Live force vectors and per-segment debug tuning during flight. [Status →](docs/sim/STATUS.md)
 
 ![Orbit camera during wingsuit sim flight](polar-visualizer/docs/gifs/sim-orbit-camera.gif)
 

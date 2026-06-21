@@ -47,6 +47,17 @@ export const WINGSUIT_FILTER_DEFAULTS: WingsuitFilterConfig = {
   yawTau: 0.08,
 };
 
+/**
+ * Keyboard time constants — slower than gamepad so binary key presses ramp
+ * up smoothly ("tap to trim"). Used for keyboard flight input and the gamepad
+ * visualization when no physical controller is connected.
+ */
+export const WINGSUIT_KEYBOARD_FILTER_DEFAULTS: WingsuitFilterConfig = {
+  pitchTau: 0.18,
+  rollTau: 0.10,
+  yawTau: 0.12,
+};
+
 export class WingsuitInputFilter {
   private pitch: EMAState = { value: 0 };
   private roll: EMAState = { value: 0 };

@@ -23,6 +23,10 @@ import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/con
 import type { InertiaComponents } from '../polar/inertia.ts'
 import { computeCenterOfMass, computeInertia, ZERO_INERTIA } from '../polar/inertia.ts'
 import { setSimVelocity } from '../ui/polar-charts.ts'
+import {
+  initKeyboard, consumeKeyPress, updateKeyboardOrbit, updateZoom,
+  getWingsuitKeyboardViz, getCanopyKeyboardViz,
+} from './sim-keyboard.ts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +55,9 @@ export interface SimUIContext {
 
 let runner: SimRunner | null = null
 let trail: TrailRenderer | null = null
+// Cached at 10 Hz (setInterval) and consumed every rAF frame so trail.update()
+// never touches the DOM at 60 fps, and is never blocked by input scheduling.
+let trailInertialMode = false
 
 // Phase FSM state
 type SimPhase = 'idle' | 'freefall' | 'deployment' | 'canopy' | 'landed'
@@ -229,13 +236,33 @@ function createPanel(): HTMLDivElement {
 function updateGamepadViz(modelType: string): void {
   const gp = navigator.getGamepads()[0]
   const statusEl = document.getElementById('gp-status')
+  const isCanopy = modelType === 'Canopy'
+
+  // Labels (same for gamepad + keyboard)
+  const ltLabel = document.getElementById('lt-label')
+  const rtLabel = document.getElementById('rt-label')
+  const lsLabel = document.getElementById('ls-label')
+  const rsLabel = document.getElementById('rs-label')
+  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
+  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
+  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
+  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 
   if (!gp) {
-    if (statusEl) statusEl.innerHTML = '<span style="color:#888;">Gamepad: —</span>'
-    updateStick('ls', 0, 0)
-    updateStick('rs', 0, 0)
-    updateTrigger('lt', 0)
-    updateTrigger('rt', 0)
+    // Keyboard fallback — feed smoothed key values into the same viz.
+    const k = isCanopy ? getCanopyKeyboardViz() : getWingsuitKeyboardViz()
+    const active = Math.abs(k.lx) + Math.abs(k.ly) + Math.abs(k.rx) + Math.abs(k.ry) + k.lt + k.rt > 0.01
+    if (statusEl) statusEl.innerHTML = active
+      ? '<span style="color:#6cf;">⌨ Keyboard</span>'
+      : '<span style="color:#888;">Gamepad: — <span style="color:#567;">(keyboard ready)</span></span>'
+    updateStick('ls', k.lx, k.ly)
+    updateStick('rs', k.rx, k.ry)
+    updateTrigger('lt', k.lt)
+    updateTrigger('rt', k.rt)
+    const lsVal = document.getElementById('ls-values')
+    const rsVal = document.getElementById('rs-values')
+    if (lsVal) lsVal.textContent = `${k.lx.toFixed(2)}, ${k.ly.toFixed(2)}`
+    if (rsVal) rsVal.textContent = `${k.rx.toFixed(2)}, ${k.ry.toFixed(2)}`
     return
   }
 
@@ -265,31 +292,37 @@ function updateGamepadViz(modelType: string): void {
   const rsVal = document.getElementById('rs-values')
   if (lsVal) lsVal.textContent = `${lx.toFixed(2)}, ${ly.toFixed(2)}`
   if (rsVal) rsVal.textContent = `${rx.toFixed(2)}, ${ry.toFixed(2)}`
-
-  // Update labels based on vehicle type
-  const ltLabel = document.getElementById('lt-label')
-  const rtLabel = document.getElementById('rt-label')
-  const lsLabel = document.getElementById('ls-label')
-  const rsLabel = document.getElementById('rs-label')
-
-  const isCanopy = modelType === 'Canopy'
-  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
-  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
-  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
-  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 }
 
 /** Update debug-mode gamepad viz (suffixed element IDs) */
 function updateGamepadVizDebug(modelType: string): void {
   const gp = navigator.getGamepads()[0]
   const statusEl = document.getElementById('gp-status-debug')
+  const isCanopy = modelType === 'Canopy'
+
+  const ltLabel = document.getElementById('lt-label-debug')
+  const rtLabel = document.getElementById('rt-label-debug')
+  const lsLabel = document.getElementById('ls-label-debug')
+  const rsLabel = document.getElementById('rs-label-debug')
+  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
+  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
+  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
+  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 
   if (!gp) {
-    if (statusEl) statusEl.innerHTML = '<span style="color:#888;">Gamepad: —</span>'
-    updateStick('ls-debug', 0, 0)
-    updateStick('rs-debug', 0, 0)
-    updateTrigger('lt-debug', 0)
-    updateTrigger('rt-debug', 0)
+    const k = isCanopy ? getCanopyKeyboardViz() : getWingsuitKeyboardViz()
+    const active = Math.abs(k.lx) + Math.abs(k.ly) + Math.abs(k.rx) + Math.abs(k.ry) + k.lt + k.rt > 0.01
+    if (statusEl) statusEl.innerHTML = active
+      ? '<span style="color:#6cf;">⌨ Keyboard</span>'
+      : '<span style="color:#888;">Gamepad: —</span>'
+    updateStick('ls-debug', k.lx, k.ly)
+    updateStick('rs-debug', k.rx, k.ry)
+    updateTrigger('lt-debug', k.lt)
+    updateTrigger('rt-debug', k.rt)
+    const lsVal = document.getElementById('ls-values-debug')
+    const rsVal = document.getElementById('rs-values-debug')
+    if (lsVal) lsVal.textContent = `${k.lx.toFixed(2)}, ${k.ly.toFixed(2)}`
+    if (rsVal) rsVal.textContent = `${k.rx.toFixed(2)}, ${k.ry.toFixed(2)}`
     return
   }
 
@@ -311,16 +344,6 @@ function updateGamepadVizDebug(modelType: string): void {
   const rsVal = document.getElementById('rs-values-debug')
   if (lsVal) lsVal.textContent = `${lx.toFixed(2)}, ${ly.toFixed(2)}`
   if (rsVal) rsVal.textContent = `${rx.toFixed(2)}, ${ry.toFixed(2)}`
-
-  const isCanopy = modelType === 'Canopy'
-  const ltLabel = document.getElementById('lt-label-debug')
-  const rtLabel = document.getElementById('rt-label-debug')
-  const lsLabel = document.getElementById('ls-label-debug')
-  const rsLabel = document.getElementById('rs-label-debug')
-  if (ltLabel) ltLabel.textContent = isCanopy ? 'L Brake' : 'Yaw L'
-  if (rtLabel) rtLabel.textContent = isCanopy ? 'R Brake' : 'Yaw R'
-  if (lsLabel) lsLabel.textContent = isCanopy ? 'L Riser' : 'Camera'
-  if (rsLabel) rsLabel.textContent = isCanopy ? 'R Riser' : 'Pitch / Roll'
 }
 
 // ─── HUD Update ─────────────────────────────────────────────────────────────
@@ -515,6 +538,105 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
   }
 }
 
+// ─── Keyboard Help Overlay ──────────────────────────────────────────────────
+
+/**
+ * Creates a small '⌨ Keys' button at the bottom of the sim panel.
+ * Clicking it opens a floating overlay listing all keyboard controls.
+ * Dismiss: click anywhere outside the card, or press Escape.
+ *
+ * Must be called BEFORE initKeyboard() so our Escape capture listener is
+ * registered first — initKeyboard's capture handler calls stopPropagation
+ * which would swallow Escape before a later listener could see it.
+ */
+function createKeyboardHelp(panel: HTMLDivElement): void {
+  // ── Help button ──────────────────────────────────────────────────────────
+  const helpBtn = document.createElement('button')
+  helpBtn.title = 'Keyboard controls reference'
+  helpBtn.textContent = '⌨ Keys'
+  helpBtn.style.cssText = [
+    'display:block', 'width:100%', 'margin-top:4px',
+    'background:#1c2535', 'color:#7af', 'border:1px solid #3a4d6a',
+    'border-radius:4px', 'padding:5px 12px', 'font-size:12px',
+    'cursor:pointer', 'font-family:system-ui,sans-serif',
+  ].join(';')
+  panel.appendChild(helpBtn)
+
+  // ── Overlay backdrop ─────────────────────────────────────────────────────
+  const overlay = document.createElement('div')
+  overlay.style.cssText = [
+    'display:none', 'position:fixed', 'inset:0',
+    'background:rgba(0,0,0,0.55)', 'z-index:2000',
+    'align-items:center', 'justify-content:center',
+  ].join(';')
+
+  // ── Content card ─────────────────────────────────────────────────────────
+  const card = document.createElement('div')
+  card.style.cssText = [
+    'background:#141922', 'border:1px solid #3a4d6a', 'border-radius:10px',
+    'padding:18px 22px', 'max-width:400px', 'width:90vw',
+    'color:#ccd', 'font-family:system-ui,sans-serif', 'font-size:13px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.75)',
+  ].join(';')
+  card.addEventListener('click', e => e.stopPropagation())  // don't close on card click
+
+  const row = (k: string, d: string): string =>
+    `<tr><td style="font-family:monospace;font-size:12px;color:#7af;` +
+    `padding:3px 12px 3px 0;white-space:nowrap">${k}</td>` +
+    `<td style="color:#aab;padding:3px 0">${d}</td></tr>`
+  const section = (title: string, rows: string): string =>
+    `<tr><td colspan="2" style="padding-top:12px;padding-bottom:4px;` +
+    `font-size:10px;color:#567;font-weight:700;text-transform:uppercase;` +
+    `letter-spacing:1px">${title}</td></tr>${rows}`
+
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:15px;font-weight:700;color:#9cf">⌨ Keyboard Controls</span>
+      <button id="key-help-close" style="background:none;border:none;color:#667;
+        font-size:20px;line-height:1;cursor:pointer;padding:0 2px">&#x2715;</button>
+    </div>
+    <table style="border-collapse:collapse;width:100%">
+      ${section('Wingsuit flight',
+        row('↑ / ↓',   'Pitch nose-up / nose-down') +
+        row('← / →',   'Roll left / right') +
+        row('Q / E',   'Yaw left / right'))}
+      ${section('Canopy',
+        row('Q / E',   'Left / right brake') +
+        row('↑ / ↓',   'Front / rear risers') +
+        row('← / →',   'Weight shift'))}
+      ${section('Camera',
+        row('W A S D', 'Orbit camera') +
+        row('Z / X',   'Zoom in / out'))}
+      ${section('Simulator',
+        row('Space',   'Start / Stop') +
+        row('V',       'Toggle Body ↔ Inertial frame') +
+        row('Enter',   'Pilot chute toss') +
+        row('B',       'Unzip (deploy phase)'))}
+    </table>
+    <div style="margin-top:12px;font-size:11px;color:#445;text-align:center">
+      Click outside or press Esc to close
+    </div>`
+
+  overlay.appendChild(card)
+  document.body.appendChild(overlay)
+
+  // ── Wiring ───────────────────────────────────────────────────────────────
+  const open  = (): void => { overlay.style.display = 'flex' }
+  const close = (): void => { overlay.style.display = 'none' }
+
+  helpBtn.addEventListener('click', e => { e.stopPropagation(); open() })
+  overlay.addEventListener('click', close)        // backdrop click closes
+  document.getElementById('key-help-close')?.addEventListener('click', close)
+
+  // Escape: capture phase so it fires before initKeyboard's stopPropagation.
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Escape' && overlay.style.display !== 'none') {
+      e.preventDefault()
+      close()
+    }
+  }, { capture: true })
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -522,6 +644,11 @@ function updateHUD(r: SimRunner, modelType: string, ctx: SimUIContext): void {
  */
 export function setupSimUI(ctx: SimUIContext): void {
   panelEl = createPanel()
+  // Help overlay listener must be registered BEFORE initKeyboard so the Escape
+  // capture handler fires first (initKeyboard's capture handler calls
+  // stopPropagation which would otherwise swallow Escape).
+  createKeyboardHelp(panelEl)
+  initKeyboard()
 
   // Add Start/Stop button at the bottom of the panel
   const btn = document.createElement('button')
@@ -577,6 +704,19 @@ export function setupSimUI(ctx: SimUIContext): void {
       handlePilotChuteToss(ctx)
     }
     aWasPressed = aPressed
+
+    // ── Keyboard meta keys (gamepad-absent equivalents) ──
+    if (consumeKeyPress('Space')) {
+      console.log('[keyboard] Space → toggleSim')
+      toggleSim(ctx)
+    }
+    if (consumeKeyPress('KeyV')) {
+      console.log('[keyboard] V → cycle frame')
+      cycleSelect('frame-select', 1)
+    }
+    if (consumeKeyPress('Enter')) {
+      handlePilotChuteToss(ctx)
+    }
   }, 100)
 }
 
@@ -715,6 +855,9 @@ function startSim(ctx: SimUIContext): void {
   const callbacks: SimRunnerCallbacks = {
     onUpdate: (state: FlightState) => {
       ctx.updateVisualization(state)
+      // Trail runs at rAF rate (immune to input-event scheduler priority).
+      // setInterval only caches the frame flag and sets trail.visible.
+      if (trail && trailInertialMode && runner) trail.update(runner.state)
     },
 
     getSimConfig: (): SimConfig => {
@@ -759,15 +902,20 @@ function startSim(ctx: SimUIContext): void {
   trail = new TrailRenderer(ctx.getScene())
   // HUD update at 10 Hz — read modelType dynamically for phase transitions
   hudUpdateInterval = window.setInterval(() => {
-    if (runner) {
-      const polar = ctx.getPolar()
-      const mt = polar.type ?? ''
+    if (!runner) return
+
+    // Update trail visibility + gate flag (10 Hz is plenty for a mode toggle;
+    // the actual trail.update() call is now in onUpdate/rAF so it is never
+    // blocked by the browser deferring timers during active key input).
+    trailInertialMode = ctx.getFlightState().frameMode === 'inertial'
+    if (trail) trail.visible = trailInertialMode
+
+    const polar = ctx.getPolar()
+    const mt = polar.type ?? ''
+    try {
       updateHUD(runner, mt, ctx)
-      if (trail) {
-        const inertial = ctx.getFlightState().frameMode === 'inertial'
-        trail.visible = inertial
-        if (inertial) trail.update(runner.state)
-      }
+    } catch (err) {
+      console.error('[SimUI] updateHUD failed:', err)
     }
   }, 100)
 
@@ -832,7 +980,13 @@ const ORBIT_DEADZONE = 0.08
  * Only active when a wingsuit polar is selected (canopy uses left stick for risers).
  */
 export function updateGamepadOrbit(controls: OrbitControls, polarType: string): void {
+  // Zoom works in all modes (camera-only): gamepad L3/R3 + Z/X keys.
+  updateZoom(controls)
+
   if (polarType === 'Canopy' || polarType === 'canopy') return  // canopy uses left stick for risers
+
+  // Keyboard camera orbit (WASD) — wingsuit only, mirrors gamepad left stick.
+  updateKeyboardOrbit(controls)
 
   const gp = navigator.getGamepads()[0]
   if (!gp) return

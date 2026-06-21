@@ -12,8 +12,9 @@
 import type { SimState, SimConfig, SimStateExtended, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { FlightState } from '../ui/controls.ts'
 import { rk4Step } from '../polar/sim.ts'
-import { readWingsuitGamepad, readCanopyGamepad, readDeployGamepad } from './sim-gamepad.ts'
-import { WingsuitInputFilter, CanopyInputFilter, DeployInputFilter } from './input-filter.ts'
+import { readWingsuitGamepad, readCanopyGamepad, readDeployGamepad, getGamepad } from './sim-gamepad.ts'
+import { readWingsuitKeyboardRaw, readCanopyKeyboardRaw, readDeployKeyboardRaw } from './sim-keyboard.ts'
+import { WingsuitInputFilter, CanopyInputFilter, DeployInputFilter, WINGSUIT_KEYBOARD_FILTER_DEFAULTS } from './input-filter.ts'
 import { WingsuitDeploySim } from './deploy-wingsuit.ts'
 import { CanopyDeployManager, computeCanopyIC, INITIAL_BRAKE } from './deploy-canopy.ts'
 import type { WingsuitDeployRenderState, Vec3 } from './deploy-types.ts'
@@ -139,6 +140,7 @@ export class SimRunner {
 
   /** Input filters — EMA smoothing between gamepad and aero model */
   private wingsuitFilter = new WingsuitInputFilter()
+  private wingsuitKeyboardFilter = new WingsuitInputFilter(WINGSUIT_KEYBOARD_FILTER_DEFAULTS)
   private canopyFilter = new CanopyInputFilter()
   private deployFilter = new DeployInputFilter()
 
@@ -253,7 +255,7 @@ export class SimRunner {
 
       if (isDeployPhase) {
         // ── Deploy gamepad: limited controls, brakes stowed ──
-        const gp = readDeployGamepad()
+        const gp = readDeployGamepad() ?? (getGamepad() ? null : readDeployKeyboardRaw())
         if (gp) {
           const filtered = this.deployFilter.apply(gp, elapsed)
 
@@ -266,7 +268,7 @@ export class SimRunner {
           const riserMul = this.canopyDeploy!.riserRange
 
           // Read full canopy gamepad for brake triggers during unzip transition
-          const fullGp = readCanopyGamepad()
+          const fullGp = readCanopyGamepad() ?? (getGamepad() ? null : readCanopyKeyboardRaw())
           const rawBrakeL = fullGp?.brakeLeft ?? 0
           const rawBrakeR = fullGp?.brakeRight ?? 0
 
@@ -310,7 +312,7 @@ export class SimRunner {
         }
       } else {
         // ── Full canopy gamepad: all controls available ──
-        const gp = readCanopyGamepad()
+        const gp = readCanopyGamepad() ?? (getGamepad() ? null : readCanopyKeyboardRaw())
         if (gp) {
           const filtered = this.canopyFilter.apply(gp, elapsed)
 
@@ -351,6 +353,21 @@ export class SimRunner {
       const gp = readWingsuitGamepad()
       if (gp) {
         const filtered = this.wingsuitFilter.apply(gp, elapsed)
+        config.controls = {
+          ...config.controls,
+          pitchThrottle: filtered.pitchThrottle,
+          yawThrottle: filtered.yawThrottle,
+          rollThrottle: filtered.rollThrottle,
+        }
+        gamepadFlightOverrides = {
+          pitchThrottle: filtered.pitchThrottle,
+          yawThrottle: filtered.yawThrottle,
+          rollThrottle: filtered.rollThrottle,
+        }
+      } else {
+        // Keyboard fallback (no gamepad) — uses slower keyboard tau filter.
+        const kb = readWingsuitKeyboardRaw()
+        const filtered = this.wingsuitKeyboardFilter.apply(kb, elapsed)
         config.controls = {
           ...config.controls,
           pitchThrottle: filtered.pitchThrottle,
