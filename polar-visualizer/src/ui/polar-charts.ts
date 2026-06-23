@@ -704,6 +704,108 @@ function rebuildChart2(): void {
 }
 
 /**
+ * Update chart1 datasets in-place without destroying/recreating the Chart.js instance.
+ * Falls back to rebuildChart1() if the chart doesn't exist yet.
+ *
+ * Updates: main data array, point colors, segment color callback, axis range, cursor.
+ * Does NOT change: chart type, axis labels, title, scale direction — those require rebuild.
+ */
+function updateChart1DataInPlace(): void {
+  if (!state.chart1) { rebuildChart1(); return }
+
+  const { points, legacyPoints, showLegacy, chart1View, currentAlpha, minAlpha, maxAlpha } = state
+  const data = chart1Data(chart1View, points)
+  const colors = points.map(p => p.color)
+
+  const datasets = state.chart1.data.datasets
+
+  // Dataset 0 — main polar curve
+  const ds0 = datasets[0] as any
+  ds0.data = data
+  ds0.pointBackgroundColor = colors
+  ds0.pointBorderColor = colors
+  // Recreate the segment callback so it closes over the new colors array
+  ds0.segment = { borderColor: (ctx: any) => colors[ctx.p0DataIndex] || '#888' }
+
+  // Dataset 1 — legacy overlay (only when the chart was built with it present)
+  if (showLegacy && legacyPoints.length > 0 && datasets.length > 1) {
+    const legData = legacyChart1Data(chart1View, legacyPoints)
+    const legColors = legacyPoints.map(p => p.color)
+    const ds1 = datasets[1] as any
+    ds1.data = legData
+    ds1.pointBackgroundColor = legColors
+    ds1.pointBorderColor = legColors
+    ds1.segment = { borderColor: (ctx: any) => legColors[ctx.p0DataIndex] || '#888' }
+  }
+
+  // Update axis alpha range (may change when minAlpha/maxAlpha change)
+  const xScale = (state.chart1.options.scales as any)?.x
+  if (xScale) { xScale.min = minAlpha; xScale.max = maxAlpha }
+
+  // Update cursor position
+  const plugins = state.chart1.options.plugins as any
+  if (plugins.verticalLine) plugins.verticalLine.x = currentAlpha
+
+  state.chart1.update('none')
+}
+
+/**
+ * Update chart2 datasets in-place without destroying/recreating the Chart.js instance.
+ * Falls back to rebuildChart2() if the chart doesn't exist yet.
+ *
+ * Updates: main data array, point colors, segment color callback, cursor dataset,
+ * velocityVector plugin state.
+ * Does NOT change: axis labels, axis reverse direction, title — those require rebuild.
+ */
+function updateChart2DataInPlace(): void {
+  if (!state.chart2) { rebuildChart2(); return }
+
+  const { points, legacyPoints, showLegacy, chart2View, currentAlpha } = state
+  const data = chart2Data(chart2View, points)
+  const colors = points.map(p => p.color)
+  const cursor = cursorPoint2(chart2View, points, currentAlpha)
+
+  const datasets = state.chart2.data.datasets
+
+  // Dataset 0 — main polar curve
+  const ds0 = datasets[0] as any
+  ds0.data = data
+  ds0.pointBackgroundColor = colors
+  ds0.pointBorderColor = colors
+  ds0.segment = { borderColor: (ctx: any) => colors[ctx.p0DataIndex] || '#888' }
+
+  // Dataset 1 — legacy overlay (only when chart was built with legacy present;
+  // chart has 3 datasets in that case: main + legacy + cursor)
+  if (showLegacy && legacyPoints.length > 0 && datasets.length > 2) {
+    const legData = legacyChart2Data(chart2View, legacyPoints)
+    const legColors = legacyPoints.map(p => p.color)
+    const ds1 = datasets[1] as any
+    ds1.data = legData
+    ds1.pointBackgroundColor = legColors
+    ds1.pointBorderColor = legColors
+    ds1.segment = { borderColor: (ctx: any) => legColors[ctx.p0DataIndex] || '#888' }
+  }
+
+  // Cursor dataset — always the last one
+  const cursorDs = datasets[datasets.length - 1] as any
+  if (cursorDs && cursor) cursorDs.data = [cursor]
+
+  // Update velocityVector plugin
+  const plugins = state.chart2.options.plugins as any
+  if (plugins.velocityVector) {
+    if (chart2View === 'speed' && cursor) {
+      plugins.velocityVector.enabled = true
+      plugins.velocityVector.x = cursor.x
+      plugins.velocityVector.y = cursor.y
+    } else {
+      plugins.velocityVector.enabled = false
+    }
+  }
+
+  state.chart2.update('none')
+}
+
+/**
  * Recompute the full polar sweep and update both charts.
  * Call when β, δ, dirty, polar, airspeed, or ρ change.
  */
@@ -750,9 +852,11 @@ export function updateChartSweep(
     state.legacyPoints = []
   }
 
-  // Rebuild both charts (full data change)
-  rebuildChart1()
-  rebuildChart2()
+  // Update charts in-place — keep existing Chart.js instances alive, only replace
+  // dataset arrays and plugin state. This avoids the ~55–70ms destroy+recreate cost
+  // per frame. rebuildChart1/2 are still used for config changes (view switch, etc.)
+  updateChart1DataInPlace()
+  updateChart2DataInPlace()
   buildAoaLegend()
 }
 

@@ -144,6 +144,14 @@ async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number 
 
 /** Track sweep-affecting params to detect when only α changes (cursor-only). */
 let prevSweepKey = ''
+/** Timestamp of the last updateChartSweep call — used to throttle during sim. */
+let lastSweepUpdateMs = 0
+/**
+ * Minimum ms between full chart-sweep redraws during sim.
+ * At ~10 fps, this means ~1 sweep update per 5 frames (5 Hz redraw max).
+ * Cursor (α) still updates every frame via updateChartCursor — cheap.
+ */
+const SWEEP_THROTTLE_MS = 200
 let prevPilotPitch = 0
 let prevDeploy = 1
 let prevPilotHeightCm = 187.5
@@ -918,27 +926,35 @@ function updateVisualization(state: FlightState): void {
   }
 
   // ─── Charts ──────────────────────────────────────────────────────────────
-
-  const key = sweepKey(state)
-  if (key !== prevSweepKey) {
-    // Full sweep-affecting parameter changed → recompute sweep
-    prevSweepKey = key
-    updateChartSweep(polar, {
-      minAlpha: -180,
-      maxAlpha: 180,
-      beta_deg: state.beta_deg,
-      delta: state.delta,
-      dirty: state.dirty,
-      rho: state.rho,
-      airspeed: state.airspeed,
-    }, state.alpha_deg, legacyPolar,
-      hasSegments ? segments : undefined,
-      hasSegments ? segControls : undefined,
-      massReference,
-    )
-  } else {
-    // Only α changed → move cursor
-    updateChartCursor(state.alpha_deg)
+  // Both updateChartSweep and updateChartCursor call chart.update('none'), which
+  // redraws all 720 gradient-coloured data points on the canvas — expensive (~33ms).
+  // Throttle to SWEEP_THROTTLE_MS so the canvas draw fires at most ~5Hz during sim.
+  // On throttled frames we skip the chart entirely; the chart stays visually correct
+  // from the last update, and the cursor jumps at 5Hz instead of per-frame.
+  const now = performance.now()
+  if ((now - lastSweepUpdateMs) >= SWEEP_THROTTLE_MS) {
+    lastSweepUpdateMs = now
+    const key = sweepKey(state)
+    if (key !== prevSweepKey) {
+      // Full sweep-affecting parameter changed → recompute sweep
+      prevSweepKey = key
+      updateChartSweep(polar, {
+        minAlpha: -180,
+        maxAlpha: 180,
+        beta_deg: state.beta_deg,
+        delta: state.delta,
+        dirty: state.dirty,
+        rho: state.rho,
+        airspeed: state.airspeed,
+      }, state.alpha_deg, legacyPolar,
+        hasSegments ? segments : undefined,
+        hasSegments ? segControls : undefined,
+        massReference,
+      )
+    } else {
+      // Only α changed → move cursor only
+      updateChartCursor(state.alpha_deg)
+    }
   }
 }
 
