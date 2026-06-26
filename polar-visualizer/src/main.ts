@@ -984,6 +984,19 @@ async function init(): Promise<void> {
 
   // Dev hook: expose camera + controls + scene for browser-dev tooling
   // (used by `.github/skills/browser-dev` for screenshot composition)
+
+  // Helper used by the writeXxx console commands below.
+  // Sets a range slider value, clamps to its min/max, and fires the 'input'
+  // event so readState() / onChange() picks it up immediately.
+  const _writeSlider = (id: string, value: number): number => {
+    const el = document.getElementById(id) as HTMLInputElement | null
+    if (!el) { console.warn(`[polar] slider #${id} not found`); return value }
+    const clamped = Math.max(parseFloat(el.min), Math.min(parseFloat(el.max), value))
+    el.value = String(clamped)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    return clamped
+  }
+
   ;(window as unknown as { __polar?: unknown }).__polar = {
     camera: sceneCtx.camera,
     controls: sceneCtx.controls,
@@ -1028,6 +1041,46 @@ async function init(): Promise<void> {
       URL.revokeObjectURL(url)
       console.log(`[export] Wrote ${filename} (${(result.byteLength / 1024).toFixed(1)} KB, ${polar.aeroSegments.length} segments).`)
     },
+
+    // ── Console trim-capture commands ─────────────────────────────────────
+    // These read the current simulation output (alpha/beta/airspeed) and
+    // write the values back into the corresponding sliders so the static
+    // polar viewer reflects the last simulated trim when the sim is paused.
+    //
+    //   __polar.writeAlpha()           — alpha-slider ← flightState.alpha_deg
+    //   __polar.writeBeta()            — beta-slider  ← flightState.beta_deg
+    //   __polar.writeAirspeed()        — airspeed-slider ← flightState.airspeed
+    //   __polar.writeVelocityVector()  — all three at once (alias: wvv)
+    //
+    // Safe to call while the sim is running — the sim overrides alpha/beta/
+    // airspeed from its own physics state each tick, so these writes have no
+    // effect on the physics.  They take effect when the sim is stopped.
+    writeAlpha: () => {
+      const a = flightState?.alpha_deg ?? 0
+      const clamped = _writeSlider('alpha-slider', a)
+      const clampNote = Math.abs(clamped - a) > 0.05 ? ` (clamped from ${a.toFixed(2)}°)` : ''
+      console.log(`[polar] alpha → ${clamped.toFixed(2)}°${clampNote}`)
+    },
+    writeBeta: () => {
+      const b = flightState?.beta_deg ?? 0
+      const clamped = _writeSlider('beta-slider', b)
+      const clampNote = Math.abs(clamped - b) > 0.05 ? ` (clamped from ${b.toFixed(2)}°)` : ''
+      console.log(`[polar] beta → ${clamped.toFixed(2)}°${clampNote}`)
+    },
+    writeAirspeed: () => {
+      const V = flightState?.airspeed ?? 0
+      const clamped = _writeSlider('airspeed-slider', V)
+      const clampNote = Math.abs(clamped - V) > 0.05 ? ` (clamped from ${V.toFixed(2)} m/s)` : ''
+      console.log(`[polar] airspeed → ${clamped.toFixed(2)} m/s${clampNote}`)
+    },
+    writeVelocityVector: () => {
+      const p = window as unknown as { __polar?: any }
+      p.__polar.writeAlpha()
+      p.__polar.writeBeta()
+      p.__polar.writeAirspeed()
+    },
+    /** Alias for writeVelocityVector */
+    wvv: () => { (window as unknown as { __polar?: any }).__polar.writeVelocityVector() },
   }
 
   // Create force vectors
