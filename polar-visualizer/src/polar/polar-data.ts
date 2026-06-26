@@ -683,8 +683,22 @@ export function getCanopyBridleAttachNED(): { x: number; y: number; z: number } 
 
 // 7 canopy cells across span, forming an arc over the pilot's head.
 // Each cell has structure mass and trapped air mass.
-// Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → 0.00643
-// Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → 0.011
+// Total structure: ~3.5 kg (0.045 of 77.5 kg), split 1/7 each → CANOPY_STRUCT_RATIO_PER_CELL
+// Total air: ~6 kg (0.077 of 77.5 kg), split 1/7 each → CANOPY_AIR_RATIO_PER_CELL
+//
+// Air is excluded from weight segments (buoyant) but included in inertia segments
+// (trapped air resists rotation). Adjust CANOPY_AIR_RATIO_PER_CELL to tune
+// how much rotational inertia the canopy air contributes.
+
+/** Canopy fabric/structure mass per cell as a fraction of polar.m (7 cells × this = total). */
+const CANOPY_STRUCT_RATIO_PER_CELL = 0.00643//0.00643   // ~3.5 kg total at 77.5 kg system mass
+
+/**
+ * Trapped air mass per cell as a fraction of polar.m (7 cells × this = total).
+ * Air is buoyant so it does NOT contribute to weight, but it DOES resist rotation.
+ * Increase to raise Iyy/Izz (slower pitch/yaw); decrease to make the canopy more agile.
+ */
+export const CANOPY_AIR_RATIO_PER_CELL = 0.00011//0.011  // ~6 kg total at 77.5 kg system mass
 //
 // Positions now from GLB mesh (see _cellQC above).
 // Previously used arc geometry: R=1.55, θ = 0°/±12°/±24°/±36°.
@@ -717,22 +731,22 @@ export function getCanopyBridleAttachNED(): { x: number; y: number; z: number } 
 // ──── END OLD MASS SEGMENT POSITIONS ────
 
 const CANOPY_STRUCTURE_SEGMENTS: MassSegment[] = [
-  { name: 'canopy_structure_c',  massRatio: 0.00643, normalizedPosition: _cellQC(1, 'center') },
-  { name: 'canopy_structure_r1', massRatio: 0.00643, normalizedPosition: _cellQC(2, 'right') },
-  { name: 'canopy_structure_l1', massRatio: 0.00643, normalizedPosition: _cellQC(2, 'left') },
-  { name: 'canopy_structure_r2', massRatio: 0.00643, normalizedPosition: _cellQC(3, 'right') },
-  { name: 'canopy_structure_l2', massRatio: 0.00643, normalizedPosition: _cellQC(3, 'left') },
-  { name: 'canopy_structure_r3', massRatio: 0.00643, normalizedPosition: _cellQC(4, 'right') },
-  { name: 'canopy_structure_l3', massRatio: 0.00643, normalizedPosition: _cellQC(4, 'left') },
+  { name: 'canopy_structure_c',  massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(1, 'center') },
+  { name: 'canopy_structure_r1', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(2, 'right') },
+  { name: 'canopy_structure_l1', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(2, 'left') },
+  { name: 'canopy_structure_r2', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(3, 'right') },
+  { name: 'canopy_structure_l2', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(3, 'left') },
+  { name: 'canopy_structure_r3', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(4, 'right') },
+  { name: 'canopy_structure_l3', massRatio: CANOPY_STRUCT_RATIO_PER_CELL, normalizedPosition: _cellQC(4, 'left') },
 ]
 
 const CANOPY_AIR_SEGMENTS: MassSegment[] = [
-  { name: 'canopy_air_c',  massRatio: 0.011, normalizedPosition: _cellQC(1, 'center') },
-  { name: 'canopy_air_r1', massRatio: 0.011, normalizedPosition: _cellQC(2, 'right') },
-  { name: 'canopy_air_l1', massRatio: 0.011, normalizedPosition: _cellQC(2, 'left') },
-  { name: 'canopy_air_r2', massRatio: 0.011, normalizedPosition: _cellQC(3, 'right') },
-  { name: 'canopy_air_l2', massRatio: 0.011, normalizedPosition: _cellQC(3, 'left') },
-  { name: 'canopy_air_r3', massRatio: 0.011, normalizedPosition: _cellQC(4, 'right') },
+  { name: 'canopy_air_c',  massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(1, 'center') },
+  { name: 'canopy_air_r1', massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(2, 'right') },
+  { name: 'canopy_air_l1', massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(2, 'left') },
+  { name: 'canopy_air_r2', massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(3, 'right') },
+  { name: 'canopy_air_l2', massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(3, 'left') },
+  { name: 'canopy_air_r3', massRatio: CANOPY_AIR_RATIO_PER_CELL, normalizedPosition: _cellQC(4, 'right') },
   { name: 'canopy_air_l3', massRatio: 0.011, normalizedPosition: _cellQC(4, 'left') },
 ]
 

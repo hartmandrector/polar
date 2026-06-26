@@ -177,6 +177,21 @@ html, body {
   gap: 8px;
 }
 
+#chart-disable-bar {
+  padding: 4px 8px;
+  background: #1a1a2e;
+  border-bottom: 1px solid #0f3460;
+  font-size: 11px;
+  color: #aaa;
+}
+
+#chart-disable-bar label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .chart-header select {
   flex: 1;
   padding: 3px 6px;
@@ -245,6 +260,10 @@ html, body {
   padding-bottom: 3px;
   border-bottom: 1px solid #0f3460;
   font-weight: 600;
+}
+
+.env-section-header {
+  margin-top: 12px;
 }
 
 .attitude-mode-toggle label {

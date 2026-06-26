@@ -34,12 +34,14 @@ import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
 import { setupSimUI, updateGamepadOrbit, tickDeployZoom } from './sim/sim-ui.ts'
 import * as THREE from 'three'
+import { createEnvironment, updateEnvironment, setEnvironmentFrame, type EnvironmentLayer } from './viewer/environment.ts'
 
 // ─── App State ───────────────────────────────────────────────────────────────
 
 let sceneCtx: SceneContext
 let currentModel: LoadedModel | null = null
 let forceVectors: ForceVectors
+let envLayer: EnvironmentLayer
 let flightState: FlightState
 let loadingModel = false
 let massOverlay: MassOverlay
@@ -146,6 +148,8 @@ async function switchModel(vehicle: VehicleDefinition, cgOffsetFraction: number 
 let prevSweepKey = ''
 /** Timestamp of the last updateChartSweep call — used to throttle during sim. */
 let lastSweepUpdateMs = 0
+/** When true, all chart computation and canvas draws are skipped entirely. */
+let chartsDisabled = false
 /**
  * Minimum ms between full chart-sweep redraws during sim.
  * At ~10 fps, this means ~1 sweep update per 5 frames (5 Hz redraw max).
@@ -573,12 +577,16 @@ function updateVisualization(state: FlightState): void {
     sceneCtx.compassLabels.quaternion.identity()
     // Body axis labels rotate with body attitude
     sceneCtx.bodyAxisLabels.quaternion.copy(bodyQuat)
+    // Environment lives in inertial space — no rotation needed
+    setEnvironmentFrame(envLayer, 'inertial', bodyQuat, state.alpha_deg, state.beta_deg, state.airspeed)
   } else {
     // Body mode — compass labels rotate by inverse body quat
     const invQuat = bodyQuat.clone().invert()
     sceneCtx.compassLabels.quaternion.copy(invQuat)
     // Body axis labels fixed (identity) — they're the body reference
     sceneCtx.bodyAxisLabels.quaternion.identity()
+    // Environment: same invQuat as compassLabels so the horizon is correct
+    setEnvironmentFrame(envLayer, 'body', bodyQuat, state.alpha_deg, state.beta_deg, state.airspeed)
   }
 
   // ── Gravity direction in current display frame ──
@@ -764,6 +772,11 @@ function updateVisualization(state: FlightState): void {
       // as deploy fraction goes from 0 → 1. sliderFraction = 1 - deploy.
       if (currentModel.sliderModel && currentModel.baseBridlePos && currentModel.pilotPivot) {
         const d = state.deploy
+        // pilotPivot.position is LOCAL to compositeRoot (currentModel.model).
+        // sliderModel is a sibling of compositeRoot in the outer group (world space).
+        // applyCgFromMassSegments shifts compositeRoot.position, so we must add it
+        // to convert pilotPivot's local coords to group/world space.
+        const mp = currentModel.model.position
         if (d > 0 && d < 1) {
           currentModel.sliderModel.visible = true
           // Top position: line attachment level (bridleTop minus offset to sit
@@ -772,11 +785,11 @@ function updateVisualization(state: FlightState): void {
           const topX = currentModel.baseBridlePos.x * spanScale
           const topY = currentModel.baseBridlePos.y - sliderTopDrop
           const topZ = currentModel.baseBridlePos.z * chordScale
-          // Bottom position: above pilot's head (pivot + offset upward in Three.js Y)
-          const headOffset = 0.264  // above pilot head in normalized units
-          const botX = currentModel.pilotPivot.position.x
-          const botY = currentModel.pilotPivot.position.y + headOffset
-          const botZ = currentModel.pilotPivot.position.z - 0.05  // slightly forward
+          // Bottom position: above pilot's head in GROUP (world) space
+          const headOffset = 0.264
+          const botX = mp.x + currentModel.pilotPivot.position.x
+          const botY = mp.y + currentModel.pilotPivot.position.y + headOffset
+          const botZ = mp.z + currentModel.pilotPivot.position.z - 0.05
           // Lerp: at deploy=0 slider is at top, at deploy=1 slider is at bottom
           currentModel.sliderModel.position.set(
             topX + d * (botX - topX),
@@ -788,9 +801,9 @@ function updateVisualization(state: FlightState): void {
           const headOffset = 0.264
           currentModel.sliderModel.visible = true
           currentModel.sliderModel.position.set(
-            currentModel.pilotPivot.position.x,
-            currentModel.pilotPivot.position.y + headOffset,
-            currentModel.pilotPivot.position.z - 0.05,
+            mp.x + currentModel.pilotPivot.position.x,
+            mp.y + currentModel.pilotPivot.position.y + headOffset,
+            mp.z + currentModel.pilotPivot.position.z - 0.05,
           )
         } else {
           currentModel.sliderModel.visible = false
@@ -931,6 +944,7 @@ function updateVisualization(state: FlightState): void {
   // Throttle to SWEEP_THROTTLE_MS so the canvas draw fires at most ~5Hz during sim.
   // On throttled frames we skip the chart entirely; the chart stays visually correct
   // from the last update, and the cursor jumps at 5Hz instead of per-frame.
+  if (chartsDisabled) return
   const now = performance.now()
   if ((now - lastSweepUpdateMs) >= SWEEP_THROTTLE_MS) {
     lastSweepUpdateMs = now
@@ -1023,8 +1037,25 @@ async function init(): Promise<void> {
   // Create mass overlay (parented to model group later, so it rotates with the body)
   massOverlay = createMassOverlay()
 
+  // Create environment layer (ground grid + particle debris)
+  envLayer = createEnvironment(sceneCtx.scene)
+
+  // Wire environment checkboxes
+  const envGridCb = document.getElementById('env-ground-grid') as HTMLInputElement | null
+  const envParticlesCb = document.getElementById('env-particles') as HTMLInputElement | null
+  envGridCb?.addEventListener('change', () => { envLayer.groundGrid.visible = envGridCb.checked })
+  envParticlesCb?.addEventListener('change', () => { envLayer.particles.visible = envParticlesCb.checked })
+
   // Initialize chart panels
   initCharts()
+
+  // Wire "Disable Charts" checkbox
+  const disableChartsCb = document.getElementById('disable-charts') as HTMLInputElement | null
+  if (disableChartsCb) {
+    disableChartsCb.addEventListener('change', () => {
+      chartsDisabled = disableChartsCb.checked
+    })
+  }
 
   // Setup debug override panel
   setupDebugPanel(() => {
@@ -1124,6 +1155,7 @@ async function init(): Promise<void> {
     tickDeployZoom(simCtx)
     updateGamepadOrbit(sceneCtx.controls, flightState.modelType ?? polar.type ?? '')
     sceneCtx.controls.update()
+    updateEnvironment(envLayer, sceneCtx.camera, performance.now())
     sceneCtx.renderer.render(sceneCtx.scene, sceneCtx.camera)
   }
   animate()
