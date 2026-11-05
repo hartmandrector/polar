@@ -58,7 +58,7 @@ export function flightStateToSimState(fs: FlightState): SimStateExtended {
   const w = V * Math.sin(alpha) * Math.cos(beta)
 
   return {
-    x: 0, y: 0, z: -2000,
+    x: 0, y: 0, z: 0,
     u, v, w,
     phi:   fs.roll_deg  * DEG,
     theta: fs.pitch_deg * DEG,
@@ -104,6 +104,10 @@ export function simStateToFlightState(
     psiDot_degps:   sim.r * RAD,
     pilotPitch: (ext.thetaPilot ?? 0) * RAD,
     lineTwist: (ext.pilotYaw ?? 0) * RAD,
+    // Inertial position for terrain tracking
+    pos_x: sim.x,
+    pos_y: sim.y,
+    pos_z: sim.z,
   }
 }
 
@@ -147,6 +151,9 @@ export class SimRunner {
   /** Canopy polar key to switch to at line stretch (set from scenario) */
   private canopyPolarKey: string | null = null
 
+  /** Captured initial state for reset functionality */
+  private initialSimState: SimState | null = null
+
   constructor(
     initialFlightState: FlightState,
     callbacks: SimRunnerCallbacks,
@@ -174,6 +181,29 @@ export class SimRunner {
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId)
       this.animFrameId = 0
+    }
+  }
+
+  /**
+   * Capture the current simulation state as the initial state for reset.
+   * Called at the start of a simulation run.
+   */
+  captureInitialState(): void {
+    this.initialSimState = { ...this.simState }
+  }
+
+  /**
+   * Restore the simulation to the captured initial state.
+   * Does not restart the simulation loop — caller must click Play to resume.
+   */
+  restoreInitialState(): void {
+    if (this.initialSimState) {
+      this.simState = { ...this.initialSimState }
+      this.simTime = 0
+      this.lastTime = performance.now()
+      this.wsDeploy = null
+      this.bridleChain = null
+      this.wsDeployRender = null
     }
   }
 

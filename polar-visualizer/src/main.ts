@@ -32,7 +32,7 @@ import { createCellWireframes, CellWireframes } from './viewer/cell-wireframes.t
 import { createWingsuitWireframes, WingsuitWireframes, buildWingsuitWireframeSolidGroup } from './viewer/wingsuit-wireframes.ts'
 import { CANOPY_GEOMETRY } from './viewer/model-registry.ts'
 import { getVehicleDefinition, getVehicleAeroPolar, getVehicleMassReference, type VehicleDefinition } from './viewer/vehicle-registry.ts'
-import { setupSimUI, updateGamepadOrbit, tickDeployZoom } from './sim/sim-ui.ts'
+import { setupSimUI, updateGamepadOrbit, tickDeployZoom, updateTerrainPosition, isSimRunning } from './sim/sim-ui.ts'
 import * as THREE from 'three'
 import { createEnvironment, updateEnvironment, setEnvironmentFrame, type EnvironmentLayer } from './viewer/environment.ts'
 
@@ -722,6 +722,22 @@ function updateVisualization(state: FlightState): void {
   // Update model rotation (only in inertial frame — body frame keeps model fixed)
   if (currentModel) {
     applyAttitude(currentModel.group, state.frameMode === 'inertial' ? bodyQuat : null)
+    // Model always stays at origin — we move terrain instead (via currentTerrainModel)
+    currentModel.group.position.set(0, 0, 0)
+    
+    // ── Update terrain position ──
+    // SimState coordinates origin at exit point:
+    //   pos_x/y = lateral displacement (north/east)
+    //   pos_z = descent distance (positive = descended)
+    // Terrain moves opposite to wingsuit's trajectory.
+    if (isSimRunning()) {
+      if (state.frameMode === 'inertial') {
+        updateTerrainPosition(state.pos_x, state.pos_y, state.pos_z)
+      } else {
+        updateTerrainPosition(0, 0, 0)  // body frame: terrain at origin
+      }
+    }
+    
     // Orient bridle + pilot chute along relative wind
     // Hide prop bridle during wingsuit BASE sim (sim bridle chain replaces it)
     if (currentModel.bridleGroup) {

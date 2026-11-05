@@ -15,6 +15,10 @@ export interface FlightState {
   dirty: number     // 0–1: dirty flying (wingsuit efficiency loss)
   airspeed: number   // m/s
   rho: number        // kg/m³
+  // ── Inertial position [m] — NED Earth frame (for terrain rendering) ──
+  pos_x: number      // north position
+  pos_y: number      // east position
+  pos_z: number      // down position
   polarKey: string   // 'aurafive' | 'ibexul' | 'slicksin'
   modelType: 'wingsuit' | 'canopy' | 'skydiver' | 'airplane'
   frameMode: 'body' | 'inertial'
@@ -377,6 +381,9 @@ export function setupControls(onChange: StateChangeCallback): FlightState {
       dirty,
       airspeed,
       rho,
+      pos_x: 0,  // updated by SimRunner
+      pos_y: 0,
+      pos_z: -2000,
       polarKey,
       modelType,
       frameMode,

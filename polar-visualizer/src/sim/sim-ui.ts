@@ -14,9 +14,10 @@
 import { SimRunner } from './sim-runner.ts'
 import type { SimRunnerCallbacks } from './sim-runner.ts'
 import { TrailRenderer } from '../viewer/trail.ts'
+import { loadTerrainModel } from '../viewer/model-loader.ts'
 import type { SimConfig, PilotCouplingConfig } from '../polar/sim-state.ts'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { Spherical, Vector3 } from 'three'
+import { Spherical, Vector3, Group } from 'three'
 import type * as THREE from 'three'
 import type { FlightState } from '../ui/controls.ts'
 import type { ContinuousPolar, AeroSegment, SegmentControls } from '../polar/continuous-polar.ts'
@@ -51,6 +52,18 @@ export interface SimUIContext {
   getCamera: () => THREE.PerspectiveCamera
 }
 
+// ─── Scenario Configuration ─────────────────────────────────────────────────
+
+/**
+ * For wingsuit-base scenario: Reset Mode allows user to adjust sliders,
+ * then initial conditions are taken from slider values at sim start.
+ * No hardcoded overrides — debug and wingsuit-base both use current slider state.
+ */
+const SCENARIO_CONFIGS: Record<'debug' | 'wingsuit-base', any> = {
+  debug: {},
+  'wingsuit-base': {},  // wingsuit-base uses slider values directly
+}
+
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let runner: SimRunner | null = null
@@ -68,7 +81,13 @@ let exitAltitude = 0          // altitude at sim start (for Δh calc)
 let exitPosition = { x: 0, y: 0 }  // NED position at sim start (for Δd calc)
 let panelEl: HTMLDivElement | null = null
 let buttonEl: HTMLButtonElement | null = null
+let resetBtn: HTMLButtonElement | null = null
+let exitSetupPanel: HTMLDivElement | null = null
 let hudUpdateInterval = 0
+
+/** Current UI mode — tracks whether we're in reset mode or running */
+type UIMode = 'idle' | 'reset-mode' | 'running'
+let currentUIMode: UIMode = 'idle'
 
 /** Gamepad Menu button (button 9) toggle — edge-triggered */
 const MENU_BUTTON = 9
@@ -81,6 +100,18 @@ let viewWasPressed = false
 /** Gamepad A button (button 0) — pilot chute toss event */
 const A_BUTTON = 0
 let aWasPressed = false
+
+// ─── Exit Configuration State ──────────────────────────────────────────────
+
+/** Exit point altitude MSL (meters) — used for density altitude calculations */
+let exitAltitudeMSL = 2000  // default: 2000m MSL
+
+// ─── Terrain State ──────────────────────────────────────────────────────────
+
+/** Currently loaded terrain model in the scene */
+let currentTerrainModel: Group | null = null
+/** Name of currently loaded terrain ('none', 'terrain-squaw7-23-2025', etc.) */
+let currentTerrainName: string = 'none'
 
 /** Cycle a <select> element forward or backward, triggering change event */
 function cycleSelect(selectId: string, direction: 1 | -1): void {
@@ -672,6 +703,67 @@ export function setupSimUI(ctx: SimUIContext): void {
   panelEl.appendChild(btn)
   buttonEl = btn
 
+  // Add Reset button
+  resetBtn = document.createElement('button')
+  resetBtn.id = 'sim-reset'
+  resetBtn.textContent = '⟲ Reset'
+  resetBtn.style.cssText = `
+    display: none;
+    width: 100%;
+    margin-top: 4px;
+    background: #666;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: system-ui, sans-serif;
+  `
+  resetBtn.addEventListener('click', () => resetSim(ctx))
+  panelEl.appendChild(resetBtn)
+
+  // Add Exit Setup panel (heading + terrain selectors, visible only in reset mode)
+  exitSetupPanel = document.createElement('div')
+  exitSetupPanel.id = 'exit-setup'
+  exitSetupPanel.style.cssText = `
+    display: none;
+    margin-top: 8px;
+    padding: 8px;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 11px;
+  `
+  exitSetupPanel.innerHTML = `
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; color: #9cf; font-weight: bold; margin-bottom: 4px;">Exit Altitude MSL (m)</label>
+      <input type="range" id="exit-altitude-msl" style="width: 100%; cursor: pointer;" min="0" max="5000" value="2000" step="100">
+      <div id="exit-altitude-display" style="color: #aaa; font-size: 11px; text-align: center; margin-top: 2px;">2000 m</div>
+    </div>
+    <div>
+      <label style="display: block; color: #9cf; font-weight: bold; margin-bottom: 4px;">Terrain</label>
+      <select id="terrain-select" style="width: 100%; padding: 4px; background: #222; color: #9cf; border: 1px solid #444; border-radius: 2px; cursor: pointer; font-family: system-ui, sans-serif;">
+        <option value="none">None</option>
+        <option value="terrain-squaw7-23-2025">Squaw 7-23-2025</option>
+      </select>
+    </div>
+  `
+  panelEl.appendChild(exitSetupPanel)
+
+  // Wire exit altitude slider
+  const altSlider = document.getElementById('exit-altitude-msl') as HTMLInputElement | null
+  if (altSlider) {
+    altSlider.addEventListener('input', () => {
+      exitAltitudeMSL = parseInt(altSlider.value, 10)
+      const display = document.getElementById('exit-altitude-display')
+      if (display) {
+        display.textContent = `${exitAltitudeMSL} m`
+      }
+    })
+  }
+
   // Poll gamepad even when sim isn't running (shows connection status + menu button)
   setInterval(() => {
     const polar = ctx.getPolar()
@@ -718,6 +810,29 @@ export function setupSimUI(ctx: SimUIContext): void {
       handlePilotChuteToss(ctx)
     }
   }, 100)
+
+  // Wire scenario selection to update UI state
+  const scenarioSelect = document.getElementById('scenario-select') as HTMLSelectElement | null
+  if (scenarioSelect) {
+    scenarioSelect.addEventListener('change', () => {
+      const newScenario = scenarioSelect.value as 'debug' | 'wingsuit-base'
+      currentScenario = newScenario
+      // Update UI state: only show reset button if idle and wingsuit-base
+      if (!runner?.isRunning) {
+        const targetMode = newScenario === 'wingsuit-base' ? 'idle' : 'idle'
+        setSimUIState(targetMode)
+      }
+    })
+  }
+
+  // Wire terrain selection to load/unload terrain model
+  const terrainSelect = document.getElementById('terrain-select') as HTMLSelectElement | null
+  if (terrainSelect) {
+    terrainSelect.addEventListener('change', async () => {
+      const selected = terrainSelect.value
+      await handleTerrainSelection(ctx, selected)
+    })
+  }
 }
 
 /** Handle pilot chute toss — spawn PC sub-sim (stays in freefall) */
@@ -733,6 +848,86 @@ function handlePilotChuteToss(ctx: SimUIContext): void {
 
   // Zoom out camera if too close for deployment visibility
   startDeployZoomOut(ctx)
+}
+
+/** Handle terrain selection from the exit setup dropdown */
+async function handleTerrainSelection(ctx: SimUIContext, terrainName: string): Promise<void> {
+  const scene = ctx.getScene()
+
+  // Remove current terrain from scene if any
+  if (currentTerrainModel && scene) {
+    scene.remove(currentTerrainModel)
+    currentTerrainModel = null
+  }
+
+  // "none" means no terrain
+  if (terrainName === 'none') {
+    currentTerrainName = 'none'
+    console.log('[Terrain] Unloaded')
+    return
+  }
+
+  // Load and add new terrain
+  try {
+    const model = await loadTerrainModel(terrainName)
+    if (model && scene) {
+      scene.add(model)
+      currentTerrainModel = model
+      currentTerrainName = terrainName
+      console.log(`[Terrain] Loaded and added to scene: ${terrainName}`)
+      
+      // When sim is NOT running (reset mode), position terrain at origin with model
+      // When sim IS running, updateTerrainPosition() will be called each frame
+      if (!runner?.isRunning) {
+        updateTerrainPosition(0, 0, 0)
+        console.log(`[Terrain] Position initialized at origin (reset mode)`)
+      }
+    } else {
+      console.warn(`[Terrain] Failed to load: ${terrainName}`)
+    }
+  } catch (err) {
+    console.error(`[Terrain] Error loading ${terrainName}:`, err)
+  }
+}
+
+/**
+ * Position terrain based on descent from exit point.
+ * 
+ * SimState.z origin is at exit point:
+ *   z = 0 at start (t=0, at exit)
+ *   z > 0 as wingsuit descends
+ *   z = +100 means descended 100m below exit
+ * 
+ * Terrain visual position opposes flight descent:
+ *   Stays at origin initially
+ *   Moves down visually as wingsuit descends
+ */
+export function updateTerrainPosition(pos_x: number, pos_y: number, pos_z: number): void {
+  if (!currentTerrainModel) return
+  
+  // Convert NED to Three.js
+  // pos_z is positive downward; in Three.js Y-up, terrain moves up as model descends (opposite direction)
+  currentTerrainModel.position.set(
+    pos_y,      // East → +X (terrain west as wingsuit goes east)
+    pos_z,      // Down → +Y (terrain up as wingsuit descends, same sign)
+    -pos_x      // North → -Z (terrain back as wingsuit goes north)
+  )
+}
+
+/**
+ * Get current exit altitude MSL for aerodynamic calculations.
+ * Exposed for SimRunner to access.
+ */
+export function getExitAltitudeMSL(): number {
+  return exitAltitudeMSL
+}
+
+/**
+ * Check if the simulation is currently running.
+ * Used to guard terrain position updates (only update during active flight).
+ */
+export function isSimRunning(): boolean {
+  return runner?.isRunning ?? false
 }
 
 // ─── Deploy Camera Zoom ──────────────────────────────────────────────────────
@@ -768,6 +963,48 @@ export function tickDeployZoom(ctx: SimUIContext): void {
   controls.update()
 
   if (t >= 1) deployZoomActive = false
+}
+
+/**
+ * Set the simulation UI mode (idle, reset-mode, or running).
+ * Controls visibility of reset button and exit setup panel based on scenario.
+ */
+function setSimUIState(mode: UIMode): void {
+  currentUIMode = mode
+  const scenario = currentScenario as 'debug' | 'wingsuit-base'
+  const isWingsuitBase = scenario === 'wingsuit-base'
+
+  // Reset button visible in IDLE and RESET_MODE (for wingsuit-base only)
+  if (resetBtn) {
+    const showReset = (mode === 'idle' || mode === 'reset-mode') && isWingsuitBase
+    resetBtn.style.display = showReset ? 'block' : 'none'
+    // Update button text based on mode
+    if (mode === 'idle') {
+      resetBtn.textContent = '⟲ Reset'
+    } else if (mode === 'reset-mode') {
+      resetBtn.textContent = '✓ Ready'
+    }
+  }
+
+  // Exit setup panel visible only in RESET_MODE
+  if (exitSetupPanel) {
+    exitSetupPanel.style.display = (mode === 'reset-mode') ? 'block' : 'none'
+  }
+}
+
+/**
+ * Reset button handler — toggles between idle and reset-mode.
+ * In IDLE: Shows exit setup, enters RESET_MODE
+ * In RESET_MODE: Hides exit setup, returns to IDLE
+ */
+function resetSim(ctx: SimUIContext): void {
+  if (currentUIMode === 'idle') {
+    // Entering reset mode: show exit setup panel
+    setSimUIState('reset-mode')
+  } else if (currentUIMode === 'reset-mode') {
+    // Exiting reset mode: hide exit setup panel, return to idle
+    setSimUIState('idle')
+  }
 }
 
 function toggleSim(ctx: SimUIContext): void {
@@ -841,8 +1078,17 @@ function buildPilotCoupling(
   }
 }
 
+/**
+ * For wingsuit-base scenario: Use current slider values as initial conditions.
+ * No config overrides — all scenarios just use slider values directly.
+ */
+function applyScenarioConfig(flightState: FlightState, scenario: 'debug' | 'wingsuit-base'): FlightState {
+  // Both debug and wingsuit-base use slider values as-is
+  return flightState
+}
+
 function startSim(ctx: SimUIContext): void {
-  const flightState = ctx.getFlightState()
+  let flightState = ctx.getFlightState()
 
   // Set up phase FSM
   currentScenario = flightState.scenario
@@ -851,6 +1097,10 @@ function startSim(ctx: SimUIContext): void {
   } else {
     currentPhase = 'freefall'  // debug mode — just label it freefall
   }
+
+  // Apply scenario config (currently just uses slider values for all scenarios)
+
+  flightState = applyScenarioConfig(flightState, currentScenario)
 
   const callbacks: SimRunnerCallbacks = {
     onUpdate: (state: FlightState) => {
@@ -892,6 +1142,9 @@ function startSim(ctx: SimUIContext): void {
   runner = new SimRunner(flightState, callbacks)
   runner.start()
 
+  // Capture initial state for reset functionality
+  runner.captureInitialState()
+
   // Record exit conditions for telemetry
   exitAltitude = runner.altitude
   exitPosition = { x: runner.state.x, y: runner.state.y }
@@ -918,6 +1171,9 @@ function startSim(ctx: SimUIContext): void {
       console.error('[SimUI] updateHUD failed:', err)
     }
   }, 100)
+
+  // Update UI state to running
+  setSimUIState('running')
 
   if (buttonEl) {
     buttonEl.textContent = '⏹ Stop Sim'
@@ -955,6 +1211,9 @@ function stopSim(): void {
 
   // Clear sim velocity dot from speed polar
   setSimVelocity(null)
+
+  // Return to idle — user can click Reset button to enter reset-mode if they want to change settings
+  setSimUIState('idle')
 
   if (buttonEl) {
     buttonEl.textContent = '▶ Start Sim'

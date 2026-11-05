@@ -997,3 +997,46 @@ export function updateSimDeploy(
   dg.lineLeft.visible = false
   dg.lineRight.visible = false
 }
+
+// ─── Terrain Loading ────────────────────────────────────────────────────────
+
+/**
+ * Terrain model — cached for quick load/unload.
+ */
+let loadedTerrain: THREE.Group | null = null
+let terrainCachePath: string | null = null
+
+/**
+ * Load a terrain GLB model (e.g., terrain-squaw7-23-2025.glb).
+ * Returns a Three.js Group ready to add to the scene.
+ *
+ * @param terrainName  Name of terrain without extension (e.g., 'terrain-squaw7-23-2025')
+ * @returns            Three.js Group containing the terrain model, or null if load fails
+ */
+export async function loadTerrainModel(terrainName: string): Promise<THREE.Group | null> {
+  const path = `/models/${terrainName}.glb`
+
+  try {
+    // Use cached terrain if same path
+    if (loadedTerrain && terrainCachePath === path) {
+      return loadedTerrain.clone()
+    }
+
+    const terrain = await loadRawGltf(path)
+    loadedTerrain = terrain
+    terrainCachePath = path
+    console.log(`[Terrain] Loaded: ${terrainName}`)
+    return terrain
+  } catch (err) {
+    console.error(`[Terrain] Failed to load '${terrainName}':`, err)
+    return null
+  }
+}
+
+/**
+ * Clear the terrain model cache (to free memory if needed).
+ */
+export function clearTerrainCache(): void {
+  loadedTerrain = null
+  terrainCachePath = null
+}

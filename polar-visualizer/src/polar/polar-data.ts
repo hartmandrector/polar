@@ -698,7 +698,7 @@ const CANOPY_STRUCT_RATIO_PER_CELL = 0.00643//0.00643   // ~3.5 kg total at 77.5
  * Air is buoyant so it does NOT contribute to weight, but it DOES resist rotation.
  * Increase to raise Iyy/Izz (slower pitch/yaw); decrease to make the canopy more agile.
  */
-export const CANOPY_AIR_RATIO_PER_CELL = 0.00011//0.011  // ~6 kg total at 77.5 kg system mass
+export const CANOPY_AIR_RATIO_PER_CELL = 0.0011//0.011  // ~6 kg total at 77.5 kg system mass
 //
 // Positions now from GLB mesh (see _cellQC above).
 // Previously used arc geometry: R=1.55, θ = 0°/±12°/±24°/±36°.
