@@ -29,6 +29,13 @@ export interface HeadSensorPoint {
   accelBodyX: number
   accelBodyY: number
   accelBodyZ: number
+  // Earth-frame (NWU) accelerations (g units), NaN if the export lacks them
+  accelEarthX: number  // accel_earth_*: raw accel rotated to earth, gravity included (specific force)
+  accelEarthY: number
+  accelEarthZ: number
+  earthAccelX: number  // earth_accel_*: ESKF calibrated accel, gravity removed (kinematic)
+  earthAccelY: number
+  earthAccelZ: number
   gyroX: number        // deg/s
   gyroY: number
   gyroZ: number
@@ -123,6 +130,12 @@ export function parseHeadSensorCSV(text: string): { points: HeadSensorPoint[]; g
       accelBodyX: get('accel_body_x'),
       accelBodyY: get('accel_body_y'),
       accelBodyZ: get('accel_body_z'),
+      accelEarthX: get('accel_earth_x'),
+      accelEarthY: get('accel_earth_y'),
+      accelEarthZ: get('accel_earth_z'),
+      earthAccelX: get('earth_accel_x'),
+      earthAccelY: get('earth_accel_y'),
+      earthAccelZ: get('earth_accel_z'),
       gyroX: get('gyro_x'),
       gyroY: get('gyro_y'),
       gyroZ: get('gyro_z'),
@@ -194,6 +207,12 @@ export function lerpSensorPoints(a: HeadSensorPoint, b: HeadSensorPoint, f: numb
     accelBodyX: l(a.accelBodyX, b.accelBodyX),
     accelBodyY: l(a.accelBodyY, b.accelBodyY),
     accelBodyZ: l(a.accelBodyZ, b.accelBodyZ),
+    accelEarthX: l(a.accelEarthX, b.accelEarthX),
+    accelEarthY: l(a.accelEarthY, b.accelEarthY),
+    accelEarthZ: l(a.accelEarthZ, b.accelEarthZ),
+    earthAccelX: l(a.earthAccelX, b.earthAccelX),
+    earthAccelY: l(a.earthAccelY, b.earthAccelY),
+    earthAccelZ: l(a.earthAccelZ, b.earthAccelZ),
     gyroX: l(a.gyroX, b.gyroX),
     gyroY: l(a.gyroY, b.gyroY),
     gyroZ: l(a.gyroZ, b.gyroZ),

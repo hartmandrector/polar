@@ -28,6 +28,7 @@ import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
 import { GPSDeployRenderer } from './gps-deploy-renderer'
+import { WingsuitBodySwap } from './wingsuit-body-swap'
 
 const MODEL_PATH = '/models/WSV9.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -55,6 +56,7 @@ export class GPSScene {
   private deployRenderer: GPSDeployRenderer | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
+  private bodySwap: WingsuitBodySwap | null = null
 
   // World group — everything that moves relative to the vehicle
   private worldGroup: THREE.Group
@@ -187,6 +189,10 @@ export class GPSScene {
       // Model at origin (always)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
+      // Headless body swap — loads in the background alongside the canopy
+      this.bodySwap = new WingsuitBodySwap(this.model)
+      this.bodySwap.setGlbHidden(this.glbHidden)
+      void this.bodySwap.load(loader, this.model)
       // Create head renderer (attached to wingsuit model)
       this.headRenderer = new HeadModelRenderer(this.scene)
       // Apply any sensor data that arrived before model loaded
@@ -201,6 +207,7 @@ export class GPSScene {
         console.log('Applied queued camera head data after model load')
         this.pendingCameraData = null
       }
+      this.syncBodySwap()
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -328,8 +335,13 @@ export class GPSScene {
         if ((child as THREE.Mesh).isMesh) child.visible = !this.glbHidden
       })
     }
-    hideMeshes(this.model)
+    this.bodySwap?.setGlbHidden(this.glbHidden)
     hideMeshes(this.canopyModel)
+  }
+
+  /** Show the headless wingsuit body whenever the separate head model is displayed. */
+  private syncBodySwap() {
+    this.bodySwap?.setHeadShown(this.headRenderer?.hasAnyData ?? false)
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -348,6 +360,7 @@ export class GPSScene {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
       this.headRenderer.setTimeOffset(timeOffset)
+      this.syncBodySwap()
     } else {
       // Head renderer not loaded yet (GLB still loading) — queue for later
       this.pendingSensorData = { data, offset: timeOffset }
@@ -355,11 +368,17 @@ export class GPSScene {
     }
   }
 
+  setHeadTimeOffset(timeOffset: number) {
+    if (this.headRenderer) this.headRenderer.setTimeOffset(timeOffset)
+    else if (this.pendingSensorData) this.pendingSensorData.offset = timeOffset
+  }
+
   private pendingCameraData: CameraSensorPoint[] | null = null
 
   setCameraData(data: CameraSensorPoint[]) {
     if (this.headRenderer) {
       this.headRenderer.setCameraData(data)
+      this.syncBodySwap()
     } else {
       this.pendingCameraData = data
       console.log('Camera head data queued (waiting for model load)')

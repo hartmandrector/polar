@@ -1,21 +1,23 @@
 /**
- * Head Model Renderer — Loads fullhead.gltf and orients it from sensor fusion data
+ * Head Model Renderer — Loads the head GLB and orients it from sensor fusion data
  *
- * Architecture (refactored):
+ * Architecture:
  *   headGroup lives as a sibling in the scene (not a child of the wingsuit model).
  *   Each frame we compute:
  *     - Head world position = wingsuit world position + neck offset rotated by wingsuit quat
- *     - Head world quaternion = head inertial quat (directly from sensor data)
+ *     - headGroup world quaternion = sensor orientation (directly from sensor data)
  *
- *   No parent-child inversion needed. Clean, direct transform.
+ * Fused CSV quaternions are NWU body-to-earth (scalar-first: qw, qx, qy, qz) and
+ * act on the remapped sensor vector A = [s_z, s_x, s_y]:
+ *   v_earth = R(q) · [s_z, s_x, s_y]
+ * The GPS scenes map NWU → Three.js world as (x=West, y=Up, z=North), so the
+ * Three.js quaternion is (qy, qz, qx, qw). With that remap, headGroup's local
+ * axes are exactly the raw sensor axes (x, y, z).
  *
- * Fused CSV quaternions are NWU body-to-earth (scalar-first: qw, qx, qy, qz).
- *
- * NWU→Three.js quaternion component remap (from fusion_viewer/src/viewer.ts):
- *   Three.js quat = (-qy, qz, -qx, qw)
- *
- * Sensor is mounted on the BACK of the helmet → 180° yaw offset vs fusion viewer
- * which renders the sensor box itself. We pre-multiply a 180° rotation about Z(Up/Y).
+ * The head GLB contains the FlySight device with its sensor axis arrows along
+ * GLB (-X, +Y, -Z) — i.e. the sensor is mounted on the back of the helmet with
+ * x=right, y=up, z=back. A 180° turn about Y aligns those arrows with headGroup's
+ * sensor axes; the mount pitch then accounts for the sloped helmet back.
  */
 
 import * as THREE from 'three'
@@ -32,15 +34,27 @@ const HEAD_MODEL_PATH = '/models/headfs.glb'
 // wingsuit GLB: Z-forward, Y-up in Three.js model space
 const NECK_OFFSET = new THREE.Vector3(0, 0.16, 0.62)  // (right, up, forward) in model space
 const HEAD_SCALE = 0.1
-// Rotation to align head model's forward with wingsuit's forward
-// π around Z = 180° yaw flip (sensor on back of helmet)
-// π/5 around X ≈ 36° pitch — original model alignment
-const HEAD_MODEL_ROTATION = new THREE.Euler(Math.PI / 5, 0, Math.PI)
 
-// Sensor mount pitch offset: sensor is near top of helmet, tilted ~10° skyward
-// when pilot is level. Applied as a pre-rotation on the NWU quat before remap.
-// 10° about NWU Y (West/pitch axis), positive = nose up in NWU right-hand rule
-const MOUNT_PITCH_DEG = 10
+// Sensor mount pitch: the FlySight sits on the sloped back of the helmet, so
+// its forward axis (-z) points below the head's forward direction. The head
+// mesh is pitched nose-up by this angle relative to the sensor frame
+// (body-frame correction). 46° = the previous hand-tuned 36° model pitch + 10°
+// mount offset; ground/plane data then gives a plausible head-level pose.
+const MOUNT_PITCH_DEG = 46
+
+const _Y = new THREE.Vector3(0, 1, 0)
+const _X = new THREE.Vector3(1, 0, 0)
+// Head mesh orientation within headGroup (sensor frame): align GLB device
+// arrows with the sensor axes, then apply the mount pitch about the head's
+// lateral (GLB X) axis. Negative X rotation lifts GLB +Z (face) toward +Y (up).
+const HEAD_MODEL_QUAT = new THREE.Quaternion().setFromAxisAngle(_Y, Math.PI)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(_X, -MOUNT_PITCH_DEG * Math.PI / 180))
+
+// Camera-driven head orientation was tuned against the old model rotation
+// Euler(π/5, 0, π). Right-multiplying by old·new⁻¹ keeps that path's on-screen
+// result unchanged until camera data is revisited.
+const LEGACY_HEAD_MODEL_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 5, 0, Math.PI))
+const CAMERA_LEGACY_CORRECTION = LEGACY_HEAD_MODEL_QUAT.clone().multiply(HEAD_MODEL_QUAT.clone().invert())
 
 export class HeadModelRenderer {
   private headGroup: THREE.Group
@@ -77,10 +91,12 @@ export class HeadModelRenderer {
       const gltf = await loader.loadAsync(HEAD_MODEL_PATH)
       this.headModel = gltf.scene as THREE.Group
       this.headModel.scale.setScalar(HEAD_SCALE)
-      this.headModel.rotation.copy(HEAD_MODEL_ROTATION)
+      this.headModel.quaternion.copy(HEAD_MODEL_QUAT)
       this.headGroup.add(this.headModel)
       // Create sensor vector overlay in headGroup (moves with head)
       this.sensorOverlay = new HeadSensorOverlay(this.headGroup)
+      const deviceOrigin = this.findDeviceOrigin()
+      if (deviceOrigin) this.sensorOverlay.setOrigin(deviceOrigin)
       this.loaded = true
       // Show head if sensor data already loaded, otherwise hide
       this.headGroup.visible = this.hasAnyData
@@ -88,6 +104,16 @@ export class HeadModelRenderer {
     } catch (e) {
       console.error('Failed to load head model:', e)
     }
+  }
+
+  /** FlySight device centre in headGroup local coords, so sensor arrows originate at the device. */
+  private findDeviceOrigin(): THREE.Vector3 | null {
+    const device = this.headModel?.getObjectByName('FlySight_Device')
+    if (!device) return null
+    this.headGroup.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(device)
+    if (box.isEmpty()) return null
+    return this.headGroup.worldToLocal(box.getCenter(new THREE.Vector3()))
   }
 
   setSensorData(data: HeadSensorPoint[]) {
@@ -177,9 +203,11 @@ export class HeadModelRenderer {
     const invMount = mountQuat.invert()
     const corrected = new THREE.Quaternion(qx, qy, qz, qw).multiply(invMount)
 
-    // Remap to Three.js — using same NWU→Three.js as fused sensor initially
+    // Remap to Three.js — using same NWU→Three.js as the legacy fused-sensor path,
+    // plus CAMERA_LEGACY_CORRECTION so the result matches the pre-fix appearance.
     // This may need adjustment once we verify the Gyroflow convention empirically
     return new THREE.Quaternion(-corrected.y, corrected.z, -corrected.x, corrected.w)
+      .multiply(CAMERA_LEGACY_CORRECTION)
   }
 
   /**
@@ -208,13 +236,10 @@ export class HeadModelRenderer {
   }
 
   /**
-   * Convert NWU body-to-earth quaternion from fused CSV to Three.js world quaternion.
-   *
-   * Proven remap from fusion_viewer/src/viewer.ts setOrientation():
-   *   NWU (qx, qy, qz, qw) → Three.js quaternion.set(-qy, qz, -qx, qw)
-   *
-   * The 180° heading flip for back-of-helmet mount is handled by
-   * HEAD_MODEL_ROTATION (Euler π around Z), so no quaternion pre-rotation needed.
+   * Convert the NWU body-to-earth quaternion from the fused CSV to the sensor's
+   * Three.js world quaternion. NWU (x=N, y=W, z=U) → world (x=W, y=U, z=N) is a
+   * cyclic axis permutation, so the quaternion becomes (qy, qz, qx, qw).
+   * The mount correction lives on the head mesh (HEAD_MODEL_QUAT), not here.
    */
   private getHeadThreeQuat(gpsTime: number): THREE.Quaternion | null {
     if (this.sensorData.length === 0) return null
@@ -223,35 +248,16 @@ export class HeadModelRenderer {
     const { index, fraction } = findHeadIndex(this.sensorData, sensorTime)
     const pt = this.sensorData[index]
 
-    let qw: number, qx: number, qy: number, qz: number
-
+    const q = new THREE.Quaternion(pt.qx, pt.qy, pt.qz, pt.qw)
     if (fraction > 0 && index < this.sensorData.length - 1) {
       const pt2 = this.sensorData[index + 1]
       // Slerp in NWU space before remapping
-      const q1 = new THREE.Quaternion(pt.qx, pt.qy, pt.qz, pt.qw)
       const q2 = new THREE.Quaternion(pt2.qx, pt2.qy, pt2.qz, pt2.qw)
-      if (q1.dot(q2) < 0) q2.set(-q2.x, -q2.y, -q2.z, -q2.w)
-      q1.slerp(q2, fraction)
-      qx = q1.x; qy = q1.y; qz = q1.z; qw = q1.w
-    } else {
-      qx = pt.qx; qy = pt.qy; qz = pt.qz; qw = pt.qw
+      if (q.dot(q2) < 0) q2.set(-q2.x, -q2.y, -q2.z, -q2.w)
+      q.slerp(q2, fraction)
     }
 
-    // Apply sensor mount pitch offset: sensor tilted ~10° skyward on helmet
-    // Post-multiply body-frame correction: q_corrected = q_nwu × q_mountOffset
-    // Mount offset is rotation about NWU Y-axis (pitch)
-    const mountRad = MOUNT_PITCH_DEG * Math.PI / 180
-    const halfMount = mountRad / 2
-    // q_mount = (0, sin(half), 0, cos(half)) — rotation about Y in NWU
-    const msin = Math.sin(halfMount), mcos = Math.cos(halfMount)
-    // Hamilton product: q × q_mount
-    const cw = qw * mcos - qy * msin
-    const cx = qx * mcos + qz * msin
-    const cy = qy * mcos + qw * msin
-    const cz = qz * mcos - qx * msin
-
-    // NWU→Three.js remap (direct from fusion viewer): set(-qy, qz, -qx, qw)
-    return new THREE.Quaternion(-cy, cz, -cx, cw)
+    return new THREE.Quaternion(q.y, q.z, q.x, q.w)
   }
 
   /**
@@ -276,6 +282,7 @@ export class HeadModelRenderer {
       ? this.getCameraHeadThreeQuat(gpsTime)
       : this.getHeadThreeQuat(gpsTime)
     if (!headQuat) return
+    const headWorldQuat = headQuat.clone()
 
     // If body-to-inertial provided, compute relative rotation for body-frame view
     if (bodyToInertial) {
@@ -304,12 +311,12 @@ export class HeadModelRenderer {
     const sensorTime = gpsTime + this.timeOffset
     const { index, fraction } = findHeadIndex(this.sensorData, sensorTime)
     const pt = this.sensorData[index]
-    if (this.sensorOverlay) {
+    if (this.sensorOverlay && pt) {
       if (fraction > 0 && index < this.sensorData.length - 1) {
         const pt2 = this.sensorData[index + 1]
-        this.sensorOverlay.update(lerpSensorPoints(pt, pt2, fraction))
+        this.sensorOverlay.update(lerpSensorPoints(pt, pt2, fraction), headWorldQuat)
       } else {
-        this.sensorOverlay.update(pt)
+        this.sensorOverlay.update(pt, headWorldQuat)
       }
     }
   }

@@ -26,6 +26,7 @@ import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
 import type { CameraSensorPoint, CameraMountOffset } from './camera-sensor'
+import { WingsuitBodySwap } from './wingsuit-body-swap'
 
 const MODEL_PATH = '/models/WSV9.glb'
 const CANOPY_PATH = '/models/cp2.gltf'
@@ -48,6 +49,7 @@ export class BodyFrameScene {
   private exitEstimate: ExitEstimate | null = null
   private canvas: HTMLCanvasElement
   private headRenderer: HeadModelRenderer | null = null
+  private bodySwap: WingsuitBodySwap | null = null
 
   // World group — rotated by inverse body quat
   private worldGroup: THREE.Group
@@ -155,6 +157,10 @@ export class BodyFrameScene {
       this.model.scale.setScalar(MODEL_SCALE)
       this.model.position.set(0, 0, 0)
       this.scene.add(this.model)
+      // Headless body swap — loads in the background alongside the canopy
+      this.bodySwap = new WingsuitBodySwap(this.model)
+      this.bodySwap.setGlbHidden(this.glbHidden)
+      void this.bodySwap.load(loader, this.model)
       this.headRenderer = new HeadModelRenderer(this.scene)
       if (this.pendingSensorData) {
         this.headRenderer.setSensorData(this.pendingSensorData.data)
@@ -165,6 +171,7 @@ export class BodyFrameScene {
         this.headRenderer.setCameraData(this.pendingCameraData)
         this.pendingCameraData = null
       }
+      this.syncBodySwap()
     } catch (e) {
       console.error('Failed to load wingsuit model:', e)
     }
@@ -275,8 +282,13 @@ export class BodyFrameScene {
         if ((child as THREE.Mesh).isMesh) child.visible = !this.glbHidden
       })
     }
-    hideMeshes(this.model)
+    this.bodySwap?.setGlbHidden(this.glbHidden)
     hideMeshes(this.canopyModel)
+  }
+
+  /** Show the headless wingsuit body whenever the separate head model is displayed. */
+  private syncBodySwap() {
+    this.bodySwap?.setHeadShown(this.headRenderer?.hasAnyData ?? false)
   }
 
   setDeployTimeline(timeline: DeployReplayTimeline) {
@@ -294,9 +306,15 @@ export class BodyFrameScene {
     if (this.headRenderer) {
       this.headRenderer.setSensorData(data)
       this.headRenderer.setTimeOffset(timeOffset)
+      this.syncBodySwap()
     } else {
       this.pendingSensorData = { data, offset: timeOffset }
     }
+  }
+
+  setHeadTimeOffset(timeOffset: number) {
+    if (this.headRenderer) this.headRenderer.setTimeOffset(timeOffset)
+    else if (this.pendingSensorData) this.pendingSensorData.offset = timeOffset
   }
 
   private pendingCameraData: CameraSensorPoint[] | null = null
@@ -304,6 +322,7 @@ export class BodyFrameScene {
   setCameraData(data: CameraSensorPoint[]) {
     if (this.headRenderer) {
       this.headRenderer.setCameraData(data)
+      this.syncBodySwap()
     } else {
       this.pendingCameraData = data
     }

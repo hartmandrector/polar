@@ -991,17 +991,33 @@ headSensorInput.addEventListener('change', async () => {
   scene?.setHeadSensorData(points, offset)
   bodyScene?.setHeadSensorData(points, offset)
   headSensorStatus.textContent = `${points.length} pts (${points[0].t.toFixed(1)}s → ${points[points.length - 1].t.toFixed(1)}s) offset=${offset.toFixed(1)}s`
+
+  // File pickers don't expose a server path; assume the CSV sits beside the track
+  // in public/ so capture URLs can reload it.
+  loadedSensorPath = await resolveServedSensorPath(file.name)
+  if (!loadedSensorPath) {
+    headSensorStatus.textContent += ' — not found beside track in public/, PNG capture won\'t include it'
+  }
 })
 
+/** Return `<trackFolder>/<fileName>` if the dev server actually serves it, else null. */
+async function resolveServedSensorPath(fileName: string): Promise<string | null> {
+  if (!loadedTrackPath) return null
+  const slash = loadedTrackPath.lastIndexOf('/')
+  const candidate = slash >= 0 ? `${loadedTrackPath.substring(0, slash)}/${fileName}` : fileName
+  try {
+    const resp = await fetch(`/${candidate}`, { method: 'HEAD' })
+    const ct = resp.headers.get('content-type') || ''
+    if (resp.ok && !ct.includes('html')) return candidate
+  } catch { /* fall through */ }
+  console.warn(`Head sensor: /${candidate} not served — capture URL will omit sensor`)
+  return null
+}
+
 headTimeOffset.addEventListener('change', () => {
-  // Re-apply time offset if data is already loaded
   const offset = parseFloat(headTimeOffset.value) || 0
-  // Will take effect on next frame render
-  if (scene) {
-    // Access through the scene's setHeadSensorData re-applies offset
-    // For now just log — a proper API would store the data and re-call
-    console.log(`Head time offset changed to ${offset}s`)
-  }
+  scene?.setHeadTimeOffset(offset)
+  bodyScene?.setHeadTimeOffset(offset)
 })
 
 // ─── Camera Head Position Loading ───────────────────────────────────────────
@@ -1785,7 +1801,7 @@ async function loadFromURL(trackPath: string) {
   await loadFile(file)
 }
 
-async function loadSensorFromURL(sensorPath: string) {
+async function loadSensorFromURL(sensorPath: string, offsetOverride?: number) {
   console.log(`loadSensorFromURL: fetching /${sensorPath}`)
   const resp = await fetch(`/${sensorPath}`)
   if (!resp.ok) { console.error(`Failed to fetch ${sensorPath}: ${resp.status}`); return }
@@ -1806,6 +1822,7 @@ async function loadSensorFromURL(sensorPath: string) {
       offset = points[gpsStartIndex].t
     }
   }
+  if (offsetOverride != null && isFinite(offsetOverride)) offset = offsetOverride
   headTimeOffset.value = offset.toFixed(2)
   scene?.setHeadSensorData(points, offset)
   bodyScene?.setHeadSensorData(points, offset)
@@ -1851,8 +1868,7 @@ async function applyCaptureSession(state: CaptureSessionState) {
 
   // Load sensor data
   if (state.sensorPath) {
-    await loadSensorFromURL(state.sensorPath)
-    headTimeOffset.value = String(state.headTimeOffset)
+    await loadSensorFromURL(state.sensorPath, state.headTimeOffset)
   }
 
   console.log('Capture session applied', state)
@@ -1938,13 +1954,15 @@ async function applyCaptureSession(state: CaptureSessionState) {
 
   // 3. Load fused CSV sensor — looks in same folder as track by default
   const sensorParam = urlParams.get('sensor')
+  const headOffsetParam = urlParams.get('headOffset')
+  const headOffsetOverride = headOffsetParam != null ? parseFloat(headOffsetParam) : undefined
   if (sensorParam) {
-    await loadSensorFromURL(sensorParam)
+    await loadSensorFromURL(sensorParam, headOffsetOverride)
   } else {
     // Auto-detect: look for fused CSV in same folder as track
     const trackFolder = autoTrack.substring(0, autoTrack.lastIndexOf('/'))
     if (trackFolder) {
-      const candidates = ['SENSOR_fused_fusion.csv', 'fused.csv', 'sensor_fused.csv']
+      const candidates = ['SENSOR_fused_fusion.csv', 'SENSOR_fused_eskf.csv', 'fused.csv', 'sensor_fused.csv']
       let found = false
       for (const name of candidates) {
         try {
@@ -1959,7 +1977,7 @@ async function applyCaptureSession(state: CaptureSessionState) {
               continue
             }
             console.log(`Auto-detected ${name} in ${trackFolder}/`)
-            await loadSensorFromURL(`${trackFolder}/${name}`)
+            await loadSensorFromURL(`${trackFolder}/${name}`, headOffsetOverride)
             found = true
             break
           }

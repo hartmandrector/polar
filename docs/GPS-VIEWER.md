@@ -111,13 +111,25 @@ The "Control Solver" checkbox (default: off) controls whether the solver runs. W
 
 ## Head Sensor Overlay
 
-When a fused sensor CSV is available, the viewer renders a head model (GLB) oriented by the IMU quaternion at each timestep.
+When a fused sensor CSV is available, the viewer renders a head model (GLB) oriented by the IMU quaternion at each timestep. For how the ESKF that produces `SENSOR_fused_eskf.csv` aligns attitude using GPS velocity, see [ESKF-ATTITUDE.md](ESKF-ATTITUDE.md).
+
+### Headless Body Swap
+While the head model is shown (fused sensor or camera head data loaded), both scenes swap the wingsuit body from `WSV9.glb` to `WSV9nohead.glb` so the pilot doesn't have two heads. The headless GLB shares the full model's local frame and is parented to it at identity; `WingsuitBodySwap` (`wingsuit-body-swap.ts`) toggles mesh visibility and also respects **Hide GLB**. If `WSV9nohead.glb` fails to load, the full body stays visible.
 
 ### Quaternion Pipeline
-The fused CSV provides scalar-first quaternions (qw, qx, qy, qz) in NWU body-to-earth frame. The pipeline:
+The fused CSV provides scalar-first quaternions (qw, qx, qy, qz), NWU body-to-earth, acting on the remapped sensor vector `[s_z, s_x, s_y]` (`v_earth = R(q)·[s_z, s_x, s_y]`). The pipeline:
 1. Slerps between adjacent sensor samples for smooth interpolation
-2. Applies a body-frame mount pitch correction (`MOUNT_PITCH_DEG = 10°`) via Hamilton product
-3. Remaps NWU → Three.js: `(-qy, qz, -qx, qw)`
+2. Remaps NWU → GPS-scene Three.js world (x=West, y=Up, z=North): `(qy, qz, qx, qw)`. With this remap the head group's local axes are exactly the raw sensor axes (x, y, z).
+3. Orients the head mesh within that sensor frame (`HEAD_MODEL_QUAT`): a 180° turn about Y aligns the FlySight axis arrows in `headfs.glb` (sensor x=right, y=up, z=back on the back of the helmet) with the sensor axes, then a body-frame mount pitch (`MOUNT_PITCH_DEG = 46°`, head nose-up relative to the sensor) accounts for the sloped helmet back.
+
+### Sensor Vectors
+Drawn at the FlySight device position on the head:
+- **Yellow** — specific force, `accel_earth_*` (gravity included, ≈1 g up in steady flight). Falls back to raw `accel_body_*` for exports without earth columns.
+- **Orange** — kinematic acceleration, `earth_accel_*` (ESKF calibrated, gravity removed). Hidden when the column is absent.
+- **Curved arrows** — `gyro_*` around the sensor x/y/z axes (right-hand positive).
+- **Purple** — magnetometer (axes unverified; kept as previously rendered).
+
+Earth-frame vectors are rotated into the head group's local frame with the sensor's world quaternion, so they point along their true earth direction in both the inertial and body-frame scenes. Camera-driven head orientation (`getCameraHeadThreeQuat`) keeps its previous appearance via a legacy correction and still needs verification.
 
 ### Time Alignment
 Auto-alignment uses the `gps_time` column in the fused CSV to compute an offset between sensor time and pipeline time: `offset = sensorT − pipelineT`. The GPS start index is detected from the first valid `gps_time` entry, with a fallback to `gps_lat > 1` when the column is absent.
@@ -158,7 +170,8 @@ The capture system serializes the complete viewer state into URL parameters for 
 | Parameter | Example | Description |
 |-----------|---------|-------------|
 | `track` | `07-29-25/TRACK.CSV` | GPS track file path |
-| `sensor` | `07-29-25/SENSOR_fused_fusion.csv` | Fused sensor CSV path |
+| `sensor` | `07-29-25/SENSOR_fused_fusion.csv` | Fused sensor CSV path (also set when the CSV is loaded via **Load Fused CSV**, if it is served beside the track in `public/`) |
+| `headOffset` | `12.34` | Head sensor time offset in seconds (overrides auto-alignment) |
 | `trim` | `10` | Trim offset value |
 | `roll` | `blended` | Roll method |
 | `overlays` | `0` | Display data overlays (0/1) |
@@ -175,7 +188,7 @@ The capture system serializes the complete viewer state into URL parameters for 
 5. Renders each frame as PNG via the `renderFrame` callback
 
 ### Sensor Auto-Detection
-When a track path is provided via URL, the viewer tries to auto-detect the fused sensor CSV in the same folder, checking `SENSOR_fused_fusion.csv`, `fused.csv`, `sensor_fused.csv` in order. A HEAD request with content-type check guards against Vite's SPA fallback returning HTML for missing files.
+When a track path is provided via URL, the viewer tries to auto-detect the fused sensor CSV in the same folder, checking `SENSOR_fused_fusion.csv`, `SENSOR_fused_eskf.csv`, `fused.csv`, `sensor_fused.csv` in order. A HEAD request with content-type check guards against Vite's SPA fallback returning HTML for missing files.
 
 ## Roll Methods
 

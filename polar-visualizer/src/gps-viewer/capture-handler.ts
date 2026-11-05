@@ -157,7 +157,10 @@ export class CaptureHandler {
     }
 
     if (session.trackPath) base.searchParams.set('track', session.trackPath)
-    if (session.sensorPath) base.searchParams.set('sensor', session.sensorPath)
+    if (session.sensorPath) {
+      base.searchParams.set('sensor', session.sensorPath)
+      base.searchParams.set('headOffset', session.headTimeOffset.toFixed(2))
+    }
     base.searchParams.set('trim', String(session.trimOffset))
     base.searchParams.set('roll', session.rollMethod)
     base.searchParams.set('overlays', session.displayOverlays ? '1' : '0')
