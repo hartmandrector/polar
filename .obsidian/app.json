@@ -1,0 +1,7 @@
+{
+  "userIgnoreFilters": [
+    "polar-visualizer/node_modules",
+    "polar-visualizer/dist"
+  ],
+  "showUnsupportedFiles": true
+}

@@ -1,0 +1,5 @@
+polar-visualizer/node_modules
+polarvault
+.git
+polar-visualizer/dist
+polar-visualizer/.vite
