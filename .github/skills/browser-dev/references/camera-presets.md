@@ -22,6 +22,8 @@ Body-frame presets work for **any track point** in the matching phase — the bo
 
 ## Setting a Camera Position via Dev Hook
 
+> **Gotcha (GPS viewer):** setting `camera.position` directly can be undone by OrbitControls damping, and a URL-loaded track keeps resetting cameras/scrubber for a few seconds after `__sessionReady`. Use `scene.setCameraState(position, zoom)` (disables damping during the update) after setting `controls.target`, and wait ~2 s after load before composing shots.
+
 ```js
 // Polar visualizer
 await page.evaluate(() => {

@@ -414,10 +414,14 @@ export class BodyFrameScene {
       standingQuat.slerp(flyingQuat, s)
       bodyQuat = standingQuat
     } else if (isGround) {
-      // Ground mode: stand upright, heading from flying index (stable)
-      const groundHeading = this.exitEstimate
+      // Ground mode: stand upright, chest facing the head's heading when sensor
+      // data is loaded (matches the inertial scene); else heading from flying index
+      const headHeading = this.headRenderer?.hasSensorData
+        ? this.headRenderer.getHeadingAtTime(pt.processed.t)
+        : null
+      const groundHeading = headHeading ?? (this.exitEstimate
         ? this.data![Math.min(this.exitEstimate.flyingIndex, this.data!.length - 1)].aero.psi
-        : pt.aero.psi
+        : pt.aero.psi)
       bodyQuat = bodyToInertialQuat(0, Math.PI / 2, groundHeading)
     } else if (isPreLineStretch) {
       // Blend roll toward zero by line stretch

@@ -120,7 +120,7 @@ While the head model is shown (fused sensor or camera head data loaded), both sc
 The fused CSV provides scalar-first quaternions (qw, qx, qy, qz), NWU body-to-earth, acting on the remapped sensor vector `[s_z, s_x, s_y]` (`v_earth = R(q)·[s_z, s_x, s_y]`). The pipeline:
 1. Slerps between adjacent sensor samples for smooth interpolation
 2. Remaps NWU → GPS-scene Three.js world (x=West, y=Up, z=North): `(qy, qz, qx, qw)`. With this remap the head group's local axes are exactly the raw sensor axes (x, y, z).
-3. Orients the head mesh within that sensor frame (`HEAD_MODEL_QUAT`): a 180° turn about Y aligns the FlySight axis arrows in `headfs.glb` (sensor x=right, y=up, z=back on the back of the helmet) with the sensor axes, then a body-frame mount pitch (`MOUNT_PITCH_DEG = 46°`, head nose-up relative to the sensor) accounts for the sloped helmet back.
+3. Orients the head mesh within that sensor frame (`HEAD_MODEL_QUAT`): a 180° turn about Y aligns the FlySight axis arrows in `headfs.glb` (sensor x=right, y=up, z=back on the back of the helmet) with the sensor axes, then a body-frame mount pitch (`MOUNT_PITCH_DEG = 20°`, head nose-up relative to the sensor) accounts for the sloped helmet back. Calibrated from a static "eyes on the horizon" recording: the device is physically tilted 34°, and the head mesh is modelled ~14° nose-up relative to its device in the GLB.
 
 ### Sensor Vectors
 Drawn at the FlySight device position on the head:
@@ -130,6 +130,10 @@ Drawn at the FlySight device position on the head:
 - **Purple** — magnetometer (axes unverified; kept as previously rendered).
 
 Earth-frame vectors are rotated into the head group's local frame with the sensor's world quaternion, so they point along their true earth direction in both the inertial and body-frame scenes. Camera-driven head orientation (`getCameraHeadThreeQuat`) keeps its previous appearance via a legacy correction and still needs verification.
+
+### Placement and Ground Heading
+- The head pivots at `NECK_OFFSET = (0, 0.06, 0.62)` in wingsuit GLB units: the centre of the `WSV9nohead` neck-stub opening.
+- In ground mode with sensor data, both scenes stand the body with its chest facing the head's heading (`getHeadingAtTime`). That heading comes from the head's ear-to-ear axis, not the CSV Euler `yaw`, which flips 180° when the head looks down past ~45° (the sensor's reference axis passes vertical).
 
 ### Time Alignment
 Auto-alignment uses the `gps_time` column in the fused CSV to compute an offset between sensor time and pipeline time: `offset = sensorT − pipelineT`. The GPS start index is detected from the first valid `gps_time` entry, with a fallback to `gps_lat > 1` when the column is absent.

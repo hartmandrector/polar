@@ -31,16 +31,20 @@ import { findCameraIndex, DEFAULT_MOUNT_OFFSET } from './camera-sensor'
 const HEAD_MODEL_PATH = '/models/headfs.glb'
 
 // Neck attachment point in model-local coordinates
-// wingsuit GLB: Z-forward, Y-up in Three.js model space
-const NECK_OFFSET = new THREE.Vector3(0, 0.16, 0.62)  // (right, up, forward) in model space
+// wingsuit GLB: Z-forward, Y-up (Y = dorsal/back side) in Three.js model space.
+// y = 0.06 is the centre of the WSV9nohead neck stub opening (cut at z ≈ 0.63).
+const NECK_OFFSET = new THREE.Vector3(0, 0.06, 0.62)  // (right, up, forward) in model space
 const HEAD_SCALE = 0.1
 
 // Sensor mount pitch: the FlySight sits on the sloped back of the helmet, so
 // its forward axis (-z) points below the head's forward direction. The head
 // mesh is pitched nose-up by this angle relative to the sensor frame
-// (body-frame correction). 46° = the previous hand-tuned 36° model pitch + 10°
-// mount offset; ground/plane data then gives a plausible head-level pose.
-const MOUNT_PITCH_DEG = 46
+// (body-frame correction).
+// Calibrated 2026-11-05 from a static "eyes on the horizon" recording: the
+// device is physically tilted 34° (gravity in sensor axes ≈ [-0.05, 0.84, 0.56]),
+// but the headfs.glb head mesh is modelled ~14° nose-up relative to its device,
+// so 20° renders that recording with a level head.
+const MOUNT_PITCH_DEG = 20
 
 const _Y = new THREE.Vector3(0, 1, 0)
 const _X = new THREE.Vector3(1, 0, 0)
@@ -211,23 +215,24 @@ export class HeadModelRenderer {
   }
 
   /**
-   * Get the head sensor yaw (heading) in NED radians at a given GPS time.
-   * Returns null if no sensor data or time is out of range.
+   * Facing direction (heading) of the head in NED radians at a given GPS time,
+   * i.e. the horizontal direction the face points when the head is level.
+   * Derived from the ear-to-ear axis (forward = left × up), which stays
+   * horizontal while nodding, so it is well defined when looking straight
+   * down — unlike the CSV Euler yaw, which flips 180° once the sensor's
+   * reference axis passes vertical. Returns null if there is no sensor data or
+   * the head is rolled nearly 90°.
    */
   getHeadingAtTime(gpsTime: number): number | null {
-    if (this.sensorData.length === 0) return null
-    const sensorTime = gpsTime + this.timeOffset
-    const { index, fraction } = findHeadIndex(this.sensorData, sensorTime)
-    const pt = this.sensorData[index]
-    const d2r = Math.PI / 180
-
-    let yawNwu = pt.yaw
-    if (fraction > 0 && index < this.sensorData.length - 1) {
-      const pt2 = this.sensorData[index + 1]
-      yawNwu = yawNwu + (pt2.yaw - yawNwu) * fraction
-    }
-    // NWU→NED yaw: negate
-    return -yawNwu * d2r
+    const q = this.getHeadThreeQuat(gpsTime)
+    if (!q) return null
+    q.multiply(HEAD_MODEL_QUAT)
+    // Head GLB: +Y up, +Z face, so +X is the head's left
+    const left = new THREE.Vector3(1, 0, 0).applyQuaternion(q)
+    const fwd = left.cross(_Y)
+    if (fwd.lengthSq() < 0.04) return null
+    // Three.js world: x = West, z = North → NED heading = atan2(East, North)
+    return Math.atan2(-fwd.x, fwd.z)
   }
 
   setVisible(v: boolean) {

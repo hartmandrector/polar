@@ -478,10 +478,10 @@ export class GPSScene {
       standingQuat.slerp(flyingQuat, s)
       this.model.quaternion.copy(standingQuat)
     } else if (isGround && hasSensor) {
-      // Ground mode with sensor data: stand upright, heading from head sensor
+      // Ground mode with sensor data: stand upright, chest facing the head's heading
       const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
       const standingPitch = Math.PI / 2  // 90° nose-up = standing on feet
-      this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, (heading ?? 0) + Math.PI))
+      if (heading !== null) this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, heading))
     } else if (isGround) {
       // Ground mode without sensor: stand upright, heading from flying index (stable)
       const standingPitch = Math.PI / 2
