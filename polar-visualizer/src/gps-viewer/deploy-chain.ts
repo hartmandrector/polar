@@ -250,35 +250,46 @@ export function buildDeployChainSeries(
   }
 
   // ── Line stretch → end: BridleChainSim anchored to the canopy top ──
-  // The canopy top starts at the bag (end of the chain) and the canopy lerps to
-  // its flying position and attitude; the chain anchor is always the canopy's bridle-top.
-  const chainUp = nedToThreeJS(axisAtLs).normalize()
-  const canopyQuatAt = (i: number): THREE.Quaternion | null => {
-    const est = pose.canopy[i]
-    if (!est) return null
-    const s = smoothstep((points[i].processed.t - tL) / P.CANOPY_LERP_S)
-    if (s >= 1) return est
-    // Hanging from the bag: canopy up-axis along the chain, easing to the estimator attitude
-    const swing = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0).applyQuaternion(est), chainUp,
-    )
-    return new THREE.Quaternion().slerp(swing, 1 - s).multiply(est)
-  }
-  const bridleTopRel = (i: number): Vec3 | null => {
-    const q = canopyQuatAt(i)
+  // The canopy top position p(t) starts at the bag (end of the chain) and lerps to the
+  // flying bridle-top position. The canopy sits on the ray from the pilot's shoulders
+  // through p: its attitude is the estimator's, rotated about the shoulders so the
+  // origin→bridle-top axis points at p. When p reaches the flying position this rotation
+  // is zero. The chain anchor is p.
+  const lerpS = (i: number) => smoothstep((points[i].processed.t - tL) / P.CANOPY_LERP_S)
+  /** Pilot-relative bridle-top (NED m) for the estimator attitude and current deploy scale */
+  const topEstRel = (i: number): Vec3 | null => {
+    const q = pose.canopy[i]
     if (!q) return null
     const sc = canopyDeployScale(deployFractions[i] ?? 1)
     const local = BRIDLE_TOP_LOCAL.clone().multiply(new THREE.Vector3(sc.span, 1, sc.chord)).multiplyScalar(CANOPY_MODEL_SCALE)
     return sceneToNed(local.applyQuaternion(q))
   }
   const bagAtLs = mul(axisAtLs, P.PILOT_TO_BAG)
+  /** Canopy top position p(t), pilot-relative NED m */
+  const canopyTopRel = (i: number): Vec3 => {
+    const top = topEstRel(i)
+    return top ? lerp3(bagAtLs, top, lerpS(i)) : bagAtLs
+  }
+  const canopyQuatAt = (i: number): THREE.Quaternion | null => {
+    const est = pose.canopy[i]
+    const top = topEstRel(i)
+    if (!est || !top) return null
+    if (lerpS(i) >= 1) return est
+    // Rotate about the shoulders: estimator bridle-top direction → direction to p
+    const swing = new THREE.Quaternion().setFromUnitVectors(
+      nedToThreeJS(top).normalize(), nedToThreeJS(canopyTopRel(i)).normalize(),
+    )
+    return swing.multiply(est)
+  }
+  /** Canopy origin (riser convergence) offset: the top sits on the ray through p at its flying distance */
+  const canopyOffsetAt = (i: number): Vec3 => {
+    const top = topEstRel(i)
+    const p = canopyTopRel(i)
+    return top ? sub(p, mul(norm(p), len(top))) : { x: 0, y: 0, z: 0 }
+  }
   const p0 = pilotPos(points[lsIdx])
   const v0 = pilotVel(points[lsIdx])
-  const anchorRel = (i: number): Vec3 => {
-    const top = bridleTopRel(i) ?? bagAtLs
-    return lerp3(bagAtLs, top, smoothstep((points[i].processed.t - tL) / P.CANOPY_LERP_S))
-  }
-  const anchorAbs = (i: number): Vec3 => add(pilotPos(points[i]), anchorRel(i))
+  const anchorAbs = (i: number): Vec3 => add(pilotPos(points[i]), canopyTopRel(i))
   const initSegments = Array.from({ length: P.SEGMENT_COUNT }, (_, k) => ({
     position: add(p0, mul(axisAtLs, P.PILOT_TO_BAG + (k + 1) * SEG)),
     velocity: { ...v0 },
@@ -298,7 +309,7 @@ export function buildDeployChainSeries(
     frames[i] = {
       state: { ...rs, phase: 'line_stretch' },
       anchor,
-      canopyOffset: sub(anchor, bridleTopRel(i) ?? anchor),
+      canopyOffset: canopyOffsetAt(i),
       canopyQuat: canopyQuatAt(i) ?? undefined,
     }
     if (i === n - 1) break
