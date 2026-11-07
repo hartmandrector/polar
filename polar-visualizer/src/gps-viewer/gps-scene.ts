@@ -24,6 +24,7 @@ import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
 import { computeExitPose } from './exit-pose'
+import { DEPLOY_POSE_PARAMS } from './deploy-pose'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -469,6 +470,7 @@ export class GPSScene {
     const exitPose = this.exitEstimate && this.data
       ? computeExitPose(this.data, this.exitEstimate, this.currentIndex, exitGroundHeading)
       : null
+    const deployPose = this.deployTimeline?.pose
 
     if (exitPose) {
       // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
@@ -485,48 +487,15 @@ export class GPSScene {
         ? this.data![Math.min(this.exitEstimate.flyingIndex, this.data!.length - 1)].aero.psi
         : pt.aero.psi
       this.model.quaternion.copy(bodyToInertialQuat(0, standingPitch, groundHeading))
-    } else if (isPreLineStretch || (isPostLineStretch && !isFullFlight)) {
-      // Deployment transition: slerp from wingsuit pose at PC toss → canopy hang
-      // Spans from pcTossIndex through lineStretch + TRANSITION_TAIL seconds
-      const TRANSITION_TAIL = 2.0  // seconds after line stretch to finish transition
-      const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
-      const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
-
-      // Wingsuit quaternion frozen at PC toss (last clean wingsuit pose)
-      const pcPt = this.data![Math.min(pcIdx, this.data!.length - 1)]
-      const frozenQuat = bodyToInertialQuat(pcPt.aero.roll, pcPt.aero.theta, pcPt.aero.psi)
-
-      // Target: canopy hang quat (or best guess during deployment)
-      let targetQuat: THREE.Quaternion
-      if (effectiveCs) {
-        targetQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
-        const hangPitch = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
-        )
-        targetQuat.multiply(hangPitch)
-      } else {
-        // No canopy state yet — just use standing-ish pose under PC heading
-        targetQuat = bodyToInertialQuat(0, Math.PI / 2, pcPt.aero.psi)
-      }
-
-      // Compute progress: 0 at pcToss, 1 at lineStretch + TRANSITION_TAIL
-      const pcTime = this.data![Math.min(pcIdx, this.data!.length - 1)].processed.t
-      const lsTime = this.data![Math.min(lsIdx, this.data!.length - 1)].processed.t
-      const endTime = lsTime + TRANSITION_TAIL
-      const totalDuration = endTime - pcTime
-      const elapsed = pt.processed.t - pcTime
-      const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 1
-      const s = t * t * (3 - 2 * t) // smoothstep
-
-      frozenQuat.slerp(targetQuat, s)
-      this.model.quaternion.copy(frozenQuat)
-    } else if ((isFullFlight || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
-      // Full flight under canopy — pilot hangs under canopy orientation
+    } else if (deployPose?.valid[this.currentIndex]) {
+      // PC toss → canopy flight: frozen wingsuit pose, then pilot pendulum (see deploy-pose.ts)
+      this.model.quaternion.copy(deployPose.pilot[this.currentIndex])
+    } else if (canopyPhase && !this.deployTimeline && effectiveCs) {
+      // No deploy timeline: pilot hangs at the nominal pitch under the canopy
       const canopyQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
-      const hangPitch = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
-      )
-      canopyQuat.multiply(hangPitch)
+      canopyQuat.multiply(new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), -DEPLOY_POSE_PARAMS.HANG_PITCH_DEG * Math.PI / 180
+      ))
       this.model.quaternion.copy(canopyQuat)
     } else {
       // Wingsuit/freefall: SG pipeline angles

@@ -18,6 +18,7 @@
 import type { CanopyState } from './canopy-estimator.ts'
 import type { DeployEstimate } from './deploy-detector.ts'
 import type { GPSPipelinePoint } from '../gps/types.ts'
+import { buildDeployPoseSeries, type DeployPoseSeries } from './deploy-pose.ts'
 
 // ─── Deploy Sub-Phases ──────────────────────────────────────────────────────
 
@@ -101,6 +102,9 @@ export interface DeployReplayTimeline {
 
   /** Named anchors (source of truth for timing) */
   anchors: DeployAnchors
+
+  /** Pilot / canopy orientation series (PC toss → canopy flight), see deploy-pose.ts */
+  pose: DeployPoseSeries
 
   /** Key timing indices */
   timing: {
@@ -274,6 +278,7 @@ export function buildDeployReplayTimeline(
       points: replayPoints,
       detection,
       anchors,
+      pose: buildDeployPoseSeries(points, canopyStates, { anchors }),
       timing,
       timingSeconds: {
         pcTossTime: null,
@@ -436,6 +441,7 @@ export function buildDeployReplayTimeline(
     points: replayPoints,
     detection,
     anchors,
+    pose: buildDeployPoseSeries(points, canopyStates, { anchors }),
     timing,
     timingSeconds: {
       pcTossTime: pcTossT,

@@ -151,10 +151,24 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - **Line stretch → full inflation** — canopy scaling up, unified slerp from frozen wingsuit quaternion to canopy hang quaternion
 - **Full flight** — canopy model with canopy aero overlay
 
-### Transition Smoothing
-- Wingsuit quaternion frozen at PC toss (last clean pose before deployment forces distort pipeline angles)
-- Smoothstep slerp over the full pcToss → lineStretch + 2s window
-- Roll method blends from full transversal to coordinated turn over 2s after deployment end
+### Anchors and Timing
+[deploy-replay.ts](../polar-visualizer/src/gps-viewer/deploy-replay.ts) builds `DeployAnchors`: `pcToss → bridleTaut → bagOut → lineStretch → maxAoa → snivelEnd → fullFlight`, each tagged `detected` / `estimated` / `manual`.
+- **Line stretch** is detected from the opening shock (GPS acceleration/airspeed only — no head IMU).
+- **Pre-line-stretch anchors** are back-calculated: `lead = throw + container + chain length / (0.4·airspeed)`, clamped to 0.8–3 s (`PC_LEAD_MODEL`).
+- **Overrides** (Deploy timing inputs, URL `lsOffset` / `pcLead`): shift line stretch, or set the PC-toss lead directly.
+- `deployFraction` eases 0→1 from line stretch to snivel end.
+
+### Pilot / Canopy Pose
+[deploy-pose.ts](../polar-visualizer/src/gps-viewer/deploy-pose.ts) precomputes the pose series (`timeline.pose`) read by `fix-orientations.ts` and both scenes:
+- **PC toss → line stretch:** wingsuit pose frozen at PC toss (aero angles are contaminated by PC/bridle drag).
+- **Line stretch →:** the pilot is a pitch-only damped pendulum, `θp'' = −ω² sin(θp − θline) − 2ζω θp'`. `θline` is the estimator's line direction (canopy θ + 80° hang), `ω² = |canopy normal accel| / L` (L = 1 m riser-hinge → CG, so the swing stiffens in the opening shock), ζ = 0.4 through full flight, easing to 0.15.
+- The wingsuit→canopy pitch difference at line stretch seeds the swing; the roll/yaw remainder decays over 0.4 s.
+- The body-frame view's reference frame eases from the pilot to the canopy over 0.5 s, so the swing is the pilot rotating relative to the canopy frame.
+- `pt.fixed` (rates, solvers) is the frozen wingsuit pose blended to the canopy attitude over 0.5 s after line stretch.
+- Tunables: `DEPLOY_POSE_PARAMS`.
+
+### Roll Method Blend
+- Canopy roll blends from full transversal to coordinated turn over 2s after deployment end
 
 ## Exit Pose (Ground → Flight)
 

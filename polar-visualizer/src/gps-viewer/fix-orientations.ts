@@ -10,8 +10,8 @@
  *   Ground (before lean): roll=0, pitch=π/2, heading=flyingIndex heading
  *   Exit (lean→settled): lean to horizontal, dive, airspeed-driven trim (exit-pose.ts)
  *   Freefall/wingsuit: pass-through from aero extraction
- *   Deployment (pcToss→fullInflation+2s): slerp from frozen wingsuit angles
- *     to canopy hang angles (mirrors gps-scene.ts deployment rendering)
+ *   Deployment (pcToss→full flight): wingsuit pose frozen at PC toss, then
+ *     blended to the canopy attitude after line stretch (deploy-pose.ts)
  *   Canopy flight: canopy estimator angles (if available), else aero
  *
  * The fixed angles are stored in pt.fixed and do NOT overwrite the
@@ -20,7 +20,7 @@
 
 import type { GPSPipelinePoint, FixedOrientation } from '../gps/types'
 import type { ExitEstimate } from './exit-detector'
-import { computeExitPose, sourceAngles, angleLerp } from './exit-pose'
+import { computeExitPose, sourceAngles } from './exit-pose'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { CanopyState } from './canopy-estimator'
 import { calculateDerivative, unwrapAngles } from '../gps/math-utils'
@@ -63,21 +63,7 @@ export function fixOrientations(
     ? Math.min(exitEstimate.flyingIndex, points.length - 1)
     : 0
   const flyingHeading = sourceAngles(points[flyingIdx]).psi
-
-  // Deploy timing
-  const pcTossIdx = deployTimeline?.timing.pcTossIndex ?? null
-  const lsIdx = deployTimeline?.timing.lineStretchIndex ?? null
-  const fullFlightIdx = deployTimeline?.timing.fullFlightIndex ?? null
-  const TRANSITION_TAIL = 2.0 // seconds after line stretch
-
-  // Frozen wingsuit pose at PC toss
-  let frozenRoll = 0, frozenTheta = 0, frozenPsi = 0
-  if (pcTossIdx !== null && pcTossIdx < points.length) {
-    const pcSrc = sourceAngles(points[pcTossIdx])
-    frozenRoll = pcSrc.roll
-    frozenTheta = pcSrc.theta
-    frozenPsi = pcSrc.psi
-  }
+  const deployPose = deployTimeline?.pose ?? null
 
   for (let i = 0; i < points.length; i++) {
     const pt = points[i]
@@ -89,9 +75,7 @@ export function fixOrientations(
     // Check which phase we're in
     const isGround = mode === 1
     const exitPose = exitEstimate ? computeExitPose(points, exitEstimate, i) : null
-    const inDeployTransition = pcTossIdx !== null && lsIdx !== null
-      && i >= pcTossIdx
-      && (fullFlightIdx !== null ? i <= fullFlightIdx : true)
+    const deployFixed = deployPose?.fixed[i] ?? null
 
     if (exitPose) {
       // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
@@ -103,27 +87,11 @@ export function fixOrientations(
       roll = 0
       theta = Math.PI / 2
       psi = flyingHeading
-    } else if (inDeployTransition && pcTossIdx !== null && lsIdx !== null) {
-      // Deployment: lerp from frozen wingsuit pose toward canopy hang
-      const pcTime = points[pcTossIdx].processed.t
-      const lsTime = points[Math.min(lsIdx, points.length - 1)].processed.t
-      const endTime = lsTime + TRANSITION_TAIL
-      const elapsed = pt.processed.t - pcTime
-      const totalDuration = endTime - pcTime
-      const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 1
-      const s = t * t * (3 - 2 * t) // smoothstep
-
-      // Target: canopy state if available, else frozen heading with standing pitch
-      const cs = canopyStates[i]
-      if (cs && cs.valid) {
-        roll = angleLerp(frozenRoll, cs.phi, s)
-        theta = angleLerp(frozenTheta, cs.theta, s)
-        psi = angleLerp(frozenPsi, cs.psi, s)
-      } else {
-        roll = angleLerp(frozenRoll, 0, s)
-        theta = angleLerp(frozenTheta, Math.PI / 2, s)
-        psi = frozenPsi
-      }
+    } else if (deployFixed) {
+      // Deployment: frozen wingsuit pose → canopy attitude (see deploy-pose.ts)
+      roll = deployFixed.roll
+      theta = deployFixed.theta
+      psi = deployFixed.psi
     } else if (mode >= 5 && mode <= 7) {
       // Canopy flight / landing: use canopy estimator if valid
       const cs = canopyStates[i]

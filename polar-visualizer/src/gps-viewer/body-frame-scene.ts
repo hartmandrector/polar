@@ -23,6 +23,7 @@ import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
 import { computeExitPose } from './exit-pose'
+import { DEPLOY_POSE_PARAMS } from './deploy-pose'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -399,6 +400,7 @@ export class BodyFrameScene {
     // Get the body-to-inertial quaternion
     // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
     let bodyQuat: THREE.Quaternion
+    let pilotRelQuat: THREE.Quaternion | null = null
     const isGround = mode === 1
     const exitGroundHeading = this.headRenderer?.hasSensorData
       ? this.headRenderer.getHeadingAtTime(pt.processed.t)
@@ -406,6 +408,7 @@ export class BodyFrameScene {
     const exitPose = this.exitEstimate && this.data
       ? computeExitPose(this.data, this.exitEstimate, this.currentIndex, exitGroundHeading)
       : null
+    const deployPose = this.deployTimeline?.pose
     if (exitPose) {
       // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
       bodyQuat = bodyToInertialQuat(exitPose.roll, exitPose.theta, exitPose.psi)
@@ -419,18 +422,13 @@ export class BodyFrameScene {
         ? this.data![Math.min(this.exitEstimate.flyingIndex, this.data!.length - 1)].aero.psi
         : pt.aero.psi)
       bodyQuat = bodyToInertialQuat(0, Math.PI / 2, groundHeading)
-    } else if (isPreLineStretch) {
-      // Blend roll toward zero by line stretch
-      let roll = pt.aero.roll
-      if (drp) {
-        const pcIdx = this.deployTimeline!.timing.pcTossIndex ?? this.currentIndex
-        const lsIdx = this.deployTimeline!.timing.lineStretchIndex ?? this.currentIndex
-        const range = lsIdx - pcIdx
-        const t = range > 0 ? Math.max(0, Math.min(1, (this.currentIndex - pcIdx) / range)) : 0
-        roll = roll * (1 - t)  // lerp toward zero
-      }
-      bodyQuat = bodyToInertialQuat(roll, pt.aero.theta, pt.aero.psi)
-    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline)) && effectiveCs) {
+    } else if (deployPose?.valid[this.currentIndex]) {
+      // PC toss → canopy flight (see deploy-pose.ts): the view frame is the pilot
+      // pre-line-stretch and eases to the canopy frame after it; the pilot's
+      // pendulum swing shows up as rotation relative to that frame.
+      bodyQuat = deployPose.frame[this.currentIndex]
+      pilotRelQuat = bodyQuat.clone().invert().multiply(deployPose.pilot[this.currentIndex])
+    } else if (canopyPhase && !this.deployTimeline && effectiveCs) {
       bodyQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
     } else {
       bodyQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
@@ -456,12 +454,14 @@ export class BodyFrameScene {
     translatedPos.applyQuaternion(inverseBodyQuat)
     this.worldGroup.position.copy(translatedPos)
 
-    // Vehicle at origin, identity rotation (or hang pitch under canopy — but not pre-line-stretch)
+    // Vehicle at origin: pilot pose relative to the view frame (deploy/canopy flight),
+    // else identity (or the nominal hang pitch under canopy without a pose series)
     this.model.position.set(0, 0, 0)
-    if ((isPostLineStretch || (canopyPhase && !this.deployTimeline && !isPreLineStretch)) || isFullFlight) {
-      // Pilot hangs ~80° pitched up under canopy
+    if (pilotRelQuat) {
+      this.model.quaternion.copy(pilotRelQuat)
+    } else if ((isPostLineStretch || (canopyPhase && !this.deployTimeline && !isPreLineStretch)) || isFullFlight) {
       const hangPitch = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), -80 * Math.PI / 180
+        new THREE.Vector3(1, 0, 0), -DEPLOY_POSE_PARAMS.HANG_PITCH_DEG * Math.PI / 180
       )
       this.model.quaternion.copy(hangPitch)
     } else {
