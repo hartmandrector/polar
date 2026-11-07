@@ -41,6 +41,10 @@ export interface CaptureSessionState {
   headingLock?: boolean
   headingLockReverse?: boolean
 
+  /** Deploy timing overrides [s]: line stretch shift, PC toss lead (0 = auto) */
+  deployLsOffset?: number
+  deployPcLead?: number
+
   /** Keyframe mode enabled */
   keyframeEnabled: boolean
 

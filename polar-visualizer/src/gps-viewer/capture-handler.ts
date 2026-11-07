@@ -169,6 +169,8 @@ export class CaptureHandler {
     base.searchParams.set('glb', session.glbHidden ? '0' : '1')
     base.searchParams.set('headingLock', session.headingLock ? '1' : '0')
     base.searchParams.set('headingLockReverse', session.headingLockReverse ? '1' : '0')
+    if (session.deployLsOffset) base.searchParams.set('lsOffset', String(session.deployLsOffset))
+    if (session.deployPcLead) base.searchParams.set('pcLead', String(session.deployPcLead))
     base.searchParams.set('kf', session.keyframeEnabled ? '1' : '0')
 
     // Keyframes as base64 JSON (includes captureStart/captureEnd)

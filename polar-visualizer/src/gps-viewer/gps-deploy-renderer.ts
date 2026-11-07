@@ -12,15 +12,16 @@ import * as THREE from 'three'
 import { DeployRenderer, CANOPY_CHAIN_Y_OFFSET } from '../viewer/deploy-render'
 import type { WingsuitDeployRenderState, BridleSegmentState, Vec3 } from '../sim/deploy-types'
 import type { DeployReplayTimeline, DeployReplayPoint } from './deploy-replay'
+import { DEPLOY_CHAIN } from './deploy-replay'
 import type { GPSPipelinePoint } from '../gps/types'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Total chain length [m] pre-line-stretch: CG → shoulder → risers → lines → bag → bridle → PC */
-const TOTAL_CHAIN_LENGTH = 7.4
+const TOTAL_CHAIN_LENGTH = DEPLOY_CHAIN.TOTAL_LENGTH
 
 /** Bridle-only length [m] post-line-stretch: bridleTop attachment → PC */
-const BRIDLE_LENGTH = 3.3
+const BRIDLE_LENGTH = DEPLOY_CHAIN.BRIDLE_LENGTH
 
 /** Number of bridle segments */
 const SEGMENT_COUNT = 10

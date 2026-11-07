@@ -22,7 +22,7 @@ import * as THREE from 'three'
 import { runOrientationEKF, type EKFRunnerResult } from '../kalman/index'
 import { estimateCanopyBatch, type RollMethod } from './canopy-estimator'
 import { detectDeployment } from './deploy-detector'
-import { buildDeployReplayTimeline, type DeployReplayTimeline } from './deploy-replay'
+import { buildDeployReplayTimeline, type DeployReplayTimeline, type DeployTimelineOptions } from './deploy-replay'
 import { detectExit, type ExitEstimate } from './exit-detector'
 import { fixOrientations } from './fix-orientations'
 import { defaultControls } from '../polar/aero-segment'
@@ -86,7 +86,17 @@ let loadedSensorPath: string | null = null
 const trimSlider = document.getElementById('trim-offset-slider') as HTMLInputElement
 const trimValue = document.getElementById('trim-offset-value')!
 const rollSelect = document.getElementById('roll-method-select') as HTMLSelectElement
+const deployLsOffsetInput = document.getElementById('deploy-ls-offset') as HTMLInputElement
+const deployPcLeadInput = document.getElementById('deploy-pc-lead') as HTMLInputElement
 
+/** Manual deploy timing overrides from the UI (0 = auto) */
+function deployTimelineOptions(): DeployTimelineOptions {
+  const lead = parseFloat(deployPcLeadInput.value)
+  return {
+    lineStretchOffset_s: parseFloat(deployLsOffsetInput.value) || 0,
+    pcTossLead_s: lead > 0 ? lead : null,
+  }
+}
 function recalcCanopy() {
   if (!result || !scene || !bodyScene) return
   const trimOffset = parseFloat(trimSlider.value)
@@ -105,7 +115,7 @@ function recalcCanopy() {
   scene.setCanopyStates(canopyStates)
   bodyScene.setCanopyStates(canopyStates)
 
-  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, cachedDeployDetection)
+  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, cachedDeployDetection, deployTimelineOptions())
   scene.setDeployTimeline(deployTimeline)
   bodyScene.setDeployTimeline(deployTimeline)
   currentDeployTimeline = deployTimeline
@@ -126,6 +136,8 @@ trimSlider.addEventListener('input', () => {
 })
 trimSlider.addEventListener('change', recalcCanopy)
 rollSelect.addEventListener('change', recalcCanopy)
+deployLsOffsetInput.addEventListener('change', recalcCanopy)
+deployPcLeadInput.addEventListener('change', recalcCanopy)
 
 // ─── Drop Zone ──────────────────────────────────────────────────────────────
 
@@ -402,7 +414,7 @@ async function loadFile(file: File) {
   bodyScene.setCanopyStates(canopyStates)
 
   // ── Deployment replay timeline ──
-  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, deployDetection)
+  const deployTimeline = buildDeployReplayTimeline(result.points, canopyStates, deployDetection, deployTimelineOptions())
   if (deployDetection) {
     if (deployTimeline.timingSeconds.fullFlightTime != null) {
       console.log(`  Full flight at t=${deployTimeline.timingSeconds.fullFlightTime.toFixed(2)}s, inflation=${deployTimeline.timingSeconds.inflationDuration?.toFixed(2)}s`)
@@ -1782,6 +1794,8 @@ function buildCaptureSession(): CaptureSessionState | null {
     glbHidden: hideGlbToggle.checked,
     headingLock: headingLockToggle.checked,
     headingLockReverse: headingLockReverseToggle.checked,
+    deployLsOffset: parseFloat(deployLsOffsetInput.value) || 0,
+    deployPcLead: parseFloat(deployPcLeadInput.value) || 0,
     keyframeEnabled: kfEnabled.checked,
     keyframes: (() => {
       // Stamp current video offset so share URLs / captures carry it.
@@ -1874,6 +1888,16 @@ async function applyCaptureSession(state: CaptureSessionState) {
   }
   syncHeadingLockReverseUi()
 
+  // Deploy timing overrides
+  if (state.deployLsOffset != null) {
+    deployLsOffsetInput.value = String(state.deployLsOffset)
+    deployLsOffsetInput.dispatchEvent(new Event('change'))
+  }
+  if (state.deployPcLead != null) {
+    deployPcLeadInput.value = String(state.deployPcLead)
+    deployPcLeadInput.dispatchEvent(new Event('change'))
+  }
+
   // Load keyframes
   if (kfEditor.fromJSON(JSON.stringify(state.keyframes)) && kfEditor.videoOffset != null) {
     setVideoOffsetFromUI(kfEditor.videoOffset)
@@ -1953,6 +1977,17 @@ async function applyCaptureSession(state: CaptureSessionState) {
   if (kfMode != null) {
     kfEnabled.checked = kfMode !== '0' && kfMode !== 'false'
     kfEnabled.dispatchEvent(new Event('change'))
+  }
+
+  const lsOffsetParam = urlParams.get('lsOffset')
+  if (lsOffsetParam != null) {
+    deployLsOffsetInput.value = lsOffsetParam
+    deployLsOffsetInput.dispatchEvent(new Event('change'))
+  }
+  const pcLeadParam = urlParams.get('pcLead')
+  if (pcLeadParam != null) {
+    deployPcLeadInput.value = pcLeadParam
+    deployPcLeadInput.dispatchEvent(new Event('change'))
   }
 
   const glbParam = urlParams.get('glb')
