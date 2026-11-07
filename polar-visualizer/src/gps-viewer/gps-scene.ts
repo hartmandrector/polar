@@ -11,7 +11,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { bodyToInertialQuat } from '../viewer/frames'
+import { bodyToInertialQuat, nedToThreeJS, threeJSToNed } from '../viewer/frames'
 import { GPSAeroOverlay, type AeroOverlayConfig } from './gps-aero-overlay'
 import { EulerAxisHelper, BodyRateAxisHelper } from './axis-helper'
 import { createWingsuitWireframes, type WingsuitWireframes } from '../viewer/wingsuit-wireframes'
@@ -25,6 +25,7 @@ import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
 import { computeExitPose } from './exit-pose'
 import { DEPLOY_POSE_PARAMS } from './deploy-pose'
+import { GPS_METERS_TO_SCENE, canopyHorizontalScale } from './deploy-chain'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -509,6 +510,11 @@ export class GPSScene {
 
     // ── Canopy model + deploy rendering ──
     const BASE_CANOPY_SCALE = 1.39 * 0.66
+    // Canopy origin offset from the pilot (post-line-stretch lerp), see deploy-chain.ts
+    const canopyOffsetM = this.deployTimeline?.chain[this.currentIndex]?.canopyOffset
+    const canopyOffsetScene = canopyOffsetM
+      ? nedToThreeJS(canopyOffsetM).multiplyScalar(GPS_METERS_TO_SCENE)
+      : new THREE.Vector3()
 
     if (isGround) {
       // Ground mode: hide all canopy/deploy visuals
@@ -522,9 +528,10 @@ export class GPSScene {
       if (this.canopyModel) {
         if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05) {
           this.canopyModel.visible = true
-          const h = 0.3 + drp!.deployFraction * 0.7  // horizontal scale factor
+          const h = canopyHorizontalScale(drp!.deployFraction)  // horizontal scale factor
           this.canopyModel.scale.set(BASE_CANOPY_SCALE * h, BASE_CANOPY_SCALE, BASE_CANOPY_SCALE * h)
-          this.canopyModel.position.set(0, 0, 0)
+          // Just after line stretch the canopy hangs from the bridle chain and lerps to its flying position
+          this.canopyModel.position.copy(canopyOffsetScene)
           if (effectiveCs) {
             this.canopyModel.quaternion.copy(bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi))
           }
@@ -598,7 +605,13 @@ export class GPSScene {
         theta: effectiveCs.theta,
         psi: effectiveCs.psi,
       }
-      this.canopyAeroOverlay.update(pt, origin)
+      // Displaced canopy: shift the draw origin and the lever arms (ω × r)
+      const canopyQ = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
+      const dBody = canopyOffsetM
+        ? threeJSToNed(nedToThreeJS(canopyOffsetM).applyQuaternion(canopyQ.clone().invert()))
+        : { x: 0, y: 0, z: 0 }
+      this.canopyAeroOverlay.canopyDisplacementNED = dBody
+      this.canopyAeroOverlay.update(pt, canopyOffsetScene)
     } else {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.hide()

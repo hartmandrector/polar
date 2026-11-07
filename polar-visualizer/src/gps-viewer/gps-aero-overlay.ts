@@ -106,6 +106,13 @@ export class GPSAeroOverlay {
   /** Deploy fraction (0–1) — scales segment positions horizontally (span-wise) */
   deployFraction = 1.0
 
+  /**
+   * Displacement of the overlay's geometry from the pilot CG, in the overlay's body
+   * axes [m] (canopy origin offset during the post-line-stretch lerp; zero in flight).
+   * Shifts the segment lever arms; callers also shift the draw origin (modelPos).
+   */
+  canopyDisplacementNED: Vec3NED = { x: 0, y: 0, z: 0 }
+
   /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
   bodyFrame = false
   /** When true, use canopy brake solver instead of wingsuit throttle solver */
@@ -239,6 +246,10 @@ export class GPSAeroOverlay {
 
     const cfg = this.config
     const rho = pt.processed.rho ?? cfg.rho ?? 1.225
+    // Canopy displaced from the pilot (just after line stretch): segment lever arms
+    // r = seg + d − cg, so ω×r uses the displaced position
+    const d = this.canopyDisplacementNED
+    const cg: Vec3NED = { x: cfg.cgMeters.x - d.x, y: cfg.cgMeters.y - d.y, z: cfg.cgMeters.z - d.z }
 
     // Build body velocity from GPS airspeed + orientation
     // u = V·cos(α)·cos(β), v = V·sin(β), w = V·sin(α)·cos(β)
@@ -272,7 +283,7 @@ export class GPSAeroOverlay {
       this.controls.legBend = 0.80
     }
     const result = evaluateAeroForcesDetailed(
-      cfg.segments, cfg.cgMeters, cfg.height,
+      cfg.segments, cg, cfg.height,
       bodyVel, omega, this.controls, rho,
     )
 
@@ -295,7 +306,7 @@ export class GPSAeroOverlay {
 
       const solverCfg: ControlInversionConfig = {
         segments: cfg.segments,
-        cgMeters: cfg.cgMeters,
+        cgMeters: cg,
         height: cfg.height,
         mass: cfg.mass,
         inertia: cfg.inertia,
@@ -351,7 +362,7 @@ export class GPSAeroOverlay {
         orientation: s.orientation ? { ...s.orientation } : undefined,
       }))
       const controlledResult = evaluateAeroForcesDetailed(
-        cfg.segments, cfg.cgMeters, cfg.height,
+        cfg.segments, cg, cfg.height,
         bodyVel, omega, solvedControls, rho,
       )
       // Store controlled per-segment data for arrow positioning
@@ -493,7 +504,7 @@ export class GPSAeroOverlay {
     }
 
     // CG position in world space
-    const cgWorld = nedToThreeJS(cfg.cgMeters).applyQuaternion(bodyQuat).add(modelPos)
+    const cgWorld = nedToThreeJS(cg).applyQuaternion(bodyQuat).add(modelPos)
 
     // Net force arrow — hidden (replaced by accel ball)
     this.netForceArrow.visible = false

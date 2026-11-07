@@ -32,7 +32,8 @@ export class BridleChainSim {
   pcVel: Vec3
   private segments: Array<{ position: Vec3; velocity: Vec3 }>
   bridleTension = 0
-
+  /** Constraint relaxation passes per step (1 = original; more resists stretch from a fast anchor) */
+  constraintIterations = 1
   /**
    * Create from handoff data (PC state + freed segment positions).
    * All segments are immediately active — no unstow logic.
@@ -78,18 +79,45 @@ export class BridleChainSim {
     }
 
     // ── Constraints ──
-    // PC to outermost segment
-    const pcAnchor = N > 0 ? this.segments[N - 1].position : anchorPos
-    this.bridleTension = this.applyConstraint(this.pcPos, this.pcVel, pcAnchor, SEGMENT_LENGTH, PC_MASS, dt)
+    // Extra iterations keep a fast-moving anchor from stretching the chain
+    // (default 1 = original behavior). Tension comes from the first pass.
+    for (let it = 0; it < this.constraintIterations; it++) {
+      // PC to outermost segment
+      const pcAnchor = N > 0 ? this.segments[N - 1].position : anchorPos
+      const tension = this.applyConstraint(this.pcPos, this.pcVel, pcAnchor, SEGMENT_LENGTH, PC_MASS, dt)
+      if (it === 0) this.bridleTension = tension
 
-    // Segments: outboard + inboard constraints
-    for (let i = N - 1; i >= 0; i--) {
-      const seg = this.segments[i]
-      const outboard = (i === N - 1) ? this.pcPos : this.segments[i + 1].position
-      const inboard = (i > 0) ? this.segments[i - 1].position : anchorPos
-      this.applyConstraint(seg.position, seg.velocity, outboard, SEGMENT_LENGTH, SEGMENT_MASS, dt)
-      this.applyConstraint(seg.position, seg.velocity, inboard, SEGMENT_LENGTH, SEGMENT_MASS, dt)
+      // Segments: outboard + inboard constraints
+      for (let i = N - 1; i >= 0; i--) {
+        const seg = this.segments[i]
+        const outboard = (i === N - 1) ? this.pcPos : this.segments[i + 1].position
+        const inboard = (i > 0) ? this.segments[i - 1].position : anchorPos
+        this.applyConstraint(seg.position, seg.velocity, outboard, SEGMENT_LENGTH, SEGMENT_MASS, dt)
+        this.applyConstraint(seg.position, seg.velocity, inboard, SEGMENT_LENGTH, SEGMENT_MASS, dt)
+      }
     }
+  }
+
+  /**
+   * Hard length limit, anchor → outboard: no link may be longer than a segment.
+   * Position-only (velocities untouched); removes residual stretch the iterative
+   * constraints leave under high tension.
+   */
+  projectChain(anchorPos: Vec3): void {
+    let prev = anchorPos
+    const clamp = (pos: Vec3) => {
+      const d = v3sub(pos, prev)
+      const dist = v3len(d)
+      if (dist > SEGMENT_LENGTH) {
+        const k = SEGMENT_LENGTH / dist
+        pos.x = prev.x + d.x * k
+        pos.y = prev.y + d.y * k
+        pos.z = prev.z + d.z * k
+      }
+      prev = pos
+    }
+    for (const s of this.segments) clamp(s.position)
+    clamp(this.pcPos)
   }
 
   private applyConstraint(

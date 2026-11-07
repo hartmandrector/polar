@@ -440,7 +440,7 @@ export function buildDeployReplayTimeline(
     detection,
     anchors,
     pose,
-    chain: buildDeployChainSeries(points, { anchors, pose }),
+    chain: buildDeployChainSeries(points, { anchors, pose }, replayPoints.map(p => p.deployFraction)),
     timing,
     timingSeconds: {
       pcTossTime: pcTossT,

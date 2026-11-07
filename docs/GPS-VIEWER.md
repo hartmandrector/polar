@@ -172,7 +172,9 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - **PC toss → bridle taut:** PC thrown to the right, pays the bridle out along the relative wind (eased start, slight whip); segments unstow as the payout passes them.
 - **Bridle taut → bag out:** bridle straight, container opening.
 - **Bag out → line stretch:** bag drags the suspension lines out until the 7.4 m chain is straight.
-- **Line stretch →:** the real `BridleChainSim` (`sim/bridle-sim.ts`) runs over the rest of the track, anchored to the canopy bridle-top and driven by the GPS motion (PC drag + gravity). The anchor eases from the bag position to the canopy attachment over 0.6 s.
+- **Line stretch →:** the real `BridleChainSim` (`sim/bridle-sim.ts`) runs over the rest of the track, anchored to the canopy's bridle-top and driven by the GPS motion (PC drag and gravity). Extra constraint passes plus a hard `projectChain` length clamp keep the segments exactly one segment length apart (no gaps).
+- **Canopy position lerp:** at line stretch the canopy hangs from the bag (its top at the end of the chain). Over `CANOPY_LERP_S` (0.5 s) the chain anchor lerps from the bag position to the canopy's bridle-top, and the canopy GLB origin lerps from that offset to the pilot (`frame.canopyOffset`). The canopy aero overlay shifts its draw origin and lever arms by the same offset, so ω × r uses the displaced canopy.
+- The bridle-top attachment is the `bridleTop` landmark scaled by the canopy GLB scale only (x/z also by the inflation horizontal scale).
 - Pre-line-stretch motion is kinematic, timed by the anchors; only post-line-stretch is simulated. Tunables: `DEPLOY_CHAIN_PARAMS`.
 
 ### Roll Method Blend

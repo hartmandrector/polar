@@ -45,8 +45,10 @@ export const DEPLOY_CHAIN_PARAMS = {
   /** Lateral whip of the paying-out bridle [m], decays to 0 at bridle taut */
   WHIP_AMPLITUDE: 0.15,
   WHIP_HZ: 2.5,
-  /** Post-line-stretch anchor ease: bag position → canopy attachment [s] */
-  ANCHOR_BLEND_S: 0.6,
+  /** Post-line-stretch canopy lerp: canopy top at the bag position → canopy flying position [s] */
+  CANOPY_LERP_S: 0.5,
+  /** BridleChainSim constraint passes per step (keeps the chain from stretching) */
+  CONSTRAINT_ITERATIONS: 8,
   /** Sim substep [s] */
   MAX_SUBSTEP_S: 0.01,
   PC_CD_MIN: 0.3,
@@ -57,16 +59,26 @@ export const DEPLOY_CHAIN_PARAMS = {
 export const GPS_METERS_TO_SCENE = 2.06 / 1.875
 /** Container attachment (mid-back) in scene units along the body axis (0.15 × body length) */
 const CONTAINER_OFFSET_SCENE = 0.15 * 2.06
-/** Canopy bridle-top attachment in canopy-model scene units (gps-deploy-renderer) */
-const BRIDLE_TOP_SCENE = new THREE.Vector3(0, 4.672, -0.848)
-const CANOPY_SCALE = 1.39 * 0.66
-const BRIDLE_TOP_SCALE = CANOPY_SCALE * 0.66
+/** Canopy bridle-top attachment in canopy GLB (model-local) units: CANOPY_GEOMETRY 'bridleTop' */
+const BRIDLE_TOP_LOCAL = new THREE.Vector3(0, 4.672, -0.848)
+/** Canopy GLB group scale in gps-scene (the bridle-top scales with it, nothing else) */
+export const CANOPY_MODEL_SCALE = 1.39 * 0.66
+
+/** Horizontal (chord/span) canopy scale while inflating — shared with gps-scene */
+export function canopyHorizontalScale(deployFraction: number): number {
+  return 0.3 + 0.7 * deployFraction
+}
 
 export interface DeployChainFrame {
   /** Pilot-relative inertial NED meters */
   state: WingsuitDeployRenderState
   /** Chain start (container pre-LS, canopy bridle-top post-LS), pilot-relative inertial NED meters */
   anchor: Vec3
+  /**
+   * Canopy GLB origin relative to the pilot, inertial NED meters. Zero in flight;
+   * just after line stretch the canopy hangs from the bag and lerps to the pilot.
+   */
+  canopyOffset: Vec3
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -136,6 +148,8 @@ function makeState(
 export function buildDeployChainSeries(
   points: GPSPipelinePoint[],
   timeline: Pick<DeployReplayTimeline, 'anchors' | 'pose'>,
+  /** Deploy fraction per point (canopy horizontal scale while inflating) */
+  deployFractions: number[] = [],
 ): (DeployChainFrame | null)[] {
   const P = DEPLOY_CHAIN_PARAMS
   const n = points.length
@@ -218,22 +232,31 @@ export function buildDeployChainSeries(
         }
       }
     }
-    frames[i] = { state: makeState(phase, segments, pc, pcCD, bag, bagDist), anchor: containerAnchor(i) }
+    frames[i] = {
+      state: makeState(phase, segments, pc, pcCD, bag, bagDist),
+      anchor: containerAnchor(i),
+      canopyOffset: { x: 0, y: 0, z: 0 },
+    }
   }
 
   // ── Line stretch → end: BridleChainSim anchored to the canopy top ──
-  const canopyAnchorRel = (i: number): Vec3 | null => {
+  // The canopy top starts at the bag (end of the chain) and the canopy lerps to
+  // its flying position; the chain anchor is always the canopy's bridle-top.
+  const bridleTopRel = (i: number): Vec3 | null => {
     const q = pose.canopy[i]
-    return q ? sceneToNed(BRIDLE_TOP_SCENE.clone().multiplyScalar(BRIDLE_TOP_SCALE).applyQuaternion(q)) : null
+    if (!q) return null
+    const h = canopyHorizontalScale(deployFractions[i] ?? 1)
+    const local = BRIDLE_TOP_LOCAL.clone().multiply(new THREE.Vector3(h, 1, h)).multiplyScalar(CANOPY_MODEL_SCALE)
+    return sceneToNed(local.applyQuaternion(q))
   }
   const bagAtLs = mul(axisAtLs, P.PILOT_TO_BAG)
   const p0 = pilotPos(points[lsIdx])
   const v0 = pilotVel(points[lsIdx])
-  const anchorAbs = (i: number): Vec3 => {
-    const target = canopyAnchorRel(i) ?? bagAtLs
-    const s = smoothstep((points[i].processed.t - tL) / P.ANCHOR_BLEND_S)
-    return add(pilotPos(points[i]), lerp3(bagAtLs, target, s))
+  const anchorRel = (i: number): Vec3 => {
+    const top = bridleTopRel(i) ?? bagAtLs
+    return lerp3(bagAtLs, top, smoothstep((points[i].processed.t - tL) / P.CANOPY_LERP_S))
   }
+  const anchorAbs = (i: number): Vec3 => add(pilotPos(points[i]), anchorRel(i))
   const initSegments = Array.from({ length: P.SEGMENT_COUNT }, (_, k) => ({
     position: add(p0, mul(axisAtLs, P.PILOT_TO_BAG + (k + 1) * SEG)),
     velocity: { ...v0 },
@@ -241,6 +264,7 @@ export function buildDeployChainSeries(
   const sim = new BridleChainSim(
     add(p0, mul(axisAtLs, P.PILOT_TO_BAG + DEPLOY_CHAIN.BRIDLE_LENGTH)), { ...v0 }, initSegments,
   )
+  sim.constraintIterations = P.CONSTRAINT_ITERATIONS
 
   let aPrev = anchorAbs(lsIdx)
   for (let i = lsIdx; i < n; i++) {
@@ -248,9 +272,11 @@ export function buildDeployChainSeries(
     const bodyPos = pilotPos(pt)
     const rs = sim.getRenderState(bodyPos)
     if (!finite(rs.pcPosition)) break  // sim diverged — leave the rest empty
+    const anchor = sub(aPrev, bodyPos)
     frames[i] = {
       state: { ...rs, phase: 'line_stretch' },
-      anchor: sub(aPrev, bodyPos),
+      anchor,
+      canopyOffset: sub(anchor, bridleTopRel(i) ?? anchor),
     }
     if (i === n - 1) break
 
@@ -263,6 +289,7 @@ export function buildDeployChainSeries(
     for (let s = 0; s < steps; s++) {
       const a = lerp3(aPrev, aNext, (s + 1) / steps)
       sim.step(a, aVel, pt.processed.rho, h)
+      sim.projectChain(a)
     }
     aPrev = aNext
   }
