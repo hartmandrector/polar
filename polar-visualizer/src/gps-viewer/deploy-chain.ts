@@ -23,7 +23,7 @@ import type { GPSPipelinePoint } from '../gps/types'
 import type { BridleSegmentState, Vec3, WingsuitDeployRenderState } from '../sim/deploy-types'
 import { BridleChainSim } from '../sim/bridle-sim'
 import { bodyToInertial } from '../sim/vec3-util'
-import { threeJSToNed } from '../viewer/frames'
+import { nedToThreeJS, threeJSToNed } from '../viewer/frames'
 import type { DeployReplayTimeline } from './deploy-replay'
 
 /** Physical chain geometry [m] — shared with the deploy renderer and timing model */
@@ -64,9 +64,13 @@ const BRIDLE_TOP_LOCAL = new THREE.Vector3(0, 4.672, -0.848)
 /** Canopy GLB group scale in gps-scene (the bridle-top scales with it, nothing else) */
 export const CANOPY_MODEL_SCALE = 1.39 * 0.66
 
-/** Horizontal (chord/span) canopy scale while inflating — shared with gps-scene */
-export function canopyHorizontalScale(deployFraction: number): number {
-  return 0.3 + 0.7 * deployFraction
+/**
+ * Canopy GLB scale while inflating, as a function of deploy fraction — span (X) and
+ * chord (Z), identical to the aero segment model (segment-factories) and the main viewer.
+ */
+export function canopyDeployScale(deployFraction: number): { span: number; chord: number } {
+  const d = Math.max(0, Math.min(1, deployFraction))
+  return { span: 0.1 + 0.9 * d, chord: 0.3 + 0.7 * d }
 }
 
 export interface DeployChainFrame {
@@ -79,6 +83,12 @@ export interface DeployChainFrame {
    * just after line stretch the canopy hangs from the bag and lerps to the pilot.
    */
   canopyOffset: Vec3
+  /**
+   * Canopy orientation (inertial, Three.js) to render and use for the canopy aero
+   * overlay: at line stretch the canopy hangs along the chain, then lerps to the
+   * estimator attitude. Undefined before line stretch / without a canopy state.
+   */
+  canopyQuat?: THREE.Quaternion
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -241,12 +251,24 @@ export function buildDeployChainSeries(
 
   // ── Line stretch → end: BridleChainSim anchored to the canopy top ──
   // The canopy top starts at the bag (end of the chain) and the canopy lerps to
-  // its flying position; the chain anchor is always the canopy's bridle-top.
+  // its flying position and attitude; the chain anchor is always the canopy's bridle-top.
+  const chainUp = nedToThreeJS(axisAtLs).normalize()
+  const canopyQuatAt = (i: number): THREE.Quaternion | null => {
+    const est = pose.canopy[i]
+    if (!est) return null
+    const s = smoothstep((points[i].processed.t - tL) / P.CANOPY_LERP_S)
+    if (s >= 1) return est
+    // Hanging from the bag: canopy up-axis along the chain, easing to the estimator attitude
+    const swing = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0).applyQuaternion(est), chainUp,
+    )
+    return new THREE.Quaternion().slerp(swing, 1 - s).multiply(est)
+  }
   const bridleTopRel = (i: number): Vec3 | null => {
-    const q = pose.canopy[i]
+    const q = canopyQuatAt(i)
     if (!q) return null
-    const h = canopyHorizontalScale(deployFractions[i] ?? 1)
-    const local = BRIDLE_TOP_LOCAL.clone().multiply(new THREE.Vector3(h, 1, h)).multiplyScalar(CANOPY_MODEL_SCALE)
+    const sc = canopyDeployScale(deployFractions[i] ?? 1)
+    const local = BRIDLE_TOP_LOCAL.clone().multiply(new THREE.Vector3(sc.span, 1, sc.chord)).multiplyScalar(CANOPY_MODEL_SCALE)
     return sceneToNed(local.applyQuaternion(q))
   }
   const bagAtLs = mul(axisAtLs, P.PILOT_TO_BAG)
@@ -277,6 +299,7 @@ export function buildDeployChainSeries(
       state: { ...rs, phase: 'line_stretch' },
       anchor,
       canopyOffset: sub(anchor, bridleTopRel(i) ?? anchor),
+      canopyQuat: canopyQuatAt(i) ?? undefined,
     }
     if (i === n - 1) break
 

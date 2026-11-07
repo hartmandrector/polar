@@ -113,6 +113,14 @@ export class GPSAeroOverlay {
    */
   canopyDisplacementNED: Vec3NED = { x: 0, y: 0, z: 0 }
 
+  /**
+   * Orientation of the overlay axes in the displayed frame (overrides the roll/theta/psi
+   * or body-frame identity default). Used while the canopy lerps to its attitude after
+   * line stretch. `inertialQuat` is the same axes' inertial orientation (for the accel ball).
+   */
+  axesQuat?: THREE.Quaternion
+  inertialQuat?: THREE.Quaternion
+
   /** When true, skip body-to-inertial rotation (vectors stay in body frame) */
   bodyFrame = false
   /** When true, use canopy brake solver instead of wingsuit throttle solver */
@@ -281,6 +289,13 @@ export class GPSAeroOverlay {
     if (!this.canopyMode) {
       this.controls.hipCamber = 0.30
       this.controls.legBend = 0.80
+    } else {
+      // Canopy area / span / chord / lever arms follow the slider-driven deploy fraction
+      this.controls.deploy = this.deployFraction
+      // Segment positions/areas are written by getCoeffs and read at the start of the next
+      // eval (and the solver passes leave them at their own deploy): prime them to this
+      // frame's deploy so the arrows and lever arms below are current.
+      evaluateAeroForcesDetailed(cfg.segments, cg, cfg.height, bodyVel, omega, this.controls, rho)
     }
     const result = evaluateAeroForcesDetailed(
       cfg.segments, cg, cfg.height,
@@ -328,7 +343,7 @@ export class GPSAeroOverlay {
         this.lastCanopyControls = { brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
         this.lastCanopyControlMap = sol.controlMap
         this.lastConverged = sol.converged
-        solvedControls = { ...defaultControls(), brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
+        solvedControls = { ...defaultControls(), deploy: this.deployFraction, brakeLeft: sol.brakeLeft, brakeRight: sol.brakeRight, frontRiserLeft: sol.frontRiserLeft, frontRiserRight: sol.frontRiserRight }
       } else {
         const sol = solveControlInputs(pt, solverCfg)
         this.lastMoments = sol.moments
@@ -387,7 +402,9 @@ export class GPSAeroOverlay {
 
     // Body-to-world quaternion for rotating vectors into scene frame
     // In body frame mode, use identity (vectors stay in body frame)
-    const bodyQuat = this.bodyFrame
+    const bodyQuat = this.axesQuat
+      ? this.axesQuat.clone()
+      : this.bodyFrame
       ? new THREE.Quaternion()
       : bodyToInertialQuat(
           ov?.roll ?? pt.aero.roll,
@@ -414,9 +431,9 @@ export class GPSAeroOverlay {
       const sa = this.segArrows[i]
       const ps = result.perSegment[i]
 
-      // Segment position in world space (body NED → Three.js → world)
-      // During deployment, scale horizontal plane (X=chord, Y=span in NED) by deploy fraction
-      const hScale = this.deployFraction
+      // Segment position in world space (body NED → Three.js → world).
+      // Deploy scaling (span / chord / chord offset) is already in the segment model
+      // via controls.deploy, so positions, areas and forces here are the deployed ones.
       // Use CP offset for aerodynamic surfaces only (not pilot body segments
       // where pitchOffset=90° maps the offset into vertical, pulling arrows to knees)
       const isPilotBody = (seg.pitchOffset_deg ?? 0) > 45
@@ -428,8 +445,8 @@ export class GPSAeroOverlay {
       const cpOffX = cpOffsetM * Math.cos(basePitchRad)
       const cpOffZ = cpOffsetM * Math.sin(basePitchRad)
       const segPosNED = {
-        x: (ps.positionMeters.x + cpOffX) * hScale,
-        y: ps.positionMeters.y * hScale,
+        x: ps.positionMeters.x + cpOffX,
+        y: ps.positionMeters.y,
         z: ps.positionMeters.z + cpOffZ,
       }
       const segPosWorld = nedToThreeJS(segPosNED).applyQuaternion(bodyQuat).add(modelPos)
@@ -489,8 +506,8 @@ export class GPSAeroOverlay {
       // CM arrow — positioned at the segment's aerodynamic center (no CP
       // offset).  Rotates with the body via bodyQuat (mirrors main viewer).
       const acNED = {
-        x: ps.positionMeters.x * hScale,
-        y: ps.positionMeters.y * hScale,
+        x: ps.positionMeters.x,
+        y: ps.positionMeters.y,
         z: ps.positionMeters.z,
       }
       const acWorld = nedToThreeJS(acNED).applyQuaternion(bodyQuat).add(modelPos)
@@ -523,12 +540,14 @@ export class GPSAeroOverlay {
     const accelThree = nedToThreeJS(accelNED)
     if (this.bodyFrame) {
       // Rotate inertial acceleration into body frame: q_inv = inverse(body→inertial)
-      const inertialToBody = bodyToInertialQuat(
+      const inertialToBody = (this.inertialQuat ?? bodyToInertialQuat(
         ov?.roll ?? pt.aero.roll,
         ov?.theta ?? pt.aero.theta,
         ov?.psi ?? pt.aero.psi,
-      ).invert()
+      )).clone().invert()
       accelThree.applyQuaternion(inertialToBody)
+      // Overlay axes may sit rotated in the displayed frame (canopy lerp after line stretch)
+      if (this.axesQuat) accelThree.applyQuaternion(this.axesQuat)
     }
     const offsetLen = accelThree.length() * ACCEL_POS_SCALE
     if (offsetLen > 0.005) {

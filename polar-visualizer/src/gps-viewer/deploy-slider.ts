@@ -59,10 +59,14 @@ export class DeploySlider {
     const d = Math.max(0, Math.min(1, deployFraction))
     const { TOP, BOTTOM } = DEPLOY_SLIDER_PARAMS
     this.group.position.lerpVectors(TOP, BOTTOM, d)
-    // Counter the parent's horizontal inflation scale so the plate isn't squashed
-    const h = this.parent.scale.y !== 0 ? this.parent.scale.x / this.parent.scale.y : 1
-    const hInv = h > 1e-3 ? 1 / h : 1
-    this.group.scale.set(SLIDER_SCALE * hInv, SLIDER_SCALE, SLIDER_SCALE * hInv)
+    // Counter the parent's span/chord inflation scale so the plate isn't squashed
+    const py = this.parent.scale.y !== 0 ? this.parent.scale.y : 1
+    const sx = this.parent.scale.x / py, sz = this.parent.scale.z / py
+    this.group.scale.set(
+      SLIDER_SCALE / (sx > 1e-3 ? sx : 1),
+      SLIDER_SCALE,
+      SLIDER_SCALE / (sz > 1e-3 ? sz : 1),
+    )
     this.group.visible = true
   }
 

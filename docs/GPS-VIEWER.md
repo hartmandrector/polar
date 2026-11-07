@@ -174,7 +174,9 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - **Bag out → line stretch:** bag drags the suspension lines out until the 7.4 m chain is straight.
 - **Line stretch →:** the real `BridleChainSim` (`sim/bridle-sim.ts`) runs over the rest of the track, anchored to the canopy's bridle-top and driven by the GPS motion (PC drag and gravity). Extra constraint passes plus a hard `projectChain` length clamp keep the segments exactly one segment length apart (no gaps).
 - **Canopy position lerp:** at line stretch the canopy hangs from the bag (its top at the end of the chain). Over `CANOPY_LERP_S` (0.5 s) the chain anchor lerps from the bag position to the canopy's bridle-top, and the canopy GLB origin lerps from that offset to the pilot (`frame.canopyOffset`). The canopy aero overlay shifts its draw origin and lever arms by the same offset, so ω × r uses the displaced canopy.
-- The bridle-top attachment is the `bridleTop` landmark scaled by the canopy GLB scale only (x/z also by the inflation horizontal scale).
+- The bridle-top attachment is the `bridleTop` landmark scaled by the canopy GLB scale and the span/chord deploy scale (`canopyDeployScale`: span 0.1 + 0.9d, chord 0.3 + 0.7d, same as the aero segment model and the main viewer).
+- The canopy hangs along the chain at line stretch and its attitude lerps to the estimator attitude over the same 0.5 s (`frame.canopyQuat`); the canopy GLB, the canopy aero overlay axes and the chain anchor all use it.
+- The canopy aero overlay evaluates the segment model with `controls.deploy` = the slider fraction (primed each frame), so segment areas, positions, lever arms and forces are the deployed ones.
 - Pre-line-stretch motion is kinematic, timed by the anchors; only post-line-stretch is simulated. Tunables: `DEPLOY_CHAIN_PARAMS`.
 
 ### Slider
