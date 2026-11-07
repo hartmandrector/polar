@@ -15,13 +15,15 @@ import { SLIDER_GEOMETRY, CANOPY_GEOMETRY } from '../viewer/model-registry'
 
 export const DEPLOY_SLIDER_PARAMS = {
   /** Slider position at deploy 0, canopy-model units: just under the canopy skin */
-  TOP: new THREE.Vector3(0, 4.0, -0.74),
-  /** Slider position at deploy 1: above the pilot's head, at the riser convergence */
-  BOTTOM: new THREE.Vector3(0, 0.6, -0.05),
+  TOP: new THREE.Vector3(0, 4.0, -0.86),
+  /** Slider position at deploy 1: just above the pilot's head (clear of it) */
+  BOTTOM: new THREE.Vector3(0, 0.8, -0.17),
+  /** Size relative to the physical slider */
+  SIZE: 0.9,
 } as const
 
 /** Slider GLB units are meters; the canopy model's units are CANOPY_GEOMETRY.glbToMeters meters */
-const SLIDER_SCALE = SLIDER_GEOMETRY.glbToMeters / CANOPY_GEOMETRY.glbToMeters
+const SLIDER_SCALE = DEPLOY_SLIDER_PARAMS.SIZE * SLIDER_GEOMETRY.glbToMeters / CANOPY_GEOMETRY.glbToMeters
 
 export class DeploySlider {
   private group = new THREE.Group()

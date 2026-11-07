@@ -555,6 +555,7 @@ export class BodyFrameScene {
       const dBodyThree = nedToThreeJS(canopyOffsetM ?? { x: 0, y: 0, z: 0 }).applyQuaternion(canopyQ.clone().invert())
       this.canopyAeroOverlay.canopyDisplacementNED = threeJSToNed(dBodyThree)
       this.canopyAeroOverlay.update(pt, dBodyThree.multiplyScalar(GPS_METERS_TO_SCENE))
+    } else {
       this.aeroOverlay.hide()
       this.canopyAeroOverlay.hide()
     }
