@@ -762,6 +762,16 @@ hideGlbToggle.addEventListener('change', () => {
 
 // ─── Heading Lock toggle ─────────────────────────────────────────────────────
 const headingLockToggle = document.getElementById('heading-lock') as HTMLInputElement
+const headingLockReverseToggle = document.getElementById('heading-lock-reverse') as HTMLInputElement
+const headingLockReverseLabel = document.getElementById('heading-lock-reverse-label') as HTMLElement
+
+// Reverse is a sub-option of Heading Lock: only enabled while lock is on.
+function syncHeadingLockReverseUi() {
+  headingLockReverseToggle.disabled = !headingLockToggle.checked
+  headingLockReverseLabel.style.opacity = headingLockToggle.checked ? '1' : '0.5'
+}
+headingLockToggle.addEventListener('change', syncHeadingLockReverseUi)
+syncHeadingLockReverseUi()
 
 // ─── Axis helper mode ───────────────────────────────────────────────────────
 const axisHelperSelect = document.getElementById('axis-helper-mode') as HTMLSelectElement
@@ -1549,7 +1559,7 @@ function applyKeyframeCameras(t: number) {
         // Camera behind pilot = opposite direction = (velE, 0, -velN).
         // Spherical theta = atan2(x, z) = atan2(velE, -velN).
         const sph = new THREE.Spherical().setFromVector3(inertialState.position)
-        sph.theta = Math.atan2(velE, -velN)
+        sph.theta = Math.atan2(velE, -velN) + (headingLockReverseToggle.checked ? Math.PI : 0)
         scene.setCameraState(new THREE.Vector3().setFromSpherical(sph), inertialState.zoom)
       } else {
         scene.setCameraState(inertialState.position, inertialState.zoom)
@@ -1771,6 +1781,7 @@ function buildCaptureSession(): CaptureSessionState | null {
     axisHelpers: axisHelperMode.value,
     glbHidden: hideGlbToggle.checked,
     headingLock: headingLockToggle.checked,
+    headingLockReverse: headingLockReverseToggle.checked,
     keyframeEnabled: kfEnabled.checked,
     keyframes: (() => {
       // Stamp current video offset so share URLs / captures carry it.
@@ -1858,6 +1869,10 @@ async function applyCaptureSession(state: CaptureSessionState) {
   if (state.headingLock != null) {
     headingLockToggle.checked = state.headingLock
   }
+  if (state.headingLockReverse != null) {
+    headingLockReverseToggle.checked = state.headingLockReverse
+  }
+  syncHeadingLockReverseUi()
 
   // Load keyframes
   if (kfEditor.fromJSON(JSON.stringify(state.keyframes)) && kfEditor.videoOffset != null) {
@@ -1951,6 +1966,11 @@ async function applyCaptureSession(state: CaptureSessionState) {
   if (headingLockParam != null) {
     headingLockToggle.checked = headingLockParam !== '0' && headingLockParam !== 'false'
   }
+  const headingLockReverseParam = urlParams.get('headingLockReverse')
+  if (headingLockReverseParam != null) {
+    headingLockReverseToggle.checked = headingLockReverseParam !== '0' && headingLockReverseParam !== 'false'
+  }
+  syncHeadingLockReverseUi()
 
   // 3. Load fused CSV sensor — looks in same folder as track by default
   const sensorParam = urlParams.get('sensor')

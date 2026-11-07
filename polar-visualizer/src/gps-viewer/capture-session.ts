@@ -39,6 +39,7 @@ export interface CaptureSessionState {
 
   /** Lock inertial camera azimuth to GPS velocity heading each frame */
   headingLock?: boolean
+  headingLockReverse?: boolean
 
   /** Keyframe mode enabled */
   keyframeEnabled: boolean
