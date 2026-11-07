@@ -515,17 +515,9 @@ export class GPSScene {
       if (this.deployRenderer) this.deployRenderer.hide()
       if (this.canopyModel) this.canopyModel.visible = false
     } else if (this.deployRenderer && isDeploying) {
-      // During deployment: deploy renderer controls bridle/PC visuals
-      // Pre-line-stretch: use pilot (wingsuit) model quaternion
-      // Post-line-stretch: use canopy orientation (PC trails from canopy)
-      let deployQuat: THREE.Quaternion
-      if (isPostLineStretch && effectiveCs) {
-        deployQuat = bodyToInertialQuat(effectiveCs.phi, effectiveCs.theta, effectiveCs.psi)
-      } else {
-        // Pre-line-stretch: use raw pipeline orientation (not the frozen wingsuit slerp)
-        deployQuat = bodyToInertialQuat(pt.aero.roll, pt.aero.theta, pt.aero.psi)
-      }
-      this.deployRenderer.update(this.currentIndex, pt, deployQuat, this.canopyModel)
+      // During deployment: deploy renderer controls bridle/PC visuals (chain frames
+      // are inertial, pilot-relative — see deploy-chain.ts)
+      this.deployRenderer.update(this.currentIndex, this.canopyModel)
       // Canopy GLB: only show from line_stretch onward, scale horizontally only
       if (this.canopyModel) {
         if (isPostLineStretch && !isPreLineStretch && drp!.deployFraction > 0.05) {

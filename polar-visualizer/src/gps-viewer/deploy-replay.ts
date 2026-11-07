@@ -19,6 +19,7 @@ import type { CanopyState } from './canopy-estimator.ts'
 import type { DeployEstimate } from './deploy-detector.ts'
 import type { GPSPipelinePoint } from '../gps/types.ts'
 import { buildDeployPoseSeries, type DeployPoseSeries } from './deploy-pose.ts'
+import { DEPLOY_CHAIN, buildDeployChainSeries, type DeployChainFrame } from './deploy-chain.ts'
 
 // ─── Deploy Sub-Phases ──────────────────────────────────────────────────────
 
@@ -106,6 +107,9 @@ export interface DeployReplayTimeline {
   /** Pilot / canopy orientation series (PC toss → canopy flight), see deploy-pose.ts */
   pose: DeployPoseSeries
 
+  /** PC / bridle / bag chain frames, aligned 1:1 with pipeline points, see deploy-chain.ts */
+  chain: (DeployChainFrame | null)[]
+
   /** Key timing indices */
   timing: {
     pcTossIndex: number | null
@@ -130,14 +134,6 @@ export interface DeployReplayTimeline {
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-/** Physical chain geometry [m] — shared with the deploy renderer */
-export const DEPLOY_CHAIN = {
-  /** CG → shoulder → risers → lines → bag → bridle → PC */
-  TOTAL_LENGTH: 7.4,
-  /** Bridle only: container → PC */
-  BRIDLE_LENGTH: 3.3,
-}
 
 /**
  * PC-toss → line-stretch back-calculation. The PC drags the chain out at a
@@ -279,6 +275,7 @@ export function buildDeployReplayTimeline(
       detection,
       anchors,
       pose: buildDeployPoseSeries(points, canopyStates, { anchors }),
+      chain: new Array(n).fill(null),
       timing,
       timingSeconds: {
         pcTossTime: null,
@@ -436,12 +433,14 @@ export function buildDeployReplayTimeline(
   const pcTossT = anchors.pcToss.time
   const maxAoaT = anchors.maxAoa?.time ?? null
   const fullFlightT = anchors.fullFlight?.time ?? null
+  const pose = buildDeployPoseSeries(points, canopyStates, { anchors })
 
   return {
     points: replayPoints,
     detection,
     anchors,
-    pose: buildDeployPoseSeries(points, canopyStates, { anchors }),
+    pose,
+    chain: buildDeployChainSeries(points, { anchors, pose }),
     timing,
     timingSeconds: {
       pcTossTime: pcTossT,

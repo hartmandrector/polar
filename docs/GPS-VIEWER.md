@@ -167,6 +167,14 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - `pt.fixed` (rates, solvers) is the frozen wingsuit pose blended to the canopy attitude over 0.5 s after line stretch.
 - Tunables: `DEPLOY_POSE_PARAMS`.
 
+### Chain (PC / bridle / bag)
+[deploy-chain.ts](../polar-visualizer/src/gps-viewer/deploy-chain.ts) precomputes `timeline.chain` (pilot-relative inertial NED meters); `gps-deploy-renderer.ts` just reads it and drives the shared `DeployRenderer` (10 `bridalsegment.glb` segments + PC + snivel bag, the same assets as the sim).
+- **PC toss → bridle taut:** PC thrown to the right, pays the bridle out along the relative wind (eased start, slight whip); segments unstow as the payout passes them.
+- **Bridle taut → bag out:** bridle straight, container opening.
+- **Bag out → line stretch:** bag drags the suspension lines out until the 7.4 m chain is straight.
+- **Line stretch →:** the real `BridleChainSim` (`sim/bridle-sim.ts`) runs over the rest of the track, anchored to the canopy bridle-top and driven by the GPS motion (PC drag + gravity). The anchor eases from the bag position to the canopy attachment over 0.6 s.
+- Pre-line-stretch motion is kinematic, timed by the anchors; only post-line-stretch is simulated. Tunables: `DEPLOY_CHAIN_PARAMS`.
+
 ### Roll Method Blend
 - Canopy roll blends from full transversal to coordinated turn over 2s after deployment end
 
