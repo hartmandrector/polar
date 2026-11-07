@@ -156,6 +156,17 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - Smoothstep slerp over the full pcToss → lineStretch + 2s window
 - Roll method blends from full transversal to coordinated turn over 2s after deployment end
 
+## Exit Pose (Ground → Flight)
+
+[exit-pose.ts](../polar-visualizer/src/gps-viewer/exit-pose.ts) is the single definition of the exit orientation, used by `fix-orientations.ts` and both scenes. `detectExit()` supplies the window (`leanStartIndex` → `settledIndex`) around the push-off. Tunables live in `EXIT_PARAMS`.
+
+Pitch (θ, relative to push-off):
+1. **Lean** — from 1.5 s before push-off: 90° (standing) → 45° at −0.5 s → horizontal at +0.3 s (monotone cubic, no pause at the knot)
+2. **Dive** — horizontal → flight-path angle (−γ, α = 0) over ~1 s; no aero moment yet
+3. **Trim** — as airspeed goes 15 → 30 m/s, θ blends from −γ to the solved aero θ (γ + α), so the pitch-into-trim timing is set by airspeed
+
+Roll follows aero roll with the same airspeed weight (0 before). Heading blends from the ground (head-sensor) heading to the flying heading during the first second of the lean, then eases into aero heading with the airspeed weight. Original aero angles are kept in `pt.rawAngles` so `fixOrientations` is idempotent.
+
 ## Keyframe Camera Editor
 
 The `KeyframeEditor` supports per-scene camera keyframes for video production:

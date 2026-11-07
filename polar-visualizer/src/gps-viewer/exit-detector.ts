@@ -11,15 +11,22 @@
  *      (vertical speed first exceeds a threshold, sustained)
  *   3. The "flying established" point is where wingsuit/freefall mode starts
  *   4. Between push-off and flying-established, scenes lerp orientation
+ *   5. Pose over the whole window (lean → push-off → airspeed-driven trim) is
+ *      defined in exit-pose.ts
  */
 
 import type { GPSPipelinePoint } from '../gps/types.ts'
+import { EXIT_PARAMS, airspeed } from './exit-pose'
 
 export interface ExitEstimate {
-  /** Index where pilot pushes off (vertical speed onset) */
+  /** Index where the lean/crouch begins (start of the exit pose window) */
+  leanStartIndex: number
+  /** Index where pushing off (vertical speed onset) */
   pushOffIndex: number
   /** Index where flying mode is established (wingsuit or freefall) */
   flyingIndex: number
+  /** Index where airspeed is high enough that the pose is fully aero-driven (end of window) */
+  settledIndex: number
   /** Time of push-off [s] */
   pushOffTime: number
   /** Time of flying established [s] */
@@ -63,9 +70,25 @@ export function detectExit(points: GPSPipelinePoint[]): ExitEstimate | null {
   // If no wingsuit/freefall found, use the freefall velocity point
   if (flyingIdx < 0) flyingIdx = freefallIdx
 
+  // Step 4: Lean start = LEAN_LEAD_S before push-off (by time, not samples)
+  const leanT = points[pushIdx].processed.t - EXIT_PARAMS.LEAN_LEAD_S
+  let leanIdx = pushIdx
+  while (leanIdx > 0 && points[leanIdx - 1].processed.t >= leanT) leanIdx--
+
+  // Step 5: Settled = first point after flying-established with airspeed >= AIRSPEED_FULL
+  let settledIdx = flyingIdx
+  for (let i = flyingIdx; i < points.length; i++) {
+    if (airspeed(points[i]) >= EXIT_PARAMS.AIRSPEED_FULL) {
+      settledIdx = i
+      break
+    }
+  }
+
   return {
+    leanStartIndex: leanIdx,
     pushOffIndex: pushIdx,
     flyingIndex: flyingIdx,
+    settledIndex: settledIdx,
     pushOffTime: points[pushIdx].processed.t,
     flyingTime: points[flyingIdx].processed.t,
   }

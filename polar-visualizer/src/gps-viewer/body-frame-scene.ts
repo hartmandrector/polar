@@ -22,6 +22,7 @@ import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
+import { computeExitPose } from './exit-pose'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -399,20 +400,15 @@ export class BodyFrameScene {
     // Pre-line-stretch: use wingsuit angles even if flight mode says canopy
     let bodyQuat: THREE.Quaternion
     const isGround = mode === 1
-    if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
-      // Exit transition: lerp from standing to flying pose (overrides ground mode)
-      // Standing: roll=0, pitch=90°, heading from flyingIndex (stable)
-      const ex = this.exitEstimate
-      const range = ex.flyingIndex - ex.pushOffIndex
-      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
-      const s = t * t * (3 - 2 * t) // smoothstep
-
-      const flyPt = this.data![Math.min(ex.flyingIndex, this.data!.length - 1)]
-      const flyingHeading = flyPt.aero.psi
-      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, flyingHeading)
-      const flyingQuat = bodyToInertialQuat(flyPt.aero.roll, flyPt.aero.theta, flyingHeading)
-      standingQuat.slerp(flyingQuat, s)
-      bodyQuat = standingQuat
+    const exitGroundHeading = this.headRenderer?.hasSensorData
+      ? this.headRenderer.getHeadingAtTime(pt.processed.t)
+      : null
+    const exitPose = this.exitEstimate && this.data
+      ? computeExitPose(this.data, this.exitEstimate, this.currentIndex, exitGroundHeading)
+      : null
+    if (exitPose) {
+      // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
+      bodyQuat = bodyToInertialQuat(exitPose.roll, exitPose.theta, exitPose.psi)
     } else if (isGround) {
       // Ground mode: stand upright, chest facing the head's heading when sensor
       // data is loaded (matches the inertial scene); else heading from flying index

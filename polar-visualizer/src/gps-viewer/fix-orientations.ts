@@ -7,8 +7,8 @@
  * corrected angle series.
  *
  * Phases:
- *   Ground (before pushoff): roll=0, pitch=π/2, heading=flyingIndex heading
- *   Exit (pushoff→flying): smoothstep lerp from standing to flying angles
+ *   Ground (before lean): roll=0, pitch=π/2, heading=flyingIndex heading
+ *   Exit (lean→settled): lean to horizontal, dive, airspeed-driven trim (exit-pose.ts)
  *   Freefall/wingsuit: pass-through from aero extraction
  *   Deployment (pcToss→fullInflation+2s): slerp from frozen wingsuit angles
  *     to canopy hang angles (mirrors gps-scene.ts deployment rendering)
@@ -20,6 +20,7 @@
 
 import type { GPSPipelinePoint, FixedOrientation } from '../gps/types'
 import type { ExitEstimate } from './exit-detector'
+import { computeExitPose, sourceAngles, angleLerp } from './exit-pose'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { CanopyState } from './canopy-estimator'
 import { calculateDerivative, unwrapAngles } from '../gps/math-utils'
@@ -49,16 +50,19 @@ export function fixOrientations(
 
   const { exitEstimate, deployTimeline, canopyStates } = config
 
+  // Preserve the original aero angles (writeback overwrites pt.aero, and this
+  // pass can run more than once on the same points).
+  for (const pt of points) {
+    if (!pt.rawAngles) pt.rawAngles = { roll: pt.aero.roll, theta: pt.aero.theta, psi: pt.aero.psi }
+  }
+
   // ── Phase 1: Assign corrected Euler angles per-point ──
 
   // Pre-compute stable references
   const flyingIdx = exitEstimate
     ? Math.min(exitEstimate.flyingIndex, points.length - 1)
     : 0
-  const flyingPt = points[flyingIdx]
-  const flyingHeading = flyingPt.aero.psi
-  const flyingRoll = flyingPt.aero.roll
-  const flyingTheta = flyingPt.aero.theta
+  const flyingHeading = sourceAngles(points[flyingIdx]).psi
 
   // Deploy timing
   const pcTossIdx = deployTimeline?.timing.pcTossIndex ?? null
@@ -69,44 +73,31 @@ export function fixOrientations(
   // Frozen wingsuit pose at PC toss
   let frozenRoll = 0, frozenTheta = 0, frozenPsi = 0
   if (pcTossIdx !== null && pcTossIdx < points.length) {
-    const pcPt = points[pcTossIdx]
-    frozenRoll = pcPt.aero.roll
-    frozenTheta = pcPt.aero.theta
-    frozenPsi = pcPt.aero.psi
-  }
-
-  /** Shortest-path angular interpolation: lerp through the nearest route */
-  function angleLerp(from: number, to: number, s: number): number {
-    let diff = to - from
-    // Normalize diff to [-π, π]
-    while (diff > Math.PI) diff -= 2 * Math.PI
-    while (diff < -Math.PI) diff += 2 * Math.PI
-    return from + diff * s
+    const pcSrc = sourceAngles(points[pcTossIdx])
+    frozenRoll = pcSrc.roll
+    frozenTheta = pcSrc.theta
+    frozenPsi = pcSrc.psi
   }
 
   for (let i = 0; i < points.length; i++) {
     const pt = points[i]
+    const src = sourceAngles(pt)
     const mode = pt.flightMode?.mode ?? 0
 
     let roll: number, theta: number, psi: number
 
     // Check which phase we're in
     const isGround = mode === 1
-    const inExitTransition = exitEstimate !== null
-      && i >= exitEstimate.pushOffIndex
-      && i <= exitEstimate.flyingIndex
+    const exitPose = exitEstimate ? computeExitPose(points, exitEstimate, i) : null
     const inDeployTransition = pcTossIdx !== null && lsIdx !== null
       && i >= pcTossIdx
       && (fullFlightIdx !== null ? i <= fullFlightIdx : true)
 
-    if (inExitTransition && exitEstimate) {
-      // Exit: smoothstep from standing to flying
-      const range = exitEstimate.flyingIndex - exitEstimate.pushOffIndex
-      const t = range > 0 ? (i - exitEstimate.pushOffIndex) / range : 1
-      const s = t * t * (3 - 2 * t)
-      roll = angleLerp(0, flyingRoll, s)
-      theta = angleLerp(Math.PI / 2, flyingTheta, s)
-      psi = flyingHeading
+    if (exitPose) {
+      // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
+      roll = exitPose.roll
+      theta = exitPose.theta
+      psi = exitPose.psi
     } else if (isGround) {
       // Ground: standing upright, stable heading
       roll = 0
@@ -141,15 +132,15 @@ export function fixOrientations(
         theta = cs.theta
         psi = cs.psi
       } else {
-        roll = pt.aero.roll
-        theta = pt.aero.theta
-        psi = pt.aero.psi
+        roll = src.roll
+        theta = src.theta
+        psi = src.psi
       }
     } else {
       // Freefall / wingsuit: pass through aero extraction
-      roll = pt.aero.roll
-      theta = pt.aero.theta
-      psi = pt.aero.psi
+      roll = src.roll
+      theta = src.theta
+      psi = src.psi
     }
 
     // Store angles (rates filled in Phase 2)

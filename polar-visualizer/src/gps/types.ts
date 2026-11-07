@@ -142,6 +142,8 @@ export interface GPSPipelinePoint {
    * re-derived from the fixed angle series.
    */
   fixed?: FixedOrientation;
+  /** Original aero Euler angles before fixed-orientation writeback (set once) */
+  rawAngles?: { roll: number; theta: number; psi: number };
 }
 
 /**

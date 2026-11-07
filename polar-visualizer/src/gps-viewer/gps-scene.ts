@@ -23,6 +23,7 @@ import type { OrientationEKF } from '../kalman/orientation-ekf'
 import type { CanopyState } from './canopy-estimator'
 import type { DeployReplayTimeline } from './deploy-replay'
 import type { ExitEstimate } from './exit-detector'
+import { computeExitPose } from './exit-pose'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -462,21 +463,16 @@ export class GPSScene {
       : null
     if (cs && cs.valid) this.lastValidCanopyState = cs
 
-    if (this.exitEstimate && this.currentIndex >= this.exitEstimate.pushOffIndex && this.currentIndex <= this.exitEstimate.flyingIndex) {
-      // Exit transition: lerp from standing to flying pose (overrides ground mode)
-      // Standing: roll=0, pitch=90° (on feet), heading = heading at flyingIndex (stable)
-      // Flying: actual aero angles at flyingIndex
-      const ex = this.exitEstimate
-      const range = ex.flyingIndex - ex.pushOffIndex
-      const t = range > 0 ? (this.currentIndex - ex.pushOffIndex) / range : 1
-      const s = t * t * (3 - 2 * t) // smoothstep
+    const exitGroundHeading = this.headRenderer?.hasSensorData
+      ? this.headRenderer.getHeadingAtTime(pt.processed.t)
+      : null
+    const exitPose = this.exitEstimate && this.data
+      ? computeExitPose(this.data, this.exitEstimate, this.currentIndex, exitGroundHeading)
+      : null
 
-      const flyPt = this.data![Math.min(ex.flyingIndex, this.data!.length - 1)]
-      const flyingHeading = flyPt.aero.psi
-      const standingQuat = bodyToInertialQuat(0, Math.PI / 2, flyingHeading)
-      const flyingQuat = bodyToInertialQuat(flyPt.aero.roll, flyPt.aero.theta, flyingHeading)
-      standingQuat.slerp(flyingQuat, s)
-      this.model.quaternion.copy(standingQuat)
+    if (exitPose) {
+      // Exit: lean → push-off → airspeed-driven trim (see exit-pose.ts)
+      this.model.quaternion.copy(bodyToInertialQuat(exitPose.roll, exitPose.theta, exitPose.psi))
     } else if (isGround && hasSensor) {
       // Ground mode with sensor data: stand upright, chest facing the head's heading
       const heading = this.headRenderer!.getHeadingAtTime(pt.processed.t)
