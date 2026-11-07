@@ -36,10 +36,10 @@ const K_INFLATE = 1.0
 const V_REF = 25
 
 /** Snivel duration [s] — slow start while slider stretches square and fabric orients */
-const SNIVEL_TIME = 0.6
+export const SNIVEL_TIME = 0.6
 
 /** Deploy fraction at end of snivel — how far canopy opens before slider starts moving */
-const SNIVEL_DEPLOY = 0.15
+export const SNIVEL_DEPLOY = 0.15
 
 /** Soft speed cap — above this ratio, inflation rate grows sublinearly (sqrt) */
 const V_RATIO_CAP = 1.5

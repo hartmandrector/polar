@@ -177,6 +177,11 @@ The viewer handles the wingsuit → canopy transition with phase-aware rendering
 - The bridle-top attachment is the `bridleTop` landmark scaled by the canopy GLB scale only (x/z also by the inflation horizontal scale).
 - Pre-line-stretch motion is kinematic, timed by the anchors; only post-line-stretch is simulated. Tunables: `DEPLOY_CHAIN_PARAMS`.
 
+### Slider
+`deploy-slider.ts` adds a slider plate (`slider.glb`) as a child of the canopy GLB group in both scenes, sliding along the lines from just under the canopy (deploy 0) to above the pilot's head (deploy 1); it counter-scales the canopy's horizontal inflation scale so it isn't squashed.
+- The slider can't be observed, so its position is the **deploy fraction** and is calibrated to reach the bottom at the full-flight anchor (or 4 s after line stretch if none was detected). The shape follows the sim (`CanopyDeployManager`): a 0.6 s snivel to 0.15, then a rate ∝ airspeed², so it drops quickly at first and slowly at the end as the canopy decelerates.
+- The deploy fraction also drives the canopy's horizontal scale, the canopy aero overlay and the chain anchor, so the canopy now spreads as the slider descends (it previously followed an unrelated ease that reached 1 at snivel end).
+
 ### Roll Method Blend
 - Canopy roll blends from full transversal to coordinated turn over 2s after deployment end
 

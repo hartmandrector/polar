@@ -20,6 +20,7 @@ import type { DeployEstimate } from './deploy-detector.ts'
 import type { GPSPipelinePoint } from '../gps/types.ts'
 import { buildDeployPoseSeries, type DeployPoseSeries } from './deploy-pose.ts'
 import { DEPLOY_CHAIN, buildDeployChainSeries, type DeployChainFrame } from './deploy-chain.ts'
+import { SNIVEL_TIME, SNIVEL_DEPLOY } from '../sim/deploy-canopy.ts'
 
 // ─── Deploy Sub-Phases ──────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export interface DeployReplayPoint {
   /** Canopy state from canopy estimator (null if pre-deploy) */
   canopyState: CanopyState | null
 
-  /** Deploy fraction [0–1] — 0 = packed, 1 = fully inflated */
+  /** Deploy fraction [0–1] — slider position: 0 = top of the lines (packed), 1 = at the bottom (fully inflated) */
   deployFraction: number
 
   /** Time relative to line stretch [s] — negative = before, positive = after */
@@ -164,8 +165,66 @@ const TRIM_AOA_DEG = 8
 /** Minimum canopy AoA [deg] to consider as "max AoA detected" */
 const MIN_MAX_AOA_DEG = 30
 
-/** Fallback deploy fraction ramp rate [1/s] when no AoA anchors are available */
-const DEPLOY_RAMP_RATE = 0.7
+/** Slider descent span after line stretch when full flight wasn't detected [s] */
+const SLIDER_FALLBACK_S = 4
+
+/** Reference airspeed [m/s] and soft cap for the slider rate (same as sim/deploy-canopy.ts) */
+const SLIDER_V_REF = 25
+const SLIDER_V_RATIO_CAP = 1.5
+
+/** Slider rate ∝ dynamic pressure, sublinear above the cap (mirrors CanopyDeployManager) */
+function sliderRate(airspeed: number): number {
+  const r = airspeed / SLIDER_V_REF
+  if (r <= SLIDER_V_RATIO_CAP) return r * r
+  const capQ = SLIDER_V_RATIO_CAP * SLIDER_V_RATIO_CAP
+  return capQ * Math.sqrt(r / SLIDER_V_RATIO_CAP)
+}
+
+/**
+ * Slider position [0–1] per point from line stretch on. The slider can't be seen
+ * in the data; its descent is calibrated to reach the bottom at `endTime`
+ * (full flight) with the sim's shape: a short snivel, then a rate ∝ airspeed²,
+ * so it comes down quickly at first and slowly at the end as the canopy slows.
+ */
+function sliderDescent(points: GPSPipelinePoint[], lsIdx: number, endTime: number): number[] {
+  const n = points.length
+  const out: number[] = new Array(n).fill(0)
+  const tL = points[lsIdx].processed.t
+  const tSnivel = tL + SNIVEL_TIME
+  const tEnd = Math.max(endTime, tSnivel + 0.5)
+
+  // Cumulative ∫ rate dt over the main phase (trapezoid)
+  const cum: number[] = new Array(n).fill(0)
+  let total = 0
+  let started = false
+  for (let i = lsIdx + 1; i < n; i++) {
+    const t0 = points[i - 1].processed.t, t1 = points[i].processed.t
+    const a = Math.max(t0, tSnivel), b = Math.min(t1, tEnd)
+    if (b > a) {
+      started = true
+      const r0 = sliderRate(points[i - 1].processed.airspeed)
+      const r1 = sliderRate(points[i].processed.airspeed)
+      total += 0.5 * (r0 + r1) * (b - a)
+    }
+    cum[i] = total
+    if (started && t1 >= tEnd) {
+      for (let j = i + 1; j < n; j++) cum[j] = total
+      break
+    }
+  }
+
+  for (let i = lsIdx + 1; i < n; i++) {
+    const t = points[i].processed.t
+    if (t >= tEnd) { out[i] = 1; continue }
+    if (t < tSnivel) {
+      out[i] = SNIVEL_DEPLOY * (t - tL) / SNIVEL_TIME
+    } else {
+      const x = total > 1e-9 ? cum[i] / total : (t - tSnivel) / (tEnd - tSnivel)
+      out[i] = SNIVEL_DEPLOY + (1 - SNIVEL_DEPLOY) * Math.min(1, x)
+    }
+  }
+  return out
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -375,11 +434,11 @@ export function buildDeployReplayTimeline(
     timing.surgeEndIndex = timing.fullFlightIndex
   }
 
-  // Visual inflation: 0 at line stretch → 1 when snivel ends (or max AoA + 0.5 s,
-  // or a fixed ramp when no AoA anchors were found)
-  const inflationEndTime = anchors.snivelEnd?.time
-    ?? (anchors.maxAoa ? anchors.maxAoa.time + 0.5 : lsTime + 1 / DEPLOY_RAMP_RATE)
-  const inflationDur = Math.max(0.8, Math.min(3.0, inflationEndTime - lsTime))
+  // Slider / canopy deploy fraction: slider descends fast at first and slowly at the
+  // end (rate ∝ airspeed², like the sim), reaching the bottom when full flight is
+  // reached (or SLIDER_FALLBACK_S after line stretch if full flight wasn't detected)
+  const sliderEndTime = anchors.fullFlight?.time ?? lsTime + SLIDER_FALLBACK_S
+  const sliderFractions = sliderDescent(points, lsIdx, sliderEndTime)
 
   // ── Assign sub-phases to each point ────────────────────────────────
   for (let i = 0; i < n; i++) {
@@ -415,15 +474,8 @@ export function buildDeployReplayTimeline(
       rp.subPhase = i > lsIdx ? 'snivel' : 'pre_deploy'
     }
 
-    // Deploy fraction: eased ramp over the anchor-derived inflation span
-    if (i <= lsIdx) {
-      rp.deployFraction = 0
-    } else if (timing.fullFlightIndex != null && i >= timing.fullFlightIndex) {
-      rp.deployFraction = 1
-    } else {
-      const x = Math.min(1, (t - lsTime) / inflationDur)
-      rp.deployFraction = x * x * (3 - 2 * x)
-    }
+    // Deploy fraction = slider position (0 = top of the lines, 1 = rests above the head)
+    rp.deployFraction = i <= lsIdx ? 0 : sliderFractions[i]
 
     // Canopy trust — estimator is trustworthy after max AoA
     rp.canopyTrust = timing.maxAoaIndex != null && i >= timing.maxAoaIndex && cs != null && cs.valid

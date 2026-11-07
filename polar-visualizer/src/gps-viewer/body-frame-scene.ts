@@ -25,6 +25,7 @@ import type { ExitEstimate } from './exit-detector'
 import { computeExitPose } from './exit-pose'
 import { DEPLOY_POSE_PARAMS } from './deploy-pose'
 import { GPS_METERS_TO_SCENE, canopyHorizontalScale } from './deploy-chain'
+import { DeploySlider } from './deploy-slider'
 import { GPSCanopyTrail } from './gps-canopy-trail'
 import { HeadModelRenderer } from './head-renderer'
 import type { HeadSensorPoint } from './head-sensor'
@@ -45,6 +46,7 @@ export class BodyFrameScene {
   private controls: OrbitControls
   private model: THREE.Group | null = null
   private canopyModel: THREE.Group | null = null
+  private deploySlider: DeploySlider | null = null
   private glbHidden = false
   private canopyStates: CanopyState[] = []
   private deployTimeline: DeployReplayTimeline | null = null
@@ -203,6 +205,7 @@ export class BodyFrameScene {
       this.cellWireframes = createCellWireframes(CANOPY_GEOMETRY)
       this.canopyModel.add(this.cellWireframes.group)
       this.cellWireframes.setVisible(this.glbHidden)
+      this.deploySlider = new DeploySlider(this.canopyModel)
       // Re-apply hide state so the meshes inside the freshly loaded GLB respect it
       this.applyGlbHide()
     } catch (e) {
@@ -518,6 +521,11 @@ export class BodyFrameScene {
       } else {
         this.canopyModel.visible = false
       }
+    }
+
+    // Slider rides on the canopy group: slides down the lines with the deploy fraction
+    if (this.deploySlider && this.canopyModel?.visible) {
+      this.deploySlider.update(drp ? drp.deployFraction : 1)
     }
 
     // Note: We deliberately do NOT touch model.visible / canopyModel.visible here.
